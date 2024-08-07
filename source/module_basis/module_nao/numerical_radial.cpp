@@ -168,7 +168,8 @@ void NumericalRadial::to_numerical_orbital_lm(Numerical_Orbital_Lm& orbital_lm, 
     double* rab = new double[nr_];
     std::fill(rab, rab + nr_, dr);
 
-    orbital_lm.set_orbital_info(symbol_, itype_, l_, izeta_, std::min(nr_, ircut_+1), rab, rgrid_,
+    //orbital_lm.set_orbital_info(symbol_, itype_, l_, izeta_, std::min(nr_, ircut_+1), rab, rgrid_,
+    orbital_lm.set_orbital_info(symbol_, itype_, l_, izeta_, nr_, rab, rgrid_,
             Numerical_Orbital_Lm::Psi_Type::Psi, rvalue_, nk_legacy, lcao_dk,
             0.001 /* dr_uniform */, GlobalV::out_element_info, true, GlobalV::CAL_FORCE);
     delete[] rab;

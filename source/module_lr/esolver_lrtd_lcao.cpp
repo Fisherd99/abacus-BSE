@@ -475,6 +475,9 @@ void LR::ESolver_LR<T, TR>::setup_eigenvectors_X()
 template<typename T, typename TR>
 void LR::ESolver_LR<T, TR>::set_X_initial_guess()
 {
+    GlobalV::ofs_running << "E_{lumo}(eV): " << std::setprecision(15) << eig_ks(0, nocc) * ModuleBase::Ry_to_eV << std::endl;
+    GlobalV::ofs_running << "E_{homo}(eV): " << std::setprecision(15)  << eig_ks(0, nocc - 1) * ModuleBase::Ry_to_eV << std::endl;
+    GlobalV::ofs_running << "E_{gap}(eV): " << std::setprecision(15) << (eig_ks(0, nocc) - eig_ks(0, nocc - 1)) * ModuleBase::Ry_to_eV << std::endl;
     // set the initial guess of X
   // if (E_{lumo}-E_{homo-1} < E_{lumo+1}-E{homo}), mode = 0, else 1(smaller first)
     bool ix_mode = false;   //default
