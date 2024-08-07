@@ -1,6 +1,6 @@
 #include "read_pp.h"
 
-#include <math.h>
+#include <cmath>
 
 #include <cstring> // Peize Lin fix bug about strcpy 2016-08-02
 #include <fstream>
@@ -16,14 +16,6 @@ Pseudopot_upf::Pseudopot_upf()
 
 Pseudopot_upf::~Pseudopot_upf()
 {
-    delete[] els_beta;
-    delete[] nchi;
-    delete[] epseu;
-    delete[] rcut_chi;
-    delete[] rcutus_chi;
-    delete[] rinner;
-    delete[] rcut;
-    delete[] rcutus;
 }
 
 int Pseudopot_upf::init_pseudo_reader(const std::string &fn, std::string &type, Atom_pseudo& pp)
@@ -43,36 +35,36 @@ int Pseudopot_upf::init_pseudo_reader(const std::string &fn, std::string &type, 
 	{
 		set_pseudo_type(fn, type);
 	}
+
+	int info = -1;
 	// read in the .UPF type of pseudopotentials
 	// if(GlobalV::global_pseudo_type=="upf")
 	if (type == "upf")
 	{
-		int info = read_pseudo_upf(ifs, pp);
-		return info;
+		info = read_pseudo_upf(ifs, pp);
 	}
 	// read in the .vwr type of pseudopotentials
 	// else if(GlobalV::global_pseudo_type=="vwr")
 	else if (type == "vwr")
 	{
-		int info = read_pseudo_vwr(ifs, pp);
-		return info;
+		info = read_pseudo_vwr(ifs, pp);
 	}
 	// else if(GlobalV::global_pseudo_type=="upf201")
 	else if (type == "upf201")
 	{
-		int info = read_pseudo_upf201(ifs, pp);
-		return info;
+		info = read_pseudo_upf201(ifs, pp);
 	}
 	// else if(GlobalV::global_pseudo_type=="blps") // sunliang added 2021.7
 	else if (type == "blps")
 	{
-		int info = read_pseudo_blps(ifs, pp);
-		return info;
+		info = read_pseudo_blps(ifs, pp);
 	}
     else
     {
         return 4;
     }
+
+	return info;
 }
 
 
@@ -201,7 +193,8 @@ int Pseudopot_upf::average_p(const double& lambda, Atom_pseudo& pp)
 					ind1 = old_nbeta +1;
 				}
 				double vion1 = ((l+1.0) * pp.dion(ind,ind) + l * pp.dion(ind1,ind1)) / (2.0*l+1.0);
-				if(std::abs(vion1)<1.0e-8) vion1 = 0.1;
+				if(std::abs(vion1)<1.0e-8) { vion1 = 0.1;
+}
 				//average beta (betar)
 				for(int ir = 0; ir<pp.mesh;ir++)
 				{
@@ -217,8 +210,9 @@ int Pseudopot_upf::average_p(const double& lambda, Atom_pseudo& pp)
 			}
 			else
 			{
-				for(int ir = 0; ir<pp.mesh;ir++)
+				for(int ir = 0; ir<pp.mesh;ir++) {
 					pp.betar(nb, ir) = pp.betar(old_nbeta, ir);
+}
 				pp.dion(nb, nb) = pp.dion(old_nbeta, old_nbeta);
 			}
 			pp.lll[nb] = pp.lll[old_nbeta]; //reset the lll index, ignore jjj index
@@ -283,12 +277,13 @@ int Pseudopot_upf::average_p(const double& lambda, Atom_pseudo& pp)
 				old_nwfc++;
 			}
 			else{
-				for(int ir = 0; ir<pp.mesh;ir++)
+				for(int ir = 0; ir<pp.mesh;ir++) {
 					pp.chi(nb, ir) = pp.chi(old_nwfc, ir);
+}
 			}
 			pp.lchi[nb] = pp.lchi[old_nwfc]; //reset lchi index
 		}
-		pp.has_so = 0;	
+		pp.has_so = false;	
 		return error;
 	}
 	else//lambda_ != 0, modulate the soc effect in pseudopotential
@@ -322,7 +317,8 @@ int Pseudopot_upf::average_p(const double& lambda, Atom_pseudo& pp)
 					ind1 = nb +1;
 				}
 				double vion1 = ((l+1.0) * pp.dion(ind,ind) + l * pp.dion(ind1,ind1)) / (2.0*l+1.0);
-				if(std::abs(vion1)<1.0e-10) vion1 = 0.1;
+				if(std::abs(vion1)<1.0e-10) { vion1 = 0.1;
+}
 				//average beta (betar)
 				const double sqrtDplus = sqrt(std::abs(pp.dion(ind,ind) / vion1));
 				const double sqrtDminus = sqrt(std::abs(pp.dion(ind1,ind1) / vion1));
@@ -455,7 +451,7 @@ void Pseudopot_upf::set_upf_q(Atom_pseudo& pp)
                                 break;
                             }
                         }
-                        this->setqfnew(nqf, ilast, l, 2, &(qfcoef(nb, mb, l, 0)), pp.r, &(pp.qfuncl(l, nmb, 0)));
+                        this->setqfnew(nqf, ilast, l, 2, &(qfcoef(nb, mb, l, 0)), pp.r.data(), &(pp.qfuncl(l, nmb, 0)));
                     }
                 }
             }

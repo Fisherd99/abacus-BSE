@@ -25,7 +25,7 @@
 #include "module_cell/read_pp.h"
 #include "module_cell/pseudo.h"
 #include "module_cell/atom_pseudo.h"
-
+#undef private
 class AtomPseudoTest : public testing::Test
 {
 protected:
@@ -43,7 +43,7 @@ TEST_F(AtomPseudoTest, SetDSo)
 	ifs.open("./support/C.upf");
 	GlobalV::PSEUDORCUT = 15.0;
 	upf->read_pseudo_upf201(ifs, *atom_pseudo);
-	atom_pseudo->set_pseudo();
+	upf->complete_default(*atom_pseudo);
 	ifs.close();
 	EXPECT_EQ(atom_pseudo->nh,14);
 	EXPECT_TRUE(atom_pseudo->has_so);
@@ -73,7 +73,7 @@ TEST_F(AtomPseudoTest, BcastAtomPseudo)
 		ifs.open("./support/C.upf");
 		GlobalV::PSEUDORCUT = 15.0;
 		upf->read_pseudo_upf201(ifs, *atom_pseudo);
-		atom_pseudo->set_pseudo();
+		upf->complete_default(*atom_pseudo);;
 		ifs.close();
 	}
 	atom_pseudo->bcast_atom_pseudo();
@@ -99,4 +99,3 @@ int main(int argc, char **argv)
 	return result;
 }
 #endif
-#undef private
