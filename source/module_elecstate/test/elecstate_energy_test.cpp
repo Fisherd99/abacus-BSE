@@ -1,12 +1,12 @@
-#include <string>
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "module_elecstate/elecstate.h"
-#include "module_elecstate/elecstate_getters.h"
 #define private public
 #include "module_parameter/parameter.h"
 #undef private
+#include "module_elecstate/elecstate.h"
+#include "module_elecstate/elecstate_getters.h"
+#include <string>
 Parameter PARMA;
 
 // mock functions
@@ -73,8 +73,8 @@ class MockElecState : public ElecState
   public:
     void Set_GlobalV_Default()
     {
-        GlobalV::imp_sol = false;
-        GlobalV::dft_plus_u = 0;
+        PARAM.input.imp_sol = false;
+        PARAM.input.dft_plus_u = 0;
         // base class
         GlobalV::NSPIN = 1;
         GlobalV::nelec = 10.0;
@@ -82,9 +82,9 @@ class MockElecState : public ElecState
         GlobalV::TWO_EFERMI = false;
         GlobalV::NBANDS = 6;
         GlobalV::NLOCAL = 6;
-        GlobalV::ESOLVER_TYPE = "ksdft";
+        PARAM.input.esolver_type = "ksdft";
         GlobalV::LSPINORB = false;
-        GlobalV::BASIS_TYPE = "pw";
+        PARAM.input.basis_type = "pw";
         GlobalV::KPAR = 1;
         GlobalV::NPROC_IN_POOL = 1;
         PARAM.input.sc_mag_switch = 1;
@@ -126,7 +126,7 @@ TEST_F(ElecStateEnergyTest, CalEnergiesHarris)
 TEST_F(ElecStateEnergyTest, CalEnergiesHarrisImpSol)
 {
     elecstate->f_en.deband_harris = 0.1;
-    GlobalV::imp_sol = true;
+    PARAM.input.imp_sol = true;
     elecstate->cal_energies(1);
     // deband_harris + hatree + efiled + gatefield + esol_el + esol_cav + escon
     EXPECT_DOUBLE_EQ(elecstate->f_en.etot_harris, 1.6);
@@ -135,7 +135,7 @@ TEST_F(ElecStateEnergyTest, CalEnergiesHarrisImpSol)
 TEST_F(ElecStateEnergyTest, CalEnergiesHarrisDFTU)
 {
     elecstate->f_en.deband_harris = 0.1;
-    GlobalV::dft_plus_u = 1;
+    PARAM.input.dft_plus_u = 1;
     elecstate->cal_energies(1);
     // deband_harris + hatree + efiled + gatefield + edftu + escon
 #ifdef __LCAO
@@ -156,7 +156,7 @@ TEST_F(ElecStateEnergyTest, CalEnergiesEtot)
 TEST_F(ElecStateEnergyTest, CalEnergiesEtotImpSol)
 {
     elecstate->f_en.deband = 0.1;
-    GlobalV::imp_sol = true;
+    PARAM.input.imp_sol = true;
     elecstate->cal_energies(2);
     // deband + hatree + efiled + gatefield + esol_el + esol_cav + escon
     EXPECT_DOUBLE_EQ(elecstate->f_en.etot, 1.6);
@@ -165,7 +165,7 @@ TEST_F(ElecStateEnergyTest, CalEnergiesEtotImpSol)
 TEST_F(ElecStateEnergyTest, CalEnergiesEtotDFTU)
 {
     elecstate->f_en.deband = 0.1;
-    GlobalV::dft_plus_u = 1;
+    PARAM.input.dft_plus_u = 1;
     elecstate->cal_energies(2);
     // deband + hatree + efiled + gatefield + edftu + escon
 #ifdef __LCAO

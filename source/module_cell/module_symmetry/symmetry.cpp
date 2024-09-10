@@ -1,6 +1,8 @@
 #include <memory>
 #include <array>
+#include "module_parameter/parameter.h"
 #include "symmetry.h"
+#include "module_parameter/parameter.h"
 #include "module_base/libm/libm.h"
 #include "module_base/mathzone.h"
 #include "module_base/constants.h"
@@ -176,7 +178,7 @@ void Symmetry::analy_sys(const Lattice& lat, const Statistics& st, Atom* atoms, 
     // 2. analyze the symmetry
     // --------------------------------
     // 2.1 skip the symmetry analysis if the symmetry has been analyzed
-    if (GlobalV::CALCULATION == "cell-relax" && nrotk > 0)
+    if (PARAM.inp.calculation == "cell-relax" && nrotk > 0)
     {
         std::ofstream no_out;   // to screen the output when trying new epsilon
 
@@ -327,7 +329,7 @@ void Symmetry::analy_sys(const Lattice& lat, const Statistics& st, Atom* atoms, 
     this->set_atom_map(atoms); // find the atom mapping according to the symmetry operations
 
     // Do this here for debug
-    if (GlobalV::CALCULATION == "relax")
+    if (PARAM.inp.calculation == "relax")
     {
         this->all_mbl = this->is_all_movable(atoms, st);
         if (!this->all_mbl)
@@ -1476,7 +1478,6 @@ void Symmetry::pricell(double* pos, const Atom* atoms)
 void Symmetry::rho_symmetry( double *rho,
                              const int &nr1, const int &nr2, const int &nr3)
 {
-//  if (GlobalV::test_symmetry)ModuleBase::TITLE("Symmetry","rho_symmetry");
     ModuleBase::timer::tick("Symmetry","rho_symmetry");
 
 	// allocate flag for each FFT grid.
@@ -1534,7 +1535,6 @@ void Symmetry::rhog_symmetry(std::complex<double> *rhogtot,
     int* ixyz2ipw, const int &nx, const int &ny, const int &nz, 
     const int &fftnx, const int &fftny, const int &fftnz)
 {
-//  if (GlobalV::test_symmetry)ModuleBase::TITLE("Symmetry","rho_symmetry");
     ModuleBase::timer::tick("Symmetry","rhog_symmetry");
 // ----------------------------------------------------------------------
 // the current way is to cluster the FFT grid points into groups in advance.
@@ -1630,7 +1630,7 @@ ModuleBase::timer::tick("Symmetry","group fft grids");
                         rotate_recip(kgmatrix[invmap[isym]], tmp_gdirect0, ii, jj, kk);
                         if(ii>=fftnx || jj>=fftny || kk>= fftnz)
                         {
-                            if(!GlobalV::GAMMA_ONLY_PW)
+                            if(!PARAM.globalv.gamma_only_pw)
                             {
                                 std::cout << " ROTATE OUT OF FFT-GRID IN RHOG_SYMMETRY !" << std::endl;
 		                        ModuleBase::QUIT();
@@ -1814,36 +1814,6 @@ void Symmetry::set_atom_map(const Atom* atoms)
             }
         }
     }
-}
-
-/// @brief return a map that is inequivalent atom index to its symmetry multiplicity
-std::map<int, int> Symmetry::inequivalent_atoms() const
-{
-    // do not use get_inequivalent_atom_positions() to avoid redundant calculation
-    std::map<int, int> inequivalent_atoms;
-    std::vector<bool> is_equivalent(this->nat, false);
-    // Iterate over all atoms
-    for (int ia = 0; ia < this->nat; ++ia) {
-        if (!is_equivalent[ia]) {
-            // If this atom has not been marked as equivalent to another, it's inequivalent
-            int multiplicity = 0;
-            // Now mark all atoms equivalent to this one under any symmetry operation
-            std::vector<int> equivalent_atoms;
-            for (int k = 0; k < this->nrotk; ++k) {
-                int equivalent_atom = this->isym_rotiat_[k][ia];
-                if (equivalent_atom != -1) { // Check if a mapping exists
-                    is_equivalent[equivalent_atom] = true;
-                    if (std::find(equivalent_atoms.begin(), equivalent_atoms.end(), equivalent_atom) == equivalent_atoms.end())
-                    {
-                        equivalent_atoms.push_back(equivalent_atom);
-                        multiplicity++;
-                    }
-                }
-            }
-            inequivalent_atoms[ia] = multiplicity;
-        }
-    }
-    return inequivalent_atoms;
 }
 
 void Symmetry::symmetrize_vec3_nat(double* v)const   // pengfei 2016-12-20

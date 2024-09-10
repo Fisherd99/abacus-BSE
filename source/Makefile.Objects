@@ -183,7 +183,6 @@ OBJS_CELL=atom_pseudo.o\
     klist.o\
     cell_index.o\
     check_atomic_stru.o\
-    print_cif.o\
 
 OBJS_DEEPKS=LCAO_deepks.o\
         deepks_fgamma.o\
@@ -347,6 +346,7 @@ OBJS_HSOLVER_LCAO=hsolver_lcao.o\
       diago_scalapack.o\
       diago_lapack.o\
       diago_elpa.o\
+      diago_elpa_native.o\
       elpa_new.o\
       elpa_new_real.o\
       elpa_new_complex.o\
@@ -468,6 +468,7 @@ OBJS_IO=input_conv.o\
     write_dos_pw.o\
     nscf_band.o\
     cal_dos.o\
+    cif_io.o\
     dos_nao.o\
     numerical_descriptor.o\
     numerical_basis.o\

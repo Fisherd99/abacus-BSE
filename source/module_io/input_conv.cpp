@@ -31,6 +31,7 @@
 #endif
 #ifdef __MPI
 #include "module_hsolver/diago_elpa.h"
+#include "module_hsolver/diago_elpa_native.h"
 #endif
 
 #include "module_base/module_device/device.h"
@@ -162,8 +163,6 @@ void Input_Conv::Convert()
 {
     ModuleBase::TITLE("Input_Conv", "Convert");
     ModuleBase::timer::tick("Input_Conv", "Convert");
-    GlobalV::CALCULATION = PARAM.globalv.global_calculation;
-    GlobalV::double_grid = PARAM.globalv.double_grid;
     //-----------------------------------------------
     // set read_file_dir
     //-----------------------------------------------
@@ -206,7 +205,6 @@ void Input_Conv::Convert()
 
     if (PARAM.inp.calculation == "relax" || PARAM.inp.calculation == "cell-relax")
     {
-        GlobalV::fixed_atoms = PARAM.inp.fixed_atoms;
     }
 
 
@@ -231,10 +229,8 @@ void Input_Conv::Convert()
     else
     {
         GlobalV::KPAR = PARAM.inp.kpar;
-        GlobalV::NSTOGROUP = PARAM.inp.bndpar;
     }
-    GlobalV::precision_flag = PARAM.inp.precision;
-    if (GlobalV::device_flag == "cpu" and GlobalV::precision_flag == "single")
+    if (GlobalV::device_flag == "cpu" and PARAM.inp.precision == "single")
     {
 // cpu single precision is not supported while float_fftw lib is not available
 #ifndef __ENABLE_FLOAT_FFTW
@@ -244,16 +240,9 @@ void Input_Conv::Convert()
             \n Please recompile with cmake flag \"-DENABLE_FLOAT_FFTW=ON\".\n");
 #endif // __ENABLE_FLOAT_FFTW
     }
-    GlobalV::CALCULATION = PARAM.inp.calculation;
-    GlobalV::ESOLVER_TYPE = PARAM.inp.esolver_type;
 
-    GlobalV::PSEUDORCUT = PARAM.inp.pseudo_rcut;
-
-    GlobalV::DFT_FUNCTIONAL = PARAM.inp.dft_functional;
     GlobalV::NSPIN = PARAM.inp.nspin;
 
-    GlobalV::CAL_FORCE = PARAM.inp.cal_force;
-    GlobalV::FORCE_THR = PARAM.inp.force_thr;
 
 #ifdef __LCAO
     Force_Stress_LCAO<double>::force_invalid_threshold_ev = PARAM.inp.force_thr_ev2;
@@ -273,44 +262,34 @@ void Input_Conv::Convert()
 
 
     GlobalV::RELAX_METHOD = PARAM.inp.relax_method;
-    GlobalV::relax_new = PARAM.inp.relax_new;
 
-    GlobalV::use_paw = PARAM.inp.use_paw;
 
-    GlobalV::OUT_LEVEL = PARAM.inp.out_level;
     Ions_Move_CG::RELAX_CG_THR = PARAM.inp.relax_cg_thr; // pengfei add 2013-09-09
 
     ModuleSymmetry::Symmetry::symm_flag = std::stoi(PARAM.inp.symmetry);
     ModuleSymmetry::Symmetry::symm_autoclose = PARAM.inp.symmetry_autoclose;
-    GlobalV::BASIS_TYPE = PARAM.inp.basis_type;
     GlobalV::KS_SOLVER = PARAM.inp.ks_solver;
     GlobalV::SEARCH_RADIUS = PARAM.inp.search_radius;
 
     //----------------------------------------------------------
     // planewave (8/8)
     //----------------------------------------------------------
-    GlobalV::GAMMA_ONLY_LOCAL = PARAM.globalv.gamma_only_local;
 
     //----------------------------------------------------------
     // diagonalization  (5/5)
     //----------------------------------------------------------
-    GlobalV::PW_DIAG_NMAX = PARAM.inp.pw_diag_nmax;
     GlobalV::PW_DIAG_NDIM = PARAM.inp.pw_diag_ndim;
 
     GlobalV::PW_DIAG_THR = PARAM.inp.pw_diag_thr;
     GlobalV::NB2D = PARAM.inp.nb2d;
-    GlobalV::TEST_FORCE = PARAM.inp.test_force;
-    GlobalV::TEST_STRESS = PARAM.inp.test_stress;
 
     //----------------------------------------------------------
     // iteration (1/3)
     //----------------------------------------------------------
-    GlobalV::SCF_THR_TYPE = PARAM.inp.scf_thr_type;
 
 #ifdef __LCAO
     if (PARAM.inp.dft_plus_u)
     {
-        GlobalV::dft_plus_u = PARAM.inp.dft_plus_u;
         GlobalC::dftu.Yukawa = PARAM.inp.yukawa_potential;
         GlobalC::dftu.omc = PARAM.inp.omc;
         GlobalC::dftu.orbital_corr = PARAM.inp.orbital_corr;
@@ -359,8 +338,6 @@ void Input_Conv::Convert()
     //----------------------------------------------------------
     // Yu Liu add 2022-05-18
     //----------------------------------------------------------
-    GlobalV::EFIELD_FLAG = PARAM.inp.efield_flag;
-    GlobalV::DIP_COR_FLAG = PARAM.inp.dip_cor_flag;
     elecstate::Efield::efield_dir = PARAM.inp.efield_dir;
     elecstate::Efield::efield_pos_max = PARAM.inp.efield_pos_max;
     elecstate::Efield::efield_pos_dec = PARAM.inp.efield_pos_dec;
@@ -369,7 +346,6 @@ void Input_Conv::Convert()
     //----------------------------------------------------------
     // Yu Liu add 2022-09-13
     //----------------------------------------------------------
-    GlobalV::GATE_FLAG = PARAM.inp.gate_flag;
     GlobalV::nelec = PARAM.inp.nelec;
     if (PARAM.globalv.two_fermi)
     {
@@ -546,42 +522,29 @@ void Input_Conv::Convert()
     //----------------------------------------------------------
     // iteration
     //----------------------------------------------------------
-    GlobalV::SCF_NMAX = PARAM.inp.scf_nmax;
 
     //----------------------------------------------------------
     // wavefunction / charge / potential / (2/4)
     //----------------------------------------------------------
-    GlobalV::init_chg = PARAM.inp.init_chg;
-    GlobalV::init_wfc = PARAM.inp.init_wfc;
-    GlobalV::psi_initializer = PARAM.inp.psi_initializer;
-    GlobalV::chg_extrap = PARAM.inp.chg_extrap; // xiaohui modify 2015-02-01
     GlobalV::nelec = PARAM.inp.nelec;
     GlobalV::out_pot = PARAM.inp.out_pot;
-    GlobalV::out_app_flag = PARAM.inp.out_app_flag;
 
 #ifdef __LCAO
-    hsolver::HSolverLCAO<double>::out_mat_hs = PARAM.inp.out_mat_hs;
-    hsolver::HSolverLCAO<double>::out_mat_hsR = PARAM.inp.out_mat_hs2; // LiuXh add 2019-07-16
-    hsolver::HSolverLCAO<double>::out_mat_t = PARAM.inp.out_mat_t;
-    hsolver::HSolverLCAO<double>::out_mat_dh = PARAM.inp.out_mat_dh;
-    hsolver::HSolverLCAO<std::complex<double>>::out_mat_hs = PARAM.inp.out_mat_hs;
-    hsolver::HSolverLCAO<std::complex<double>>::out_mat_hsR = PARAM.inp.out_mat_hs2; // LiuXh add 2019-07-16
-    hsolver::HSolverLCAO<std::complex<double>>::out_mat_t = PARAM.inp.out_mat_t;
-    hsolver::HSolverLCAO<std::complex<double>>::out_mat_dh = PARAM.inp.out_mat_dh;
-    if (GlobalV::GAMMA_ONLY_LOCAL)
+
+    if (PARAM.globalv.gamma_only_local)
     {
         elecstate::ElecStateLCAO<double>::out_wfc_lcao = PARAM.inp.out_wfc_lcao;
     }
-    else if (!GlobalV::GAMMA_ONLY_LOCAL)
+    else if (!PARAM.globalv.gamma_only_local)
     {
         elecstate::ElecStateLCAO<std::complex<double>>::out_wfc_lcao = PARAM.inp.out_wfc_lcao;
     }
     if (PARAM.inp.calculation == "nscf" && !PARAM.inp.towannier90 && !PARAM.inp.berry_phase)
     {
-        if (GlobalV::GAMMA_ONLY_LOCAL)
+        if (PARAM.globalv.gamma_only_local)
         {
             elecstate::ElecStateLCAO<double>::need_psi_grid = false;
-        } else if (!GlobalV::GAMMA_ONLY_LOCAL) {
+        } else if (!PARAM.globalv.gamma_only_local) {
             elecstate::ElecStateLCAO<std::complex<double>>::need_psi_grid
                 = false;
         }
@@ -627,7 +590,7 @@ void Input_Conv::Convert()
         {
             ModuleBase::WARNING_QUIT("Input_conv", "generate deepks unittest with only 1 processor");
         }
-        if (GlobalV::CAL_FORCE != 1)
+        if (PARAM.inp.cal_force != 1)
         {
             ModuleBase::WARNING_QUIT("Input_conv", "force is required in generating deepks unittest");
         }
@@ -649,32 +612,16 @@ void Input_Conv::Convert()
     //-----------------------------------------------
     // sunml add for implicit solvation model
     //-----------------------------------------------
-    GlobalV::imp_sol = PARAM.inp.imp_sol;
-    GlobalV::eb_k = PARAM.inp.eb_k;
 
     //-----------------------------------------------
     // Deltaspin related parameters
     //-----------------------------------------------
-    GlobalV::sc_thr = PARAM.inp.sc_thr;
 
     // mixing parameters
-    GlobalV::MIXING_MODE = PARAM.inp.mixing_mode;
-    GlobalV::MIXING_BETA = PARAM.inp.mixing_beta;
-    GlobalV::MIXING_NDIM = PARAM.inp.mixing_ndim;
-    GlobalV::MIXING_RESTART = PARAM.inp.mixing_restart;
-    GlobalV::MIXING_GG0 = PARAM.inp.mixing_gg0;
-    GlobalV::MIXING_BETA_MAG = PARAM.inp.mixing_beta_mag;
-    GlobalV::MIXING_GG0_MAG = PARAM.inp.mixing_gg0_mag;
-    GlobalV::MIXING_GG0_MIN = PARAM.inp.mixing_gg0_min;
-    GlobalV::MIXING_ANGLE = PARAM.inp.mixing_angle;
-    GlobalV::MIXING_TAU = PARAM.inp.mixing_tau;
-    GlobalV::MIXING_DMR = PARAM.inp.mixing_dmr;
 
     //-----------------------------------------------
     // Quasiatomic Orbital analysis
     //-----------------------------------------------
-    GlobalV::qo_thr = PARAM.inp.qo_thr;
-    GlobalV::qo_screening_coeff = PARAM.inp.qo_screening_coeff;
 
     //-----------------------------------------------
     // PEXSI related parameters
@@ -712,6 +659,10 @@ void Input_Conv::Convert()
     hsolver::DiagoElpa<std::complex<double>>::elpa_num_thread = PARAM.inp.elpa_num_thread;
     ;
     hsolver::DiagoElpa<double>::elpa_num_thread = PARAM.inp.elpa_num_thread;
+    ;
+    hsolver::DiagoElpaNative<std::complex<double>>::elpa_num_thread = PARAM.inp.elpa_num_thread;
+    ;
+    hsolver::DiagoElpaNative<double>::elpa_num_thread = PARAM.inp.elpa_num_thread;
     ;
 #endif
     ModuleBase::timer::tick("Input_Conv", "Convert");

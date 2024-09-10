@@ -1,5 +1,6 @@
 #include "elecstate.h"
 #include "elecstate_getters.h"
+#include "module_parameter/parameter.h"
 #include "module_base/formatter.h"
 #include "module_base/global_variable.h"
 #include "module_elecstate/potentials/H_Hartree_pw.h"
@@ -51,6 +52,7 @@ void print_scf_iterinfo(const std::string& ks_solver,
            {"cg_in_lcao", "CG"},
            {"lapack", "LA"},
            {"genelpa", "GE"},
+           {"elpa", "EL"},
            {"dav", "DA"},
            {"dav_subspace", "DS"},
            {"scalapack_gvx", "GV"},
@@ -307,14 +309,14 @@ void ElecState::print_etot(const bool converged,
 
     GlobalV::ofs_running << "\n Density error is " << scf_thr << std::endl;
 
-    if (GlobalV::BASIS_TYPE == "pw") {
+    if (PARAM.inp.basis_type == "pw") {
         ModuleBase::GlobalFunc::OUT(GlobalV::ofs_running, "Error Threshold", pw_diag_thr); // xiaohui add 2013-09-02
 }
 
     std::vector<std::string> titles;
     std::vector<double> energies_Ry;
     std::vector<double> energies_eV;
-    if (printe > 0 && ((iter + 1) % printe == 0 || converged || iter == GlobalV::SCF_NMAX))
+    if (printe > 0 && ((iter + 1) % printe == 0 || converged || iter == PARAM.inp.scf_nmax))
     {
         int n_order = std::max(0, Occupy::gaussian_type);
         titles.push_back("E_KohnSham");
@@ -350,19 +352,19 @@ void ElecState::print_etot(const bool converged,
         }
         titles.push_back("E_exx");
         energies_Ry.push_back(this->f_en.exx);
-        if (GlobalV::imp_sol)
+        if (PARAM.inp.imp_sol)
         {
             titles.push_back("E_sol_el");
             energies_Ry.push_back(this->f_en.esol_el);
             titles.push_back("E_sol_cav");
             energies_Ry.push_back(this->f_en.esol_cav);
         }
-        if (GlobalV::EFIELD_FLAG)
+        if (PARAM.inp.efield_flag)
         {
             titles.push_back("E_efield");
             energies_Ry.push_back(elecstate::Efield::etotefield);
         }
-        if (GlobalV::GATE_FLAG)
+        if (PARAM.inp.gate_flag)
         {
             titles.push_back("E_gatefield");
             energies_Ry.push_back(elecstate::Gatefield::etotgatefield);
@@ -421,7 +423,7 @@ void ElecState::print_etot(const bool converged,
                    {FmtTable::Align::LEFT, FmtTable::Align::CENTER});
     table << titles << energies_Ry << energies_eV;
     GlobalV::ofs_running << table.str() << std::endl;
-    if (GlobalV::OUT_LEVEL == "ie" || GlobalV::OUT_LEVEL == "m") // xiaohui add 'm' option, 2015-09-16
+    if (PARAM.inp.out_level == "ie" || PARAM.inp.out_level == "m") // xiaohui add 'm' option, 2015-09-16
     {
         std::vector<double> mag;
         switch (GlobalV::NSPIN)

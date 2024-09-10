@@ -78,9 +78,9 @@ class UnitCell {
     inline const int& get_npol() const { return npol; }
 
   private:
-    std::vector<int>
-        iat2iwt; // iat ==> iwt, the first global index for orbital of this atom
+    std::vector<int> iat2iwt; // iat ==> iwt, the first global index for orbital of this atom
     int npol = 1; // number of spin polarizations, initialized in set_iat2iwt
+    const int test_unitcell = 0;
                   // ----------------- END of iat2iwt part -----------------
 
   public:
@@ -201,7 +201,6 @@ class UnitCell {
     ~UnitCell();
     void print_cell(std::ofstream& ofs) const;
     void print_cell_xyz(const std::string& fn) const;
-    void print_cell_cif(const std::string& fn) const;
 
     void update_pos_tau(const double* pos);
     void update_pos_taud(const ModuleBase::Vector3<double>* posd_in);

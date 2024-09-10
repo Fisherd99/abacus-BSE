@@ -1,4 +1,5 @@
 #include "hsolver_lrtd.h"
+#include "module_parameter/parameter.h"
 #include "module_hsolver/diago_david.h"
 #include "module_hsolver/diago_dav_subspace.h"
 #include "module_hsolver/diago_cg.h"
@@ -40,13 +41,15 @@ namespace LR
             LR_Util::diag_lapack(nk * npairs, Amat_full.data(), eigenvalue.data());
             psi.fix_kb(0, 0);
             // copy eigenvectors
-            for (int i = 0;i < psi.size();++i) psi.get_pointer()[i] = Amat_full[i];
+            for (int i = 0;i < psi.size();++i) { psi.get_pointer()[i] = Amat_full[i];
+}
         }
         else
         {
             // 3. set precondition and diagethr
-            for (int i = 0; i < psi.get_nk() * psi.get_nbasis(); ++i)
+            for (int i = 0; i < psi.get_nk() * psi.get_nbasis(); ++i) {
                 precondition[i] = static_cast<Real>(1.0);
+}
 
             // wrap band-first psi as k1-first psi_k1_dav
             psi::Psi<T> psi_k1_dav = LR_Util::bfirst_to_k1_wrapper(psi);
@@ -61,7 +64,7 @@ namespace LR
                 const int ntry_max = 5;
                 // In non-self consistent calculation, do until totally converged. Else allow 5 eigenvecs to be NOT
                 // converged.
-                const int notconv_max = ("nscf" == GlobalV::CALCULATION) ? 0 : 5;
+                const int notconv_max = ("nscf" == PARAM.inp.calculation) ? 0 : 5;
                 // do diag and add davidson iteration counts up to avg_iter
 
                 auto hpsi_func = [pHamilt](
@@ -73,7 +76,7 @@ namespace LR
                     const int band_index2)
                     {
                         auto psi_iter_wrapper = psi::Psi<T, Device>(psi_in, 1, nband_in, nbasis_in, nullptr);
-                        psi::Range bands_range(1, 0, band_index1, band_index2);
+                        psi::Range bands_range(true, 0, band_index1, band_index2);
                         using hpsi_info = typename hamilt::Operator<T, Device>::hpsi_info;
                         hpsi_info info(&psi_iter_wrapper, bands_range, hpsi_out);
                         pHamilt->ops->hPsi(info);
@@ -86,7 +89,7 @@ namespace LR
 
                 const int& dim = psi_k1_dav.get_nbasis();   //equals to leading dimension here
                 const int& nband = psi_k1_dav.get_nbands();
-                hsolver::DiagoDavid<T, Device> david(precondition.data(), nband, dim, GlobalV::PW_DIAG_NDIM, GlobalV::use_paw, comm_info);
+                hsolver::DiagoDavid<T, Device> david(precondition.data(), nband, dim, GlobalV::PW_DIAG_NDIM, PARAM.inp.use_paw, comm_info);
                 hsolver::DiagoIterAssist<T, Device>::avg_iter += static_cast<double>(david.diag(hpsi_func, spsi_func,
                     dim, psi_k1_dav.get_pointer(), eigenvalue.data(), this->diag_ethr, david_maxiter, ntry_max, 0));
             }
@@ -110,7 +113,7 @@ namespace LR
                     const int band_index2)
                     {
                         auto psi_iter_wrapper = psi::Psi<T, Device>(psi_in, 1, nband_in, nbasis_in, nullptr);
-                        psi::Range bands_range(1, 0, band_index1, band_index2);
+                        psi::Range bands_range(true, 0, band_index1, band_index2);
                         using hpsi_info = typename hamilt::Operator<T, Device>::hpsi_info;
                         hpsi_info info(&psi_iter_wrapper, bands_range, hpsi_out);
                         pHamilt->ops->hPsi(info);
@@ -144,17 +147,20 @@ namespace LR
             //     this->pdiagh = new DiagoCG<T, Device>(precondition.data());
             //     this->pdiagh->method = this->method;
             // }
-            else
+            else {
                 throw std::runtime_error("HSolverLR::solve: method not implemented");
+}
         }
 
         // 5. copy eigenvalue to pes
-        for (int ist = 0;ist < psi.get_nbands();++ist) pes->ekb(ispin_solve, ist) = eigenvalue[ist];
+        for (int ist = 0;ist < psi.get_nbands();++ist) { pes->ekb(ispin_solve, ist) = eigenvalue[ist];
+}
 
 
         // 6. output eigenvalues and eigenvectors
         std::cout << "eigenvalues:" << std::endl;
-        for (auto& e : eigenvalue)std::cout << e << " ";
+        for (auto& e : eigenvalue) {std::cout << e << " ";
+}
         std::cout << std::endl;
         if (out_wfc_lr)
         {
@@ -162,7 +168,8 @@ namespace LR
             {
                 std::ofstream ofs(GlobalV::global_out_dir + "Excitation_Energy_" + spin_types[ispin_solve] + ".dat");
                 ofs << std::setprecision(8) << std::scientific;
-                for (auto& e : eigenvalue)ofs << e << " ";
+                for (auto& e : eigenvalue) {ofs << e << " ";
+}
                 ofs.close();
             }
             LR_Util::write_psi_bandfirst(psi, GlobalV::global_out_dir + "Excitation_Amplitude_" + spin_types[ispin_solve], GlobalV::MY_RANK);

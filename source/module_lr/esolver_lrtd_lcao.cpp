@@ -13,7 +13,7 @@
 #include "module_cell/module_neighbor/sltk_atom_arrange.h"
 #include "module_lr/utils/lr_util_print.h"
 #include "module_base/scalapack_connector.h"
-
+#include "module_parameter/parameter.h"
 #ifdef __EXX
 template<>
 void LR::ESolver_LR<double>::move_exx_lri(std::shared_ptr<Exx_LRI<double>>& exx_ks)
@@ -285,16 +285,16 @@ LR::ESolver_LR<T, TR>::ESolver_LR(const Input_para& inp, UnitCell& ucell) : inpu
     // search adjacent atoms and init Gint
     std::cout << "ucell.infoNL.get_rcutmax_Beta(): " << GlobalC::ucell.infoNL.get_rcutmax_Beta() << std::endl;
     GlobalV::SEARCH_RADIUS = atom_arrange::set_sr_NL(GlobalV::ofs_running,
-        GlobalV::OUT_LEVEL,
+        PARAM.inp.out_level,
         GlobalC::ORB.get_rcutmax_Phi(),
         GlobalC::ucell.infoNL.get_rcutmax_Beta(),
-        GlobalV::GAMMA_ONLY_LOCAL);
+        PARAM.globalv.gamma_only_local);
     atom_arrange::search(PARAM.inp.search_pbc,
         GlobalV::ofs_running,
         GlobalC::GridD,
         this->ucell,
         GlobalV::SEARCH_RADIUS,
-        GlobalV::test_atom_input);
+        PARAM.inp.test_atom_input);
     this->set_gint();
     this->gint_->gridt = &this->gt_;
 
@@ -566,7 +566,7 @@ void LR::ESolver_LR<T, TR>::read_ks_chg(Charge& chg_gs)
             & (GlobalC::Pgrid),
 #endif
             GlobalV::MY_RANK,
-            GlobalV::ESOLVER_TYPE,
+            PARAM.inp.esolver_type,
             GlobalV::RANK_IN_STOGROUP,
             is,
             GlobalV::ofs_running,

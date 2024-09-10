@@ -1,5 +1,6 @@
 //wenfei 2022-1-5
 //This file contains constructor and destructor of the class LCAO_deepks, 
+#include "module_parameter/parameter.h"
 //as well as subroutines for initializing and releasing relevant data structures 
 
 //Other than the constructor and the destructor, it contains 3 types of subroutines:
@@ -144,7 +145,7 @@ void LCAO_Deepks::init(
     if(GlobalV::deepks_v_delta)
     {
         //allocate and init h_mat
-        if(GlobalV::GAMMA_ONLY_LOCAL)
+        if(PARAM.globalv.gamma_only_local)
         {
             int nloc=this->pv->nloc;
             this->h_mat.resize(nloc,0.0);
@@ -210,7 +211,7 @@ void LCAO_Deepks::init_index(const int ntype, const int nat, std::vector<int> na
 
 void LCAO_Deepks::allocate_nlm(const int nat)
 {
-    if(GlobalV::GAMMA_ONLY_LOCAL)
+    if(PARAM.globalv.gamma_only_local)
     {
         this->nlm_save.resize(nat);
     }
@@ -322,7 +323,7 @@ void LCAO_Deepks::allocate_V_delta(const int nat, const int nks)
     nks_V_delta = nks;
 
     //initialize the H matrix H_V_delta
-    if(GlobalV::GAMMA_ONLY_LOCAL)
+    if(PARAM.globalv.gamma_only_local)
     {
         this->H_V_delta.resize(pv->nloc);
         ModuleBase::GlobalFunc::ZEROS(this->H_V_delta.data(), pv->nloc);
@@ -354,7 +355,7 @@ void LCAO_Deepks::allocate_V_delta(const int nat, const int nks)
         this->gedm[inl] = new double[pdm_size];
         ModuleBase::GlobalFunc::ZEROS(this->gedm[inl], pdm_size);
     }
-    if (GlobalV::CAL_FORCE)
+    if (PARAM.inp.cal_force)
     {
         //init F_delta
         F_delta.create(nat, 3);

@@ -75,7 +75,8 @@ void ModuleBase::Global_File::make_dir_out(
 #ifdef __MPI
         Parallel_Reduce::reduce_all(make_dir);
 #endif
-		if(make_dir>0)break;
+		if(make_dir>0) {break;
+}
 		++times;
 	}
 
@@ -112,7 +113,8 @@ void ModuleBase::Global_File::make_dir_out(
 #ifdef __MPI
             Parallel_Reduce::reduce_all(make_dir_stru);
 #endif
-            if(make_dir_stru>0) break;
+            if(make_dir_stru>0) { break;
+}
             ++times;
         }
 
@@ -151,7 +153,8 @@ void ModuleBase::Global_File::make_dir_out(
 #ifdef __MPI
             Parallel_Reduce::reduce_all(make_dir_matrix);
 #endif
-            if(make_dir_matrix>0) break;
+            if(make_dir_matrix>0) { break;
+}
             ++times;
         }
 
@@ -243,7 +246,7 @@ void ModuleBase::Global_File::close_log( std::ofstream &ofs,const std::string &f
     return;
 }
 
-void ModuleBase::Global_File::close_all_log(const int rank, const bool out_alllog)
+void ModuleBase::Global_File::close_all_log(const int rank, const bool out_alllog,const std::string &calculation)
 {
 //----------------------------------------------------------
 // USE GLOBAL VARIABLES :
@@ -258,7 +261,7 @@ void ModuleBase::Global_File::close_all_log(const int rank, const bool out_alllo
     std::stringstream ss;
 	if(out_alllog)
 	{
-    	ss << "running_" << GlobalV::CALCULATION << "_cpu" << rank << ".log";
+    	ss << "running_" << calculation << "_cpu" << rank << ".log";
     	close_log(GlobalV::ofs_running,ss.str());
         #if defined(__CUDA) || defined(__ROCM)
         close_log(GlobalV::ofs_device, "device" + std::to_string(rank));
@@ -268,7 +271,7 @@ void ModuleBase::Global_File::close_all_log(const int rank, const bool out_alllo
 	{
 		if(rank==0)
 		{
-    		ss << "running_" << GlobalV::CALCULATION << ".log";
+    		ss << "running_" << calculation << ".log";
     		close_log(GlobalV::ofs_running,ss.str());
             #if defined(__CUDA) || defined(__ROCM)
             close_log(GlobalV::ofs_device, "device");

@@ -1,4 +1,5 @@
 #include "unitcell.h"
+#include "module_parameter/parameter.h"
 #ifdef __LCAO
 #include "../module_basis/module_ao/ORB_read.h" // to use 'ORB' -- mohan 2021-01-30
 #endif
@@ -44,7 +45,7 @@ int UnitCell::read_atom_species(std::ifstream &ifa, std::ofstream &ofs_running)
             pseudo_fn[i] = "auto";
             pseudo_type[i] = "auto";
 
-            if(!GlobalV::use_paw)
+            if(!PARAM.inp.use_paw)
             {
                 bool end = false;
                 if (ss >> one_string)
@@ -76,7 +77,7 @@ int UnitCell::read_atom_species(std::ifstream &ifa, std::ofstream &ofs_running)
                     }
                 }
 
-                if(GlobalV::test_pseudo_cell==2) 
+                if(PARAM.inp.test_pseudo_cell==2) 
                 {
                     ofs_running << "\n" << std::setw(6) << atom_label[i] 
                             << std::setw(12) << atom_mass[i] 
@@ -94,12 +95,12 @@ int UnitCell::read_atom_species(std::ifstream &ifa, std::ofstream &ofs_running)
     }
 
     if(
-        (GlobalV::BASIS_TYPE == "lcao")
-      ||(GlobalV::BASIS_TYPE == "lcao_in_pw")
+        (PARAM.inp.basis_type == "lcao")
+      ||(PARAM.inp.basis_type == "lcao_in_pw")
       ||(
-          (GlobalV::BASIS_TYPE == "pw")
-        &&(GlobalV::psi_initializer)
-        &&(GlobalV::init_wfc.substr(0, 3) == "nao")
+          (PARAM.inp.basis_type == "pw")
+        &&(PARAM.inp.psi_initializer)
+        &&(PARAM.inp.init_wfc.substr(0, 3) == "nao")
         )
     )
     {
@@ -458,14 +459,14 @@ bool UnitCell::read_atom_positions(std::ifstream &ifpos, std::ofstream &ofs_runn
             // int* atoms[it].l_nchi;
             //===========================================
 
-            if ((GlobalV::BASIS_TYPE == "lcao")||(GlobalV::BASIS_TYPE == "lcao_in_pw"))
+            if ((PARAM.inp.basis_type == "lcao")||(PARAM.inp.basis_type == "lcao_in_pw"))
             {
                 std::string orbital_file = PARAM.inp.orbital_dir + orbital_fn[it];
                 this->read_orb_file(it, orbital_file, ofs_running, &(atoms[it]));
             }
-            else if(GlobalV::BASIS_TYPE == "pw")
+            else if(PARAM.inp.basis_type == "pw")
             {
-                if ((GlobalV::psi_initializer)&&(GlobalV::init_wfc.substr(0, 3) == "nao"))
+                if ((PARAM.inp.psi_initializer)&&(PARAM.inp.init_wfc.substr(0, 3) == "nao"))
                 {
                     std::string orbital_file = PARAM.inp.orbital_dir + orbital_fn[it];
                     this->read_orb_file(it, orbital_file, ofs_running, &(atoms[it]));
@@ -857,7 +858,7 @@ bool UnitCell::read_atom_positions(std::ifstream &ifpos, std::ofstream &ofs_runn
     }   // end scan_begin
 
 //check if any atom can move in MD
-    if(!this->if_atoms_can_move() && GlobalV::CALCULATION=="md" && GlobalV::ESOLVER_TYPE!="tddft")
+    if(!this->if_atoms_can_move() && PARAM.inp.calculation=="md" && PARAM.inp.esolver_type!="tddft")
     {
         ModuleBase::WARNING("read_atoms", "no atom can move in MD!");
         return false;
@@ -1051,7 +1052,7 @@ void UnitCell::print_tau() const {
 /*
 int UnitCell::find_type(const std::string &label)
 {
-    if(GlobalV::test_pseudo_cell) ModuleBase::TITLE("UnitCell","find_type");
+    if(PARAM.inp.test_pseudo_cell) ModuleBase::TITLE("UnitCell","find_type");
     assert(ntype>0);
     for(int it=0;it<ntype;it++)
     {

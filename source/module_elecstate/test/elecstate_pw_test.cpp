@@ -2,10 +2,12 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-
+#define private public
+#include "module_parameter/parameter.h"
+#undef private
 #define protected public
 #include "module_elecstate/elecstate_pw.h"
-
+#undef protected
 // mock functions for testing
 namespace elecstate
 {
@@ -159,7 +161,7 @@ void Charge::check_rho()
 void Set_GlobalV_Default()
 {
     GlobalV::device_flag = "cpu";
-    GlobalV::precision_flag = "double";
+    PARAM.input.precision = "double";
     GlobalV::DOMAG = false;
     GlobalV::DOMAG_Z = false;
     // Base class dependent
@@ -169,9 +171,9 @@ void Set_GlobalV_Default()
     GlobalV::TWO_EFERMI = false;
     GlobalV::NBANDS = 6;
     GlobalV::NLOCAL = 6;
-    GlobalV::ESOLVER_TYPE = "ksdft";
+    PARAM.input.esolver_type = "ksdft";
     GlobalV::LSPINORB = false;
-    GlobalV::BASIS_TYPE = "pw";
+    PARAM.input.basis_type = "pw";
     GlobalV::KPAR = 1;
     GlobalV::NPROC_IN_POOL = 1;
     GlobalV::use_uspp = false;
@@ -291,7 +293,7 @@ TEST_F(ElecStatePWTest, InitRhoDataDouble)
 
 TEST_F(ElecStatePWTest, InitRhoDataSingle)
 {
-    GlobalV::precision_flag = "single";
+    PARAM.input.precision = "single";
     elecstate::tmp_xc_func_type = 3;
     chg->nspin = GlobalV::NSPIN;
     chg->nrxx = 1000;

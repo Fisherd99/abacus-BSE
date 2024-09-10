@@ -86,9 +86,9 @@ namespace ModuleESolver
     {
         ESolver_KS_PW<T>::before_all_runners(inp, cell);
 #ifdef __EXX
-        if (GlobalV::CALCULATION == "scf" || GlobalV::CALCULATION == "relax"
-            || GlobalV::CALCULATION == "cell-relax"
-            || GlobalV::CALCULATION == "md") {
+        if (PARAM.inp.calculation == "scf" || PARAM.inp.calculation == "relax"
+            || PARAM.inp.calculation == "cell-relax"
+            || PARAM.inp.calculation == "md") {
             if (GlobalC::exx_info.info_global.cal_exx)
             {
                 XC_Functional::set_xc_first_loop(cell);
@@ -127,7 +127,7 @@ namespace ModuleESolver
             hsolver::DiagoIterAssist<T>::need_subspace = ((istep == 0 || istep == 1) && iter == 1) ? false : true;
             hsolver::DiagoIterAssist<T>::SCF_ITER = iter;
             hsolver::DiagoIterAssist<T>::PW_DIAG_THR = ethr;
-            hsolver::DiagoIterAssist<T>::PW_DIAG_NMAX = GlobalV::PW_DIAG_NMAX;
+            hsolver::DiagoIterAssist<T>::PW_DIAG_NMAX = PARAM.inp.pw_diag_nmax;
 
             // It is not a good choice to overload another solve function here, this will spoil the concept of
             // multiple inheritance and polymorphism. But for now, we just do it in this way.

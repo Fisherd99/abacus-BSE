@@ -63,7 +63,7 @@ namespace ModuleESolver
 //! mohan add 2024-05-11
 //------------------------------------------------------------------------------
 template <typename TK, typename TR>
-ESolver_KS_LCAO<TK, TR>::ESolver_KS_LCAO()
+ESolver_KS_LCAO<TK, TR>::ESolver_KS_LCAO(): orb_(GlobalC::ORB)
 {
     this->classname = "ESolver_KS_LCAO";
     this->basisname = "LCAO";
@@ -120,7 +120,7 @@ void ESolver_KS_LCAO<TK, TR>::before_all_runners(const Input_para& inp, UnitCell
     ModuleBase::timer::tick("ESolver_KS_LCAO", "before_all_runners");
 
     // 1) calculate overlap matrix S
-    if (GlobalV::CALCULATION == "get_S")
+    if (PARAM.inp.calculation == "get_S")
     {
         // 1.1) read pseudopotentials
         ucell.read_pseudo(GlobalV::ofs_running);
@@ -181,7 +181,7 @@ void ESolver_KS_LCAO<TK, TR>::before_all_runners(const Input_para& inp, UnitCell
         ->init_DM(&this->kv, &(this->pv), GlobalV::NSPIN);
 
     // this function should be removed outside of the function
-    if (GlobalV::CALCULATION == "get_S")
+    if (PARAM.inp.calculation == "get_S")
     {
         ModuleBase::timer::tick("ESolver_KS_LCAO", "init");
         return;
@@ -190,14 +190,14 @@ void ESolver_KS_LCAO<TK, TR>::before_all_runners(const Input_para& inp, UnitCell
     // 6) initialize Hamilt in LCAO
     // * allocate H and S matrices according to computational resources
     // * set the 'trace' between local H/S and global H/S
-    LCAO_domain::divide_HS_in_frag(GlobalV::GAMMA_ONLY_LOCAL, pv, this->kv.get_nks());
+    LCAO_domain::divide_HS_in_frag(PARAM.globalv.gamma_only_local, pv, this->kv.get_nks());
 
 #ifdef __EXX
     // 7) initialize exx
     // PLEASE simplify the Exx_Global interface
-    if (GlobalV::CALCULATION == "scf" || GlobalV::CALCULATION == "relax"
-        || GlobalV::CALCULATION == "cell-relax"
-        || GlobalV::CALCULATION == "md")
+    if (PARAM.inp.calculation == "scf" || PARAM.inp.calculation == "relax"
+        || PARAM.inp.calculation == "cell-relax"
+        || PARAM.inp.calculation == "md")
     {
         if (GlobalC::exx_info.info_global.cal_exx)
         {
@@ -210,7 +210,7 @@ void ESolver_KS_LCAO<TK, TR>::before_all_runners(const Input_para& inp, UnitCell
 #endif
 
     // 8) initialize DFT+U
-    if (GlobalV::dft_plus_u) {
+    if (PARAM.inp.dft_plus_u) {
         GlobalC::dftu.init(ucell, &this->pv, this->kv.get_nks());
     }
 
@@ -240,7 +240,7 @@ void ESolver_KS_LCAO<TK, TR>::before_all_runners(const Input_para& inp, UnitCell
         // load the DeePKS model from deep neural network
         GlobalC::ld.load_model(PARAM.inp.deepks_model);
         // read pdm from file for NSCF or SCF-restart, do it only once in whole calculation
-        GlobalC::ld.read_projected_DM((GlobalV::init_chg == "file"), GlobalV::deepks_equiv, *GlobalC::ORB.Alpha);
+        GlobalC::ld.read_projected_DM((PARAM.inp.init_chg == "file"), GlobalV::deepks_equiv, *orb_.Alpha);
     }
 #endif
 
@@ -299,10 +299,10 @@ void ESolver_KS_LCAO<TK, TR>::cal_force(ModuleBase::matrix& force)
 
     Force_Stress_LCAO<TK> fsl(this->RA, GlobalC::ucell.nat);
 
-    fsl.getForceStress(GlobalV::CAL_FORCE,
+    fsl.getForceStress(PARAM.inp.cal_force,
                        GlobalV::CAL_STRESS,
-                       GlobalV::TEST_FORCE,
-                       GlobalV::TEST_STRESS,
+                       PARAM.inp.test_force,
+                       PARAM.inp.test_stress,
                        this->pv,
                        this->pelec,
                        this->psi,
@@ -398,7 +398,7 @@ void ESolver_KS_LCAO<TK, TR>::after_all_runners()
         GlobalV::ofs_running << "\n\n\n\n";
     }
     // qianrui modify 2020-10-18
-    if (GlobalV::CALCULATION == "scf" || GlobalV::CALCULATION == "md" || GlobalV::CALCULATION == "relax")
+    if (PARAM.inp.calculation == "scf" || PARAM.inp.calculation == "md" || PARAM.inp.calculation == "relax")
     {
         ModuleIO::write_istate_info(this->pelec->ekb, this->pelec->wg, this->kv, &(GlobalC::Pkpoints));
     }
@@ -512,7 +512,7 @@ void ESolver_KS_LCAO<TK, TR>::iter_init(const int istep, const int iter)
     if (iter == 1)
     {
         this->p_chgmix->init_mixing(); // init mixing
-        this->p_chgmix->mixing_restart_step = GlobalV::SCF_NMAX + 1;
+        this->p_chgmix->mixing_restart_step = PARAM.inp.scf_nmax + 1;
         this->p_chgmix->mixing_restart_count = 0;
         // this output will be removed once the feeature is stable
         if (GlobalC::dftu.uramping > 0.01)
@@ -526,11 +526,11 @@ void ESolver_KS_LCAO<TK, TR>::iter_init(const int istep, const int iter)
         }
     }
     // for mixing restart
-    if (iter == this->p_chgmix->mixing_restart_step && GlobalV::MIXING_RESTART > 0.0)
+    if (iter == this->p_chgmix->mixing_restart_step && PARAM.inp.mixing_restart > 0.0)
     {
         this->p_chgmix->init_mixing();
         this->p_chgmix->mixing_restart_count++;
-        if (GlobalV::dft_plus_u)
+        if (PARAM.inp.dft_plus_u)
         {
             GlobalC::dftu.uramping_update(); // update U by uramping if uramping > 0.01
             if (GlobalC::dftu.uramping > 0.01)
@@ -544,10 +544,10 @@ void ESolver_KS_LCAO<TK, TR>::iter_init(const int istep, const int iter)
             }
             if (GlobalC::dftu.uramping > 0.01 && !GlobalC::dftu.u_converged())
             {
-                this->p_chgmix->mixing_restart_step = GlobalV::SCF_NMAX + 1;
+                this->p_chgmix->mixing_restart_step = PARAM.inp.scf_nmax + 1;
             }
         }
-        if (GlobalV::MIXING_DMR) // for mixing_dmr
+        if (PARAM.inp.mixing_dmr) // for mixing_dmr
         {
             // allocate memory for dmr_mdata
             const elecstate::DensityMatrix<TK, double>* dm
@@ -623,7 +623,7 @@ void ESolver_KS_LCAO<TK, TR>::iter_init(const int istep, const int iter)
     }
 #endif
 
-    if (GlobalV::dft_plus_u)
+    if (PARAM.inp.dft_plus_u)
     {
         if (istep != 0 || iter != 1)
         {
@@ -647,7 +647,7 @@ void ESolver_KS_LCAO<TK, TR>::iter_init(const int istep, const int iter)
     if (PARAM.inp.vl_in_h)
     {
         // update Gint_K
-        if (!GlobalV::GAMMA_ONLY_LOCAL)
+        if (!PARAM.globalv.gamma_only_local)
         {
             this->GK.renew();
         }
@@ -689,7 +689,7 @@ void ESolver_KS_LCAO<TK, TR>::hamilt2density(int istep, int iter, double ethr)
     this->pelec->charge->save_rho_before_sum_band();
 
     // 2) save density matrix DMR for mixing
-    if (GlobalV::MIXING_RESTART > 0 && GlobalV::MIXING_DMR && this->p_chgmix->mixing_restart_count > 0)
+    if (PARAM.inp.mixing_restart > 0 && PARAM.inp.mixing_dmr && this->p_chgmix->mixing_restart_count > 0)
     {
         elecstate::DensityMatrix<TK, double>* dm = dynamic_cast<elecstate::ElecStateLCAO<TK>*>(this->pelec)->get_DM();
         dm->save_DMR();
@@ -738,11 +738,11 @@ void ESolver_KS_LCAO<TK, TR>::hamilt2density(int istep, int iter, double ethr)
 
     // 6) calculate the local occupation number matrix and energy correction in
     // DFT+U
-    if (GlobalV::dft_plus_u)
+    if (PARAM.inp.dft_plus_u)
     {
         // only old DFT+U method should calculated energy correction in esolver,
         // new DFT+U method will calculate energy in calculating Hamiltonian
-        if (GlobalV::dft_plus_u == 2)
+        if (PARAM.inp.dft_plus_u == 2)
         {
             if (GlobalC::dftu.omc != 2)
             {
@@ -806,15 +806,15 @@ void ESolver_KS_LCAO<TK, TR>::update_pot(const int istep, const int iter)
     ModuleBase::TITLE("ESolver_KS_LCAO", "update_pot");
 
     // 1) print Hamiltonian and Overlap matrix
-    if (this->conv_elec || iter == GlobalV::SCF_NMAX)
+    if (this->conv_elec || iter == PARAM.inp.scf_nmax)
     {
-        if (!GlobalV::GAMMA_ONLY_LOCAL && (hsolver::HSolverLCAO<TK>::out_mat_hs[0] || GlobalV::deepks_v_delta))
+        if (!PARAM.globalv.gamma_only_local && (PARAM.inp.out_mat_hs[0] || GlobalV::deepks_v_delta))
         {
             this->GK.renew(true);
         }
         for (int ik = 0; ik < this->kv.get_nks(); ++ik)
         {
-            if (hsolver::HSolverLCAO<TK>::out_mat_hs[0]|| GlobalV::deepks_v_delta)
+            if (PARAM.inp.out_mat_hs[0]|| GlobalV::deepks_v_delta)
             {
                 this->p_hamilt->updateHk(ik);
             }
@@ -828,15 +828,15 @@ void ESolver_KS_LCAO<TK, TR>::update_pot(const int istep, const int iter)
 
                 this->p_hamilt->matrix(h_mat, s_mat);
 
-                if (hsolver::HSolverLCAO<TK>::out_mat_hs[0])
+                if (PARAM.inp.out_mat_hs[0])
                 {
                     ModuleIO::save_mat(istep,
                                        h_mat.p,
                                        GlobalV::NLOCAL,
                                        bit,
-                                       hsolver::HSolverLCAO<TK>::out_mat_hs[1],
+                                       PARAM.inp.out_mat_hs[1],
                                        1,
-                                       GlobalV::out_app_flag,
+                                       PARAM.inp.out_app_flag,
                                        "H",
                                        "data-" + std::to_string(ik),
                                        this->pv,
@@ -845,9 +845,9 @@ void ESolver_KS_LCAO<TK, TR>::update_pot(const int istep, const int iter)
                                        s_mat.p,
                                        GlobalV::NLOCAL,
                                        bit,
-                                       hsolver::HSolverLCAO<TK>::out_mat_hs[1],
+                                       PARAM.inp.out_mat_hs[1],
                                        1,
-                                       GlobalV::out_app_flag,
+                                       PARAM.inp.out_app_flag,
                                        "S",
                                        "data-" + std::to_string(ik),
                                        this->pv,
@@ -864,7 +864,7 @@ void ESolver_KS_LCAO<TK, TR>::update_pot(const int istep, const int iter)
     }
 
     // 2) print wavefunctions
-    if (elecstate::ElecStateLCAO<TK>::out_wfc_lcao && (this->conv_elec || iter == GlobalV::SCF_NMAX)
+    if (elecstate::ElecStateLCAO<TK>::out_wfc_lcao && (this->conv_elec || iter == PARAM.inp.scf_nmax)
         && (istep % PARAM.inp.out_interval == 0))
     {
         ModuleIO::write_wfc_nao(elecstate::ElecStateLCAO<TK>::out_wfc_lcao,
@@ -877,7 +877,7 @@ void ESolver_KS_LCAO<TK, TR>::update_pot(const int istep, const int iter)
     }
 
     // 3) print potential
-    if (this->conv_elec || iter == GlobalV::SCF_NMAX)
+    if (this->conv_elec || iter == PARAM.inp.scf_nmax)
     {
         if (GlobalV::out_pot < 0) // mohan add 2011-10-10
         {
@@ -919,7 +919,7 @@ void ESolver_KS_LCAO<TK, TR>::iter_finish(int& iter)
 
     // 1) mix density matrix if mixing_restart + mixing_dmr + not first
     // mixing_restart at every iter
-    if (GlobalV::MIXING_RESTART > 0 && this->p_chgmix->mixing_restart_count > 0 && GlobalV::MIXING_DMR)
+    if (PARAM.inp.mixing_restart > 0 && this->p_chgmix->mixing_restart_count > 0 && PARAM.inp.mixing_dmr)
     {
         elecstate::DensityMatrix<TK, double>* dm = dynamic_cast<elecstate::ElecStateLCAO<TK>*>(this->pelec)->get_DM();
         this->p_chgmix->mix_dmr(dm);
@@ -977,6 +977,10 @@ void ESolver_KS_LCAO<TK, TR>::iter_finish(int& iter)
 
     if (GlobalC::exx_info.info_global.cal_exx && this->conv_elec)
     {
+        // Kerker mixing does not work for the density matrix.
+        // In the separate loop case, it can still work in the subsequent inner loops where Hexx(DM) is fixed.
+        // In the non-separate loop case where Hexx(DM) is updated in every iteration of the 2nd loop, it should be closed.
+        if (!GlobalC::exx_info.info_global.separate_loop) { this->p_chgmix->close_kerker_gg0(); }
         if (GlobalC::exx_info.info_ri.real_number)
         {
             this->conv_elec = this->exd->exx_after_converge(
@@ -1070,7 +1074,7 @@ void ESolver_KS_LCAO<TK, TR>::iter_finish(int& iter)
     }
 
     // 6) use the converged occupation matrix for next MD/Relax SCF calculation
-    if (GlobalV::dft_plus_u && this->conv_elec)
+    if (PARAM.inp.dft_plus_u && this->conv_elec)
     {
         GlobalC::dftu.initialed_locale = true;
     }
@@ -1105,7 +1109,7 @@ void ESolver_KS_LCAO<TK, TR>::after_scf(const int istep)
                         this->pv,
                         PARAM.inp.out_dm1,
                         false,
-                        GlobalV::out_app_flag,
+                        PARAM.inp.out_app_flag,
                         istep);
 
     // 3) write density matrix
@@ -1149,7 +1153,7 @@ void ESolver_KS_LCAO<TK, TR>::after_scf(const int istep)
                           this->pelec->ekb,
                           this->pelec->klist->kvec_d,
                           GlobalC::ucell,
-                          GlobalC::ORB,
+                          orb_,
                           GlobalC::GridD,
                           &(this->pv),
                           *(this->psi),
@@ -1210,7 +1214,7 @@ void ESolver_KS_LCAO<TK, TR>::after_scf(const int istep)
     }
 
     // 14) write md related
-    if (!md_skip_out(GlobalV::CALCULATION, istep, PARAM.inp.out_interval))
+    if (!md_skip_out(PARAM.inp.calculation, istep, PARAM.inp.out_interval))
     {
         this->create_Output_Mat_Sparse(istep).write();
         // mulliken charge analysis
@@ -1230,7 +1234,7 @@ void ESolver_KS_LCAO<TK, TR>::after_scf(const int istep)
     }
 
     // 16) delete grid
-    if (!GlobalV::CAL_FORCE && !GlobalV::CAL_STRESS)
+    if (!PARAM.inp.cal_force && !GlobalV::CAL_STRESS)
     {
         RA.delete_grid();
     }
@@ -1238,7 +1242,7 @@ void ESolver_KS_LCAO<TK, TR>::after_scf(const int istep)
     // 17) write quasi-orbitals, added by Yike Huang.
     if (PARAM.inp.qo_switch)
     {
-        toQO tqo(PARAM.inp.qo_basis, PARAM.inp.qo_strategy, GlobalV::qo_thr, GlobalV::qo_screening_coeff);
+        toQO tqo(PARAM.inp.qo_basis, PARAM.inp.qo_strategy, PARAM.inp.qo_thr, PARAM.inp.qo_screening_coeff);
         tqo.initialize(GlobalV::global_out_dir,
                        PARAM.inp.pseudo_dir,
                        PARAM.inp.orbital_dir,
@@ -1272,7 +1276,7 @@ void ESolver_KS_LCAO<TK, TR>::after_scf(const int istep)
                                false,
                                PARAM.inp.out_mat_tk[1],
                                1,
-                               GlobalV::out_app_flag,
+                               PARAM.inp.out_app_flag,
                                "T",
                                "data-" + std::to_string(ik),
                                this->pv,
