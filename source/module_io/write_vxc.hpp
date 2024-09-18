@@ -162,7 +162,7 @@ inline void write_orb_energy(const K_Vectors& kv,
     assert(e_orb.size() == kv.get_nks());
     const int nk = kv.get_nks() / nspin0;
     std::ofstream ofs;
-    ofs.open(GlobalV::global_out_dir + term + "_" + (label == "" ? "out.dat" : label + "_out.dat"),
+    ofs.open(PARAM.globalv.global_out_dir + term + "_" + (label == "" ? "out.dat" : label + "_out.dat"),
         app ? std::ios::app : std::ios::out);
     ofs << nk << "\n" << nspin0 << "\n" << nbands << "\n";
     ofs << std::scientific << std::setprecision(16);
@@ -195,6 +195,7 @@ void write_Vxc(const int nspin,
     Gint_Gamma& gint_gamma, // mohan add 2024-04-01
     Gint_k& gint_k,         // mohan add 2024-04-01
     const K_Vectors& kv,
+    const std::vector<double>& orb_cutoff,
     const ModuleBase::matrix& wg,
     Grid_Driver& gd
 #ifdef __EXX
@@ -242,6 +243,7 @@ void write_Vxc(const int nspin,
                                                                         potxc,
                                                                         &vxcs_R_ao[is],
                                                                         &ucell,
+                                                                        orb_cutoff,
                                                                         &gd);
 
         vxcs_op_ao[is]->contributeHR();

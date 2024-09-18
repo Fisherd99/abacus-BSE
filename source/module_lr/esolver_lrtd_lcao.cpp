@@ -14,6 +14,8 @@
 #include "module_lr/utils/lr_util_print.h"
 #include "module_base/scalapack_connector.h"
 #include "module_parameter/parameter.h"
+#include "module_lr/ri_benchmark/ri_benchmark.h"
+
 #ifdef __EXX
 template<>
 void LR::ESolver_LR<double>::move_exx_lri(std::shared_ptr<Exx_LRI<double>>& exx_ks)
@@ -50,14 +52,14 @@ inline void redirect_log(const bool& out_alllog)
     std::stringstream   ss;
     if (out_alllog)
     {
-        ss << GlobalV::global_out_dir << "running_lr_" << GlobalV::MY_RANK + 1 << ".log";
+        ss << PARAM.globalv.global_out_dir << "running_lr_" << GlobalV::MY_RANK + 1 << ".log";
         GlobalV::ofs_running.open(ss.str());
     }
     else
     {
         if (GlobalV::MY_RANK == 0)
         {
-            ss << GlobalV::global_out_dir << "running_lr.log";
+            ss << PARAM.globalv.global_out_dir << "running_lr.log";
             GlobalV::ofs_running.open(ss.str());
         }
     }
@@ -110,6 +112,11 @@ void LR::ESolver_LR<T, TR>::set_dimension()
     GlobalV::ofs_running << "number of KS bands: " << this->eig_ks.nc << std::endl;
     GlobalV::ofs_running << "number of electron-hole pairs (2-particle basis size): " << this->npairs << std::endl;
     GlobalV::ofs_running << "number of excited states to be solved: " << this->nstates << std::endl;
+    if (input.ri_hartree_benchmark == "aims" && !input.aims_nbasis.empty())
+    {
+        this->nbasis = [&]() -> int { int nbas = 0; for (int it = 0;it < ucell.ntype;++it) { nbas += ucell.atoms[it].na * input.aims_nbasis[it]; };return nbas;}();
+        std::cout << "nbasis from aims: " << this->nbasis << std::endl;
+    }
 }
 
 template <typename T, typename TR>
@@ -199,13 +206,17 @@ LR::ESolver_LR<T, TR>::ESolver_LR(ModuleESolver::ESolver_KS_LCAO<T, TR>&& ks_sol
             this->move_exx_lri(ks_sol.exx_lri_complex);
         } else    // construct C, V from scratch
         {
+            // set ccp_type according to the xc_kernel
+            if (xc_kernel == "hf") { exx_info.info_global.ccp_type = Conv_Coulomb_Pot_K::Ccp_Type::Hf; }
+            else if (xc_kernel == "hse") { exx_info.info_global.ccp_type = Conv_Coulomb_Pot_K::Ccp_Type::Hse; }
             this->exx_lri = std::make_shared<Exx_LRI<T>>(exx_info.info_ri);
-            this->exx_lri->init(MPI_COMM_WORLD, this->kv);
-            this->exx_lri->cal_exx_ions();
+            this->exx_lri->init(MPI_COMM_WORLD, this->kv, ks_sol.orb_);
+            this->exx_lri->cal_exx_ions(input.out_ri_cv);
         }
     }
 #endif
     this->pelec = new elecstate::ElecStateLCAO<T>();
+    orb_cutoff_ = ks_sol.orb_.cutoffs();
 }
 
 template <typename T, typename TR>
@@ -231,7 +242,7 @@ LR::ESolver_LR<T, TR>::ESolver_LR(const Input_para& inp, UnitCell& ucell) : inpu
         GlobalC::ucell.symm.analy_sys(ucell.lat, ucell.st, ucell.atoms, GlobalV::ofs_running);
         ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "SYMMETRY");
     }
-    this->kv.set(ucell.symm, GlobalV::global_kpoint_card, GlobalV::NSPIN, ucell.G, ucell.latvec, GlobalV::ofs_running);
+    this->kv.set(ucell.symm, PARAM.inp.kpoint_file, GlobalV::NSPIN, ucell.G, ucell.latvec, GlobalV::ofs_running);
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "INIT K-POINTS");
     Print_Info::setup_parameters(ucell, this->kv);
 
@@ -239,7 +250,10 @@ LR::ESolver_LR<T, TR>::ESolver_LR(const Input_para& inp, UnitCell& ucell) : inpu
 
     /// read orbitals and build the interpolation table
     two_center_bundle_.build_orb(ucell.ntype, ucell.orbital_fn);
-    two_center_bundle_.to_LCAO_Orbitals(GlobalC::ORB, inp.lcao_ecut, inp.lcao_dk, inp.lcao_dr, inp.lcao_rmax);
+
+    LCAO_Orbitals orb;
+    two_center_bundle_.to_LCAO_Orbitals(orb, inp.lcao_ecut, inp.lcao_dk, inp.lcao_dr, inp.lcao_rmax);
+    orb_cutoff_ = orb.cutoffs();
 
     this->set_dimension();
     //  setup 2d-block distribution for AO-matrix and KS wfc
@@ -247,7 +261,7 @@ LR::ESolver_LR<T, TR>::ESolver_LR(const Input_para& inp, UnitCell& ucell) : inpu
 #ifdef __MPI
     this->paraMat_.set_desc_wfc_Eij(this->nbasis, this->nbands, paraMat_.get_row_size());
     int err = this->paraMat_.set_nloc_wfc_Eij(this->nbands, GlobalV::ofs_running, GlobalV::ofs_warning);
-    this->paraMat_.set_atomic_trace(ucell.get_iat2iwt(), ucell.nat, this->nbasis);
+    if (input.ri_hartree_benchmark != "aims") { this->paraMat_.set_atomic_trace(ucell.get_iat2iwt(), ucell.nat, this->nbasis); }
 #else
     this->paraMat_.nrow_bands = this->nbasis;
     this->paraMat_.ncol_bands = this->nbands;
@@ -279,14 +293,14 @@ LR::ESolver_LR<T, TR>::ESolver_LR(const Input_para& inp, UnitCell& ucell) : inpu
         pw_big->nbz,
         pw_big->bz);
     Charge chg_gs;
-    this->read_ks_chg(chg_gs);
+    if (input.ri_hartree_benchmark != "aims") { this->read_ks_chg(chg_gs); }
     this->init_pot(chg_gs);
 
     // search adjacent atoms and init Gint
     std::cout << "ucell.infoNL.get_rcutmax_Beta(): " << GlobalC::ucell.infoNL.get_rcutmax_Beta() << std::endl;
     GlobalV::SEARCH_RADIUS = atom_arrange::set_sr_NL(GlobalV::ofs_running,
         PARAM.inp.out_level,
-        GlobalC::ORB.get_rcutmax_Phi(),
+        orb.get_rcutmax_Phi(),
         GlobalC::ucell.infoNL.get_rcutmax_Beta(),
         PARAM.globalv.gamma_only_local);
     atom_arrange::search(PARAM.inp.search_pbc,
@@ -305,7 +319,7 @@ LR::ESolver_LR<T, TR>::ESolver_LR(const Input_para& inp, UnitCell& ucell) : inpu
     std::vector<std::vector<double>> dpsi_u;
     std::vector<std::vector<double>> d2psi_u;
 
-    Gint_Tools::init_orb(dr_uniform, rcuts, GlobalC::ucell, psi_u, dpsi_u, d2psi_u);
+    Gint_Tools::init_orb(dr_uniform, rcuts, GlobalC::ucell, orb, psi_u, dpsi_u, d2psi_u);
     this->gt_.set_pbc_grid(this->pw_rho->nx,
         this->pw_rho->ny,
         this->pw_rho->nz,
@@ -337,7 +351,7 @@ LR::ESolver_LR<T, TR>::ESolver_LR(const Input_para& inp, UnitCell& ucell) : inpu
 
     if (std::is_same<T, std::complex<double>>::value)
     {
-        this->gt_.cal_nnrg(&this->paraMat_);
+        this->gt_.cal_nnrg(&this->paraMat_, orb.cutoffs());
         this->gint_k_.allocate_pvpR();   // uses gt_.nnrg
     }
     this->gint_->prep_grid(this->gt_,
@@ -355,16 +369,19 @@ LR::ESolver_LR<T, TR>::ESolver_LR(const Input_para& inp, UnitCell& ucell) : inpu
         this->pw_rho->nplane,
         this->pw_rho->startz_current,
         &ucell,
-        &GlobalC::ORB);
+        &orb);
     this->gint_->initialize_pvpR(ucell, &GlobalC::GridD);
 
     // if EXX from scratch, init 2-center integral and calculate Cs, Vs 
 #ifdef __EXX
     if ((xc_kernel == "hf" || xc_kernel == "hse") && this->input.lr_solver != "spectrum")
     {
+        // set ccp_type according to the xc_kernel
+        if (xc_kernel == "hf") { exx_info.info_global.ccp_type = Conv_Coulomb_Pot_K::Ccp_Type::Hf; }
+        else if (xc_kernel == "hse") { exx_info.info_global.ccp_type = Conv_Coulomb_Pot_K::Ccp_Type::Hse; }
         this->exx_lri = std::make_shared<Exx_LRI<T>>(exx_info.info_ri);
-        this->exx_lri->init(MPI_COMM_WORLD, this->kv);
-        this->exx_lri->cal_exx_ions();
+        this->exx_lri->init(MPI_COMM_WORLD, this->kv, orb);
+        this->exx_lri->cal_exx_ions(input.out_ri_cv);
     }
     // else
 #endif
@@ -386,21 +403,23 @@ void LR::ESolver_LR<T, TR>::runner(int istep, UnitCell& cell)
         for (int is = 0;is < nspin;++is)
         {
             if (nspin == 2) { std::cout << "Calculating " << spin_type[is] << " excitations" << std::endl; }
-            hamilt::Hamilt<T>* phamilt = new HamiltCasidaLR<T>(xc_kernel, nspin, this->nbasis, this->nocc, this->nvirt, this->ucell, GlobalC::GridD, this->psi_ks, this->eig_ks,
+            hamilt::Hamilt<T>* phamilt = new HamiltCasidaLR<T>(xc_kernel, nspin, this->nbasis, this->nocc, this->nvirt, this->ucell, orb_cutoff_, GlobalC::GridD, this->psi_ks, this->eig_ks,
 #ifdef __EXX
                 this->exx_lri, this->exx_info.info_global.hybrid_alpha,
 #endif
-                this->gint_, this->pot[is], this->kv, & this->paraX_, & this->paraC_, & this->paraMat_);
+                this->gint_, this->pot[is], this->kv, & this->paraX_, & this->paraC_, & this->paraMat_, 
+                spin_type[is], input.ri_hartree_benchmark, (input.ri_hartree_benchmark == "aims" ? input.aims_nbasis : std::vector<int>({})));
             // solve the Casida equation
             HSolverLR<T> hsol(nk, this->npairs, is, this->input.out_wfc_lr);
             hsol.set_diagethr(hsol.diag_ethr, 0, 0, std::max(1e-13, this->input.lr_thr));
-            hsol.solve(phamilt, *this->X[is], this->pelec, this->input.lr_solver);    //copy eigenvalues?
+            hsol.solve(phamilt, *this->X[is], this->pelec, this->input.lr_solver/*,
+                !std::set<std::string>({ "hf", "hse" }).count(this->xc_kernel)*/);  //whether the kernel is Hermitian
             delete phamilt;
         }
     }
     else    // read the eigenvalues
     {
-        std::ifstream ifs(GlobalV::global_out_dir + "Excitation_Energy.dat");
+        std::ifstream ifs(PARAM.globalv.global_readin_dir + "Excitation_Energy.dat");
         std::cout << "reading the excitation energies from file: \n";
         for (int is = 0;is < nspin;++is)
         {
@@ -415,6 +434,7 @@ template <typename T, typename TR>
 void LR::ESolver_LR<T, TR>::after_all_runners()
 {
     ModuleBase::TITLE("ESolver_LR", "after_all_runners");
+    if (input.ri_hartree_benchmark != "none") { return; } //no need to calculate the spectrum in the benchmark routine
     //cal spectrum
     std::vector<double> freq(100);
     std::vector<double> abs_wavelen_range({ 20, 200 });//default range
@@ -455,7 +475,7 @@ void LR::ESolver_LR<T, TR>::setup_eigenvectors_X()
         for (int is = 0; is < this->nspin; ++is)
         {
             this->X[is] = std::make_shared<psi::Psi<T>>(LR_Util::read_psi_bandfirst<T>(
-                GlobalV::global_out_dir + "Excitation_Amplitude_" + spin_types[is], GlobalV::MY_RANK));
+                PARAM.globalv.global_readin_dir + "Excitation_Amplitude_" + spin_types[is], GlobalV::MY_RANK));
         }
     }
     else
@@ -520,7 +540,8 @@ void LR::ESolver_LR<T, TR>::set_X_initial_guess()
 template<typename T, typename TR>
 void LR::ESolver_LR<T, TR>::init_pot(const Charge& chg_gs)
 {
-    this->pot.resize(nspin);
+    this->pot.resize(nspin, nullptr);
+    if (this->input.ri_hartree_benchmark != "none") { return; } //no need to initialize potential for Hxc kernel in the RI-benchmark routine
     switch (nspin)
     {
     case 1:
@@ -542,10 +563,25 @@ void LR::ESolver_LR<T, TR>::read_ks_wfc()
     GlobalV::NB2D = 1;
     this->pelec->ekb.create(this->kv.get_nks(), this->nbands);
     this->pelec->wg.create(this->kv.get_nks(), this->nbands);
-    if (!ModuleIO::read_wfc_nao(GlobalV::global_readin_dir, this->paraMat_, *this->psi_ks, this->pelec,
+
+    if (input.ri_hartree_benchmark == "aims")        // for aims benchmark
+    {
+#ifdef __EXX
+        int ncore = 0;
+        std::vector<double> eig_ks_vec = RI_Benchmark::read_aims_ebands<double>(PARAM.globalv.global_readin_dir + "band_out", nocc, nvirt, ncore);
+        std::cout << "ncore=" << ncore << ", nocc=" << nocc << ", nvirt=" << nvirt << ", nbands=" << this->nbands << std::endl;
+        std::cout << "eig_ks_vec.size()=" << eig_ks_vec.size() << std::endl;
+        if(eig_ks_vec.size() != this->nbands) {ModuleBase::WARNING_QUIT("ESolver_LR", "read_aims_ebands failed.");};
+        for (int i = 0;i < nbands;++i) { this->pelec->ekb(0, i) = eig_ks_vec[i]; }
+        RI_Benchmark::read_aims_eigenvectors<T>(*this->psi_ks, PARAM.globalv.global_readin_dir + "KS_eigenvectors.out", ncore, nbands, nbasis);
+#else
+        ModuleBase::WARNING_QUIT("ESolver_LR", "RI benchmark is only supported when compile with LibRI.");
+#endif
+    }
+    else if (!ModuleIO::read_wfc_nao(PARAM.globalv.global_readin_dir, this->paraMat_, *this->psi_ks, this->pelec,
         /*skip_bands=*/this->nocc_max - this->nocc)) {
         ModuleBase::WARNING_QUIT("ESolver_LR", "read ground-state wavefunction failed.");
-}
+    }
     this->eig_ks = std::move(this->pelec->ekb);
 }
 
@@ -558,7 +594,7 @@ void LR::ESolver_LR<T, TR>::read_ks_chg(Charge& chg_gs)
     for (int is = 0; is < this->nspin; ++is)
     {
         std::stringstream ssc;
-        ssc << GlobalV::global_readin_dir << "SPIN" << is + 1 << "_CHG.cube";
+        ssc << PARAM.globalv.global_readin_dir << "SPIN" << is + 1 << "_CHG.cube";
         GlobalV::ofs_running << ssc.str() << std::endl;
         double ef;
         if (ModuleIO::read_rho(

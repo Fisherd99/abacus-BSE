@@ -90,6 +90,7 @@ void ModuleIO::output_dHR(const int& istep,
                           LCAO_HS_Arrays& HS_Arrays,
                           Grid_Driver& grid, // mohan add 2024-04-06
                           const TwoCenterBundle& two_center_bundle,
+                          const LCAO_Orbitals& orb,
                           const K_Vectors& kv,
                           const bool& binary,
                           const double& sparse_thr) {
@@ -108,6 +109,7 @@ void ModuleIO::output_dHR(const int& istep,
                               HS_Arrays,
                               grid,
                               two_center_bundle,
+                              orb,
                               cspin,
                               sparse_thr,
                               gint_k);
@@ -131,6 +133,7 @@ void ModuleIO::output_dHR(const int& istep,
                                   HS_Arrays,
                                   grid,
                                   two_center_bundle,
+                                  orb,
                                   cspin,
                                   sparse_thr,
                                   gint_k);
@@ -189,6 +192,7 @@ void ModuleIO::output_TR(const int istep,
                          LCAO_HS_Arrays& HS_Arrays,
                          Grid_Driver& grid,
                          const TwoCenterBundle& two_center_bundle,
+                         const LCAO_Orbitals& orb,
                          const std::string& TR_filename,
                          const bool& binary,
                          const double& sparse_thr) {
@@ -197,9 +201,9 @@ void ModuleIO::output_TR(const int istep,
 
     std::stringstream sst;
     if (PARAM.inp.calculation == "md" && !PARAM.inp.out_app_flag) {
-        sst << GlobalV::global_matrix_dir << istep << "_" << TR_filename;
+        sst << PARAM.globalv.global_matrix_dir << istep << "_" << TR_filename;
     } else {
-        sst << GlobalV::global_out_dir << TR_filename;
+        sst << PARAM.globalv.global_out_dir << TR_filename;
     }
 
     sparse_format::cal_TR(ucell,
@@ -207,6 +211,7 @@ void ModuleIO::output_TR(const int istep,
                           HS_Arrays,
                           grid,
                           two_center_bundle,
+                          orb,
                           sparse_thr);
 
     ModuleIO::save_sparse(HS_Arrays.TR_sparse,

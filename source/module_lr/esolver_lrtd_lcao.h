@@ -50,6 +50,7 @@ namespace LR
     protected:
         const Input_para& input;
         const UnitCell& ucell;
+        std::vector<double> orb_cutoff_;
 
         // not to use ElecState because 2-particle state is quite different from 1-particle state.
         // implement a independent one (ExcitedState) to pack physical properties if needed.
@@ -116,7 +117,7 @@ namespace LR
         std::shared_ptr<Exx_LRI<T>> exx_lri = nullptr;
         void move_exx_lri(std::shared_ptr<Exx_LRI<double>>&);
         void move_exx_lri(std::shared_ptr<Exx_LRI<std::complex<double>>>&);
-        const Exx_Info& exx_info;
+        Exx_Info& exx_info;
 #endif
     };
 }
