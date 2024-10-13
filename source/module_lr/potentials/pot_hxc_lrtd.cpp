@@ -51,7 +51,7 @@ namespace LR
             break;
         }
         // XC
-        if (xc_kernel == "rpa" || xc_kernel == "hf") { return; }    // no xc
+        if (xc_kernel == "rpa" || xc_kernel == "hf" || xc_kernel == "bse" || xc_kernel =="bse-gw") { return; }    // no xc
 #ifdef USE_LIBXC
         this->kernel_to_potential_[spin_type_](rho[0], v_eff);
 #else

@@ -121,6 +121,94 @@ auto LRI_CV<Tdata>::cal_datas(
 	return Datas;
 }
 
+template<typename Tdata>//FISH_NOTE: imitate cal_datas in LRI_CV.hpp and read_coulomb_mat in ri_benchmark.hpp
+auto LRI_CV<Tdata>::read_Ws(//FISH_NOTE: W = Wc + V_exx
+	const std::vector<TA> &list_A0,
+	const std::vector<TAC> &list_A1)
+-> std::map<TA,std::map<TAC,RI::Tensor<Tdata>>>
+{
+	ModuleBase::TITLE("LRI_CV","read_Ws");
+	std::map<TA,std::map<TAC,RI::Tensor<Tdata>>> Ws;
+	int nat1 = list_A0.size(); //number of I atoms in list_A0
+	int nat2 = list_A1.size(); //number of J atoms in list_A1
+	std::cout << "FISH_Output: natom1 = " << nat1 << " natom2 = " << nat2 << std::endl;
+	std::ifstream infileW;
+	std::ifstream infileV;
+	int nabf; //number of total auxiliary basis functions, read from coulomb_mat.txt
+	int temp, nk, istart, iend, jstart, jend;
+	std::vector<Tdata> V;
+
+	const std::string V_file = PARAM.globalv.global_readin_dir + "coulomb_mat_0.txt"; //read V_exx
+	infileV.open(V_file);
+	if(!infileV)
+	{
+		std::cout << "FISH_Error: " << V_file << " file not found" << std::endl;
+		exit(1);
+	}
+	else
+	{
+		infileV >> nk;
+		if(nk > 1)
+		{
+			std::cout << "FISH_Error: only support gamma k!" << std::endl;//since here is Wc(R)+V_exx(q)
+			exit(1);
+		}
+		while (infileV.peek() != EOF)
+		{
+			infileV >> nabf >> istart >> iend >> jstart >> jend >> temp /*ik*/ >> temp/*wk*/;
+			V.assign(nabf * nabf, 0.0); //assign space for V_exx
+			for(int i = istart; i != iend; i++)
+				for(int j = jstart; j != jend; j++)
+					infileV >> V[i * nabf + j] >> temp;// only read real part (?) of V_exx upper triangle IJ block
+		}
+		// start reading Wc
+		int mu_shift = 0;
+		int nu_shift = 0;
+		int nabfmu, nabfnu, non_zero, mu, nu; //I.nab, J.nab
+		double temp1, temp2;
+		for(std::size_t i = 0; i != nat1; i++)
+		{
+			for(std::size_t j = 0; j != nat2; j++)
+			{
+				std::string filename = "Wc_Mu_"+std::to_string(i)+"_Nu_"+std::to_string(j)+"_iR_0_ifreq_0.mtx";
+				infileW.open(PARAM.globalv.global_readin_dir + "librpa.d/" + filename);
+				if(!infileW)
+				{
+					std::cout << "FISH_Error: " << filename << " file not found" << std::endl;
+					exit(1);
+				}
+				else
+				{            
+					std::cout << "skip 2 lines" <<std::endl;
+					infileW.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); // skip the first line
+    				infileW.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); // skip the second line
+					infileW >> nabfmu >> nabfnu >> non_zero;
+					const size_t nabfI = nabfmu;
+					const size_t nabfJ = nabfnu;
+					RI::Tensor<Tdata> tensor_W({ nabfI, nabfJ });//assign space for Wc(I,J,R)
+					std::vector<Tdata> WcIJ(nabfI * nabfJ, 0.0);
+					for (int index = 0; index < non_zero; index++)
+					{
+						infileW >> mu >> nu >> WcIJ[mu * nabfJ + nu] >> temp2;// only read real part (?) of Wc
+						//tensor_W(mu,nu) =std::complex<double>(temp1,temp2);
+						std::cout << "FISH_Output: " << mu << " " << nu << " " << tensor_W(mu,nu) << std::endl; //check
+						if(mu_shift > nu_shift) //lower triangle IJ block, notice Wc(R)+V_exx(q)
+							tensor_W(mu, nu) = WcIJ[mu * nabfJ + nu] + V[(nu + nu_shift)*nabf + mu + mu_shift];
+						else
+							tensor_W(mu, nu) = WcIJ[mu * nabfJ + nu] + V[(mu + mu_shift)*nabf + nu + nu_shift];
+					}
+					Ws[list_A0[i]][list_A1[j]] = tensor_W;
+				}
+				nu_shift = nu_shift + nabfnu;
+				infileW.close();
+			}
+			mu_shift = mu_shift + nabfmu;
+		}
+	}
+	infileV.close();
+	return Ws;
+}
+
 
 template<typename Tdata>
 auto LRI_CV<Tdata>::cal_Vs(

@@ -46,7 +46,42 @@ namespace LR
             this->DM_trans.resize(1);
             this->DM_trans[0] = LR_Util::make_unique<elecstate::DensityMatrix<T, T>>(&kv_in, pmat_in, nspin);
             // add the diag operator  (the first one)
-            this->ops = new OperatorLRDiag<T>(eig_ks, pX_in, nk, nocc, nvirt);
+            if (xc_kernel == "bse-gw")
+            // FISH_NOTE: read gw eigenenegies from file and drop psudo eigenvalues automatically
+            {
+                std::cout << "FISH_output: nbands: " << GlobalV::NBANDS << std::endl;
+                ModuleBase::matrix eig_gw;
+                eig_gw.create(1, GlobalV::NBANDS);
+                std::ifstream file(PARAM.globalv.global_readin_dir + "energy_qp");
+                if (!file) {
+                throw std::invalid_argument("HamiltCasidaLR: 'energy_qp' file not found");
+                }
+                std::string line;
+                while (std::getline(file, line))
+                {
+                    if (line[0] == '%') // skip comments
+                        continue;
+                    else
+                    {
+                        double value;
+                        for (int k = 0; k < GlobalV::NBANDS; k++)
+                        {
+                            std::istringstream iss(line);
+                            iss >> eig_gw(0, k);
+                            eig_gw(0, k) = eig_gw(0, k) * 2; // Ha to Ry
+                            std::cout <<"FISH_output:" << k << " "  << eig_gw(0, k) << std::endl; //check
+                            std::getline(file, line);
+                        }
+                        std::cout <<"FISH_output: Finish read gw" << std::endl;
+                        break;
+                    }
+                }
+                file.close();
+                this->ops = new OperatorLRDiag<T>(eig_gw, pX_in, nk, nocc, nvirt);
+                std::cout << "FISH_output: gw_lumo: " << eig_gw(0, nocc)* ModuleBase::Ry_to_eV << " eV" << std::endl;
+            }
+            else
+                this->ops = new OperatorLRDiag<T>(eig_ks, pX_in, nk, nocc, nvirt);
             //add Hxc operator
 #ifdef __EXX
             using TAC = std::pair<int, std::array<int, 3>>;
@@ -94,7 +129,7 @@ namespace LR
                 this->ops->add(lr_hxc);
             }
 #ifdef __EXX
-            if (xc_kernel == "hf" || xc_kernel == "hse")
+            if (xc_kernel == "hf" || xc_kernel == "hse" || xc_kernel == "bse" || xc_kernel == "bse-gw")
             {   //add Exx operator
                 if (ri_hartree_benchmark != "none" && spin_type == "Spin Singlet")
                 {
@@ -104,7 +139,7 @@ namespace LR
                 // std::cout << "exx_alpha=" << exx_alpha << std::endl; // the default value of exx_alpha is 0.25 when dft_functional is pbe or hse
                 hamilt::Operator<T>* lr_exx = new OperatorLREXX<T>(nspin, naos, nocc, nvirt, ucell_in, psi_ks_in,
                     this->DM_trans, exx_lri_in, kv_in, pX_in, pc_in, pmat_in,
-                    xc_kernel == "hf" ? 1.0 : exx_alpha, //alpha
+                    (xc_kernel == "hf"||xc_kernel == "bse"||xc_kernel == "bse-gw") ? 1.0 : exx_alpha, //alpha
                     ri_hartree_benchmark != "none"/*whether to cal_dm_trans first here*/,
                     aims_nbasis);
                 this->ops->add(lr_exx);

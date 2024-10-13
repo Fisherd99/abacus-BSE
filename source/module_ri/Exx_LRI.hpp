@@ -131,13 +131,24 @@ void Exx_LRI<Tdata>::cal_exx_ions(const bool write_cv)
 	const std::array<Tcell,Ndim> period_Vs = LRI_CV_Tools::cal_latvec_range<Tcell>(1+this->info.ccp_rmesh_times, orb_cutoff_);	
 	const std::pair<std::vector<TA>, std::vector<std::vector<std::pair<TA,std::array<Tcell,Ndim>>>>>
 		list_As_Vs = RI::Distribute_Equally::distribute_atoms_periods(this->mpi_comm, atoms, period_Vs, 2, false);
-
-	std::map<TA,std::map<TAC,RI::Tensor<Tdata>>>
-		Vs = this->cv.cal_Vs(
-			list_As_Vs.first, list_As_Vs.second[0],
-			{{"writable_Vws",true}});
-	this->cv.Vws = LRI_CV_Tools::get_CVws(Vs);
-	this->exx_lri.set_Vs(std::move(Vs), this->info.V_threshold);
+	if(PARAM.inp.xc_kernel == "bse" || PARAM.inp.xc_kernel == "bse-gw")
+	{
+		std::map<TA,std::map<TAC,RI::Tensor<Tdata>>>
+			Ws = this->cv.read_Ws(
+				list_As_Vs.first, list_As_Vs.second[0]);
+		std::cout<< "FISH_output: Ws.size() = " << Ws.size() << std::endl;
+		this->cv.Vws = LRI_CV_Tools::get_CVws(Ws);
+		this->exx_lri.set_Vs(std::move(Ws), this->info.V_threshold);
+	}
+	else{
+		std::map<TA,std::map<TAC,RI::Tensor<Tdata>>>
+			Vs = this->cv.cal_Vs(
+				list_As_Vs.first, list_As_Vs.second[0],
+				{{"writable_Vws",true}});
+		std::cout<< "FISH_output: Vs.size() = " << Vs.size() << std::endl;
+		this->cv.Vws = LRI_CV_Tools::get_CVws(Vs);
+		this->exx_lri.set_Vs(std::move(Vs), this->info.V_threshold);
+	}
 
 	if(PARAM.inp.cal_force || PARAM.inp.cal_stress)
 	{

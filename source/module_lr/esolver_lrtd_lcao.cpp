@@ -69,7 +69,7 @@ template<typename T, typename TR>
 void LR::ESolver_LR<T, TR>::parameter_check()const
 {
     std::set<std::string> lr_solvers = { "dav", "lapack" , "spectrum", "dav_subspace" };
-    std::set<std::string> xc_kernels = { "rpa", "lda", "pbe", "hf" , "hse" };
+    std::set<std::string> xc_kernels = { "rpa", "lda", "pbe", "hf" , "hse", "bse", "bse-gw"};
     if (lr_solvers.find(this->input.lr_solver) == lr_solvers.end()) {
         throw std::invalid_argument("ESolver_LR: unknown type of lr_solver");
 }
@@ -161,7 +161,7 @@ LR::ESolver_LR<T, TR>::ESolver_LR(ModuleESolver::ESolver_KS_LCAO<T, TR>&& ks_sol
             this->psi_ks = ks_sol.psi;
             ks_sol.psi = nullptr;
             //only need the eigenvalues. the 'elecstates' of excited states is different from ground state.
-            this->eig_ks = std::move(ks_sol.pelec->ekb);
+            this->eig_ks = std::move(ks_sol.pelec->ekb);// FISH_TODO2: Replace it to GW eigenenergies
         };
 #ifdef __MPI
     if (this->nbands == GlobalV::NBANDS) { move_gs(); }
@@ -213,6 +213,14 @@ LR::ESolver_LR<T, TR>::ESolver_LR(ModuleESolver::ESolver_KS_LCAO<T, TR>&& ks_sol
             this->exx_lri->init(MPI_COMM_WORLD, this->kv, ks_sol.orb_);
             this->exx_lri->cal_exx_ions(input.out_ri_cv);
         }
+    }
+    else if (xc_kernel == "bse" || xc_kernel == "bse-gw")
+    {
+        exx_info.info_global.ccp_type = Conv_Coulomb_Pot_K::Ccp_Type::Hf;
+        this->exx_lri = std::make_shared<Exx_LRI<T>>(exx_info.info_ri);
+        this->exx_lri->init(MPI_COMM_WORLD, this->kv, ks_sol.orb_);
+        std::cout << "FISH_output: prepare W matrix for BSE in esolver_lrtd_lcao.cpp 1" << std::endl;
+        this->exx_lri->cal_exx_ions();
     }
 #endif
     this->pelec = new elecstate::ElecStateLCAO<T>();
@@ -382,6 +390,14 @@ LR::ESolver_LR<T, TR>::ESolver_LR(const Input_para& inp, UnitCell& ucell) : inpu
         this->exx_lri = std::make_shared<Exx_LRI<T>>(exx_info.info_ri);
         this->exx_lri->init(MPI_COMM_WORLD, this->kv, orb);
         this->exx_lri->cal_exx_ions(input.out_ri_cv);
+    }
+    else if (xc_kernel == "bse" || xc_kernel == "bse-gw")
+    {
+        exx_info.info_global.ccp_type = Conv_Coulomb_Pot_K::Ccp_Type::Hf;
+        this->exx_lri = std::make_shared<Exx_LRI<T>>(exx_info.info_ri);
+        this->exx_lri->init(MPI_COMM_WORLD, this->kv, orb);
+        std::cout << "FISH_output: prepare W matrix for BSE in esolver_lrtd_lcao.cpp 2" << std::endl;
+        this->exx_lri->cal_exx_ions();
     }
     // else
 #endif
