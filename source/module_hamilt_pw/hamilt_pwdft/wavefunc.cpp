@@ -44,9 +44,9 @@ psi::Psi<std::complex<double>>* wavefunc::allocate(const int nkstot, const int n
 
     // if use spin orbital, do not double nks but double allocate evc and wanf2.
     int prefactor = 1;
-    if (GlobalV::NSPIN == 4)
+    if (PARAM.inp.nspin == 4)
     {
-        prefactor = GlobalV::NPOL; // added by zhengdy-soc
+        prefactor = PARAM.globalv.npol; // added by zhengdy-soc
     }
 
     const int nks2 = nks;
@@ -55,15 +55,15 @@ psi::Psi<std::complex<double>>* wavefunc::allocate(const int nkstot, const int n
     if (PARAM.inp.calculation == "nscf" && this->mem_saver == 1)
     {
         // initial psi rather than evc
-        psi_out = new psi::Psi<std::complex<double>>(1, GlobalV::NBANDS, npwx * GlobalV::NPOL, ngk);
+        psi_out = new psi::Psi<std::complex<double>>(1, PARAM.inp.nbands, npwx * PARAM.globalv.npol, ngk);
         if (PARAM.inp.basis_type == "lcao_in_pw")
         {
-            wanf2[0].create(GlobalV::NLOCAL, npwx * GlobalV::NPOL);
-            const size_t memory_cost = GlobalV::NLOCAL * (GlobalV::NPOL * npwx) * sizeof(std::complex<double>);
+            wanf2[0].create(PARAM.globalv.nlocal, npwx * PARAM.globalv.npol);
+            const size_t memory_cost = PARAM.globalv.nlocal * (PARAM.globalv.npol * npwx) * sizeof(std::complex<double>);
             std::cout << " Memory for wanf2 (MB): " << double(memory_cost) / 1024.0 / 1024.0 << std::endl;
             ModuleBase::Memory::record("WF::wanf2", memory_cost);
         }
-        const size_t memory_cost = GlobalV::NBANDS * (GlobalV::NPOL * npwx) * sizeof(std::complex<double>);
+        const size_t memory_cost = PARAM.inp.nbands * (PARAM.globalv.npol * npwx) * sizeof(std::complex<double>);
         std::cout << " MEMORY FOR PSI (MB)  : " << double(memory_cost) / 1024.0 / 1024.0 << std::endl;
         ModuleBase::Memory::record("Psi_PW", memory_cost);
     }
@@ -79,10 +79,10 @@ psi::Psi<std::complex<double>>* wavefunc::allocate(const int nkstot, const int n
 
             for (int ik = 0; ik < nks2; ik++)
             {
-                this->wanf2[ik].create(GlobalV::NLOCAL, npwx * GlobalV::NPOL);
+                this->wanf2[ik].create(PARAM.globalv.nlocal, npwx * PARAM.globalv.npol);
             }
 
-            const size_t memory_cost = nks2 * GlobalV::NLOCAL * (npwx * GlobalV::NPOL) * sizeof(std::complex<double>);
+            const size_t memory_cost = nks2 * PARAM.globalv.nlocal * (npwx * PARAM.globalv.npol) * sizeof(std::complex<double>);
             std::cout << " Memory for wanf2 (MB): " << double(memory_cost) / 1024.0 / 1024.0 << std::endl;
             ModuleBase::Memory::record("WF::wanf2", memory_cost);
         }
@@ -90,8 +90,8 @@ psi::Psi<std::complex<double>>* wavefunc::allocate(const int nkstot, const int n
     else
     {
         // initial psi rather than evc
-        psi_out = new psi::Psi<std::complex<double>>(nks2, GlobalV::NBANDS, npwx * GlobalV::NPOL, ngk);
-        const size_t memory_cost = nks2 * GlobalV::NBANDS * (GlobalV::NPOL * npwx) * sizeof(std::complex<double>);
+        psi_out = new psi::Psi<std::complex<double>>(nks2, PARAM.inp.nbands, npwx * PARAM.globalv.npol, ngk);
+        const size_t memory_cost = nks2 * PARAM.inp.nbands * (PARAM.globalv.npol * npwx) * sizeof(std::complex<double>);
         std::cout << " MEMORY FOR PSI (MB)  : " << double(memory_cost) / 1024.0 / 1024.0 << std::endl;
         ModuleBase::Memory::record("Psi_PW", memory_cost);
     }
@@ -117,7 +117,7 @@ void wavefunc::wfcinit(psi::Psi<std::complex<double>>* psi_in, ModulePW::PW_Basi
         this->irindex = new int[wfc_basis->fftnxy];
         wfc_basis->getfftixy2is(this->irindex);
 #if defined(__CUDA) || defined(__ROCM)
-        if (GlobalV::device_flag == "gpu")
+        if (PARAM.inp.device == "gpu")
         {
             wfc_basis->get_ig2ixyz_k();
         }
@@ -131,11 +131,11 @@ int wavefunc::get_starting_nw() const
 {
     if (init_wfc == "file")
     {
-        return GlobalV::NBANDS;
+        return PARAM.inp.nbands;
     }
     else if (init_wfc.substr(0, 6) == "atomic")
     {
-        if (GlobalC::ucell.natomwfc >= GlobalV::NBANDS)
+        if (GlobalC::ucell.natomwfc >= PARAM.inp.nbands)
         {
             if (PARAM.inp.test_wf)
             {
@@ -147,11 +147,11 @@ int wavefunc::get_starting_nw() const
             if (PARAM.inp.test_wf)
             {
                 GlobalV::ofs_running << " Start wave functions are atomic + "
-                                     << GlobalV::NBANDS - GlobalC::ucell.natomwfc << " random wave functions."
+                                     << PARAM.inp.nbands - GlobalC::ucell.natomwfc << " random wave functions."
                                      << std::endl;
             }
         }
-        return std::max(GlobalC::ucell.natomwfc, GlobalV::NBANDS);
+        return std::max(GlobalC::ucell.natomwfc, PARAM.inp.nbands);
     }
     else if (init_wfc == "random")
     {
@@ -159,7 +159,7 @@ int wavefunc::get_starting_nw() const
         {
             GlobalV::ofs_running << " Start wave functions are all random." << std::endl;
         }
-        return GlobalV::NBANDS;
+        return PARAM.inp.nbands;
     }
     else
     {
@@ -197,7 +197,7 @@ void diago_PAO_in_pw_k2(const int& ik,
         std::vector<std::complex<float>> s_wfcatom(nbands * nbasis);
         castmem_z2c_h2h_op()(cpu_ctx, cpu_ctx, s_wfcatom.data(), wfcatom.c, nbands * nbasis);
 
-        if (GlobalV::KS_SOLVER == "cg")
+        if (PARAM.inp.ks_solver == "cg")
         {
             std::vector<float> etfile(nbands, 0.0);
             if (phm_in != nullptr)
@@ -256,7 +256,7 @@ void diago_PAO_in_pw_k2(const int& ik,
     {
         p_wf->random(wvf.get_pointer(), 0, nbands, ik, wfc_basis);
 
-        if (GlobalV::KS_SOLVER == "cg") // xiaohui add 2013-09-02
+        if (PARAM.inp.ks_solver == "cg") // xiaohui add 2013-09-02
         {
             if (phm_in != nullptr)
             {
@@ -282,8 +282,8 @@ void diago_PAO_in_pw_k2(const int& ik,
                          wfc_basis,
                          wfcatom,
                          GlobalC::ppcell.tab_at,
-                         GlobalV::NQX,
-                         GlobalV::DQ);
+                         PARAM.globalv.nqx,
+                         PARAM.globalv.dq);
 
         if (p_wf->init_wfc == "atomic+random" && starting_nw == GlobalC::ucell.natomwfc) // added by qianrui 2021-5-16
         {
@@ -301,7 +301,7 @@ void diago_PAO_in_pw_k2(const int& ik,
         castmem_z2c_h2h_op()(cpu_ctx, cpu_ctx, s_wfcatom.data(), wfcatom.c, starting_nw * nbasis);
 
         // if(GlobalV::DIAGO_TYPE == "cg") xiaohui modify 2013-09-02
-        if (GlobalV::KS_SOLVER == "cg") // xiaohui add 2013-09-02
+        if (PARAM.inp.ks_solver == "cg") // xiaohui add 2013-09-02
         {
             if (phm_in != nullptr)
             {
@@ -353,7 +353,7 @@ void diago_PAO_in_pw_k2(const int& ik,
         ModuleIO::read_wfc_pw(filename.str(), wfc_basis, ik, p_wf->nkstot, wfcatom);
 
 
-        if (GlobalV::KS_SOLVER == "cg")
+        if (PARAM.inp.ks_solver == "cg")
         {
             std::vector<double> etfile(nbands, 0.0);
             if (phm_in != nullptr)
@@ -412,7 +412,7 @@ void diago_PAO_in_pw_k2(const int& ik,
     if (p_wf->init_wfc == "random" || (p_wf->init_wfc.substr(0, 6) == "atomic" && GlobalC::ucell.natomwfc == 0))
     {
         p_wf->random(wvf.get_pointer(), 0, nbands, ik, wfc_basis);
-        if (GlobalV::KS_SOLVER == "cg") // xiaohui add 2013-09-02
+        if (PARAM.inp.ks_solver == "cg") // xiaohui add 2013-09-02
         {
             if (phm_in != nullptr)
             {
@@ -439,8 +439,8 @@ void diago_PAO_in_pw_k2(const int& ik,
                          wfc_basis,
                          wfcatom,
                          GlobalC::ppcell.tab_at,
-                         GlobalV::NQX,
-                         GlobalV::DQ);
+                         PARAM.globalv.nqx,
+                         PARAM.globalv.dq);
 
         if (p_wf->init_wfc == "atomic+random" && starting_nw == GlobalC::ucell.natomwfc) // added by qianrui 2021-5-16
         {
@@ -455,7 +455,7 @@ void diago_PAO_in_pw_k2(const int& ik,
 
         // (7) Diago with cg method.
         // if(GlobalV::DIAGO_TYPE == "cg") xiaohui modify 2013-09-02
-        if (GlobalV::KS_SOLVER == "cg") // xiaohui add 2013-09-02
+        if (PARAM.inp.ks_solver == "cg") // xiaohui add 2013-09-02
         {
             if (phm_in != nullptr)
             {
@@ -547,8 +547,8 @@ void diago_PAO_in_pw_k2(const base_device::DEVICE_GPU* ctx,
                          wfc_basis,
                          wfcatom,
                          GlobalC::ppcell.tab_at,
-                         GlobalV::NQX,
-                         GlobalV::DQ);
+                         PARAM.globalv.nqx,
+                         PARAM.globalv.dq);
         if (p_wf->init_wfc == "atomic+random" && starting_nw == GlobalC::ucell.natomwfc) // added by qianrui 2021-5-16
         {
             p_wf->atomicrandom(wfcatom, 0, starting_nw, ik, wfc_basis);
@@ -566,13 +566,13 @@ void diago_PAO_in_pw_k2(const base_device::DEVICE_GPU* ctx,
     }
 
     std::complex<float>* c_wfcatom = nullptr;
-    if (GlobalV::KS_SOLVER != "bpcg")
+    if (PARAM.inp.ks_solver != "bpcg")
     {
         // store wfcatom on the GPU
         resmem_cd_op()(gpu_ctx, c_wfcatom, wfcatom.nr * wfcatom.nc);
         castmem_z2c_h2d_op()(gpu_ctx, cpu_ctx, c_wfcatom, wfcatom.c, wfcatom.nr * wfcatom.nc);
     }
-    if (GlobalV::KS_SOLVER == "cg") // xiaohui add 2013-09-02
+    if (PARAM.inp.ks_solver == "cg") // xiaohui add 2013-09-02
     {
         // (7) Diago with cg method.
         if (phm_in != nullptr)
@@ -591,7 +591,7 @@ void diago_PAO_in_pw_k2(const base_device::DEVICE_GPU* ctx,
             // GlobalC::hm.diagH_subspace(ik ,starting_nw, nbands, wfcatom, wfcatom, etatom.data());
         }
     }
-    else if (GlobalV::KS_SOLVER == "dav" || GlobalV::KS_SOLVER == "dav_subspace")
+    else if (PARAM.inp.ks_solver == "dav" || PARAM.inp.ks_solver == "dav_subspace")
     {
         assert(nbands <= wfcatom.nr);
         // replace by haozhihan 2022-11-23
@@ -602,11 +602,11 @@ void diago_PAO_in_pw_k2(const base_device::DEVICE_GPU* ctx,
                                                                                     &wvf(0, 0),
                                                                                     nbasis);
     }
-    else if (GlobalV::KS_SOLVER == "bpcg")
+    else if (PARAM.inp.ks_solver == "bpcg")
     {
         castmem_z2c_h2d_op()(gpu_ctx, cpu_ctx, &wvf(0, 0), wfcatom.c, wfcatom.nr * wfcatom.nc);
     }
-    if (GlobalV::KS_SOLVER != "bpcg")
+    if (PARAM.inp.ks_solver != "bpcg")
     {
         delmem_cd_op()(gpu_ctx, c_wfcatom);
     }
@@ -650,8 +650,8 @@ void diago_PAO_in_pw_k2(const base_device::DEVICE_GPU* ctx,
                          wfc_basis,
                          wfcatom,
                          GlobalC::ppcell.tab_at,
-                         GlobalV::NQX,
-                         GlobalV::DQ);
+                         PARAM.globalv.nqx,
+                         PARAM.globalv.dq);
         if (p_wf->init_wfc == "atomic+random" && starting_nw == GlobalC::ucell.natomwfc) // added by qianrui 2021-5-16
         {
             p_wf->atomicrandom(wfcatom, 0, starting_nw, ik, wfc_basis);
@@ -669,13 +669,13 @@ void diago_PAO_in_pw_k2(const base_device::DEVICE_GPU* ctx,
     }
 
     std::complex<double>* z_wfcatom = nullptr;
-    if (GlobalV::KS_SOLVER != "bpcg")
+    if (PARAM.inp.ks_solver != "bpcg")
     {
         // store wfcatom on the GPU
         resmem_zd_op()(gpu_ctx, z_wfcatom, wfcatom.nr * wfcatom.nc);
         syncmem_z2z_h2d_op()(gpu_ctx, cpu_ctx, z_wfcatom, wfcatom.c, wfcatom.nr * wfcatom.nc);
     }
-    if (GlobalV::KS_SOLVER == "cg") // xiaohui add 2013-09-02
+    if (PARAM.inp.ks_solver == "cg") // xiaohui add 2013-09-02
     {
         // (7) Diago with cg method.
         if (phm_in != nullptr)
@@ -694,7 +694,7 @@ void diago_PAO_in_pw_k2(const base_device::DEVICE_GPU* ctx,
             // GlobalC::hm.diagH_subspace(ik ,starting_nw, nbands, wfcatom, wfcatom, etatom.data());
         }
     }
-    else if (GlobalV::KS_SOLVER == "dav" || GlobalV::KS_SOLVER == "dav_subspace")
+    else if (PARAM.inp.ks_solver == "dav" || PARAM.inp.ks_solver == "dav_subspace")
     {
         assert(nbands <= wfcatom.nr);
         // replace by haozhihan 2022-11-23
@@ -705,12 +705,12 @@ void diago_PAO_in_pw_k2(const base_device::DEVICE_GPU* ctx,
                                                                                      &wvf(0, 0),
                                                                                      nbasis);
     }
-    else if (GlobalV::KS_SOLVER == "bpcg")
+    else if (PARAM.inp.ks_solver == "bpcg")
     {
         syncmem_z2z_h2d_op()(gpu_ctx, cpu_ctx, &wvf(0, 0), wfcatom.c, wfcatom.nr * wfcatom.nc);
     }
 
-    if (GlobalV::KS_SOLVER != "bpcg")
+    if (PARAM.inp.ks_solver != "bpcg")
     {
         delmem_zd_op()(gpu_ctx, z_wfcatom);
     }
@@ -728,10 +728,10 @@ void wavefunc::init_after_vc(const int nks)
 
     assert(this->npwx > 0);
     assert(nks > 0);
-    assert(GlobalV::NBANDS > 0);
+    assert(PARAM.inp.nbands > 0);
 
     const int nks2 = nks;
-    const int nbasis = this->npwx * GlobalV::NPOL;
+    const int nbasis = this->npwx * PARAM.globalv.npol;
 
     if ((PARAM.inp.basis_type == "lcao" || PARAM.inp.basis_type == "lcao_in_pw") || winput::out_spillage == 2)
     {
@@ -742,7 +742,7 @@ void wavefunc::init_after_vc(const int nks)
         this->wanf2 = new ModuleBase::ComplexMatrix[nks2];
         for (int ik = 0; ik < nks2; ik++)
         {
-            this->wanf2[ik].create(GlobalV::NLOCAL, nbasis);
+            this->wanf2[ik].create(PARAM.globalv.nlocal, nbasis);
         }
     }
 

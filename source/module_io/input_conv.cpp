@@ -166,19 +166,6 @@ void Input_Conv::Convert()
     //----------------------------------------------------------
     // main parameters / electrons / spin ( 10/16 )
     //----------------------------------------------------------
-    //  suffix
-    if (PARAM.inp.calculation == "md" && PARAM.mdp.md_restart) // md restart  liuyu add 2023-04-12
-    {
-        int istep = 0;
-        double temperature = 0.0;
-        MD_func::current_md_info(GlobalV::MY_RANK, PARAM.globalv.global_readin_dir, istep, temperature);
-        if (PARAM.inp.read_file_dir == "auto")
-        {
-            GlobalV::stru_file = PARAM.globalv.global_stru_dir + "STRU_MD_" + std::to_string(istep);
-        }
-    } else if (PARAM.inp.stru_file != "") {
-        GlobalV::stru_file = PARAM.inp.stru_file;
-    }
 
     ModuleBase::GlobalFunc::OUT(GlobalV::ofs_running, "pseudo_dir", PARAM.inp.pseudo_dir);
     ModuleBase::GlobalFunc::OUT(GlobalV::ofs_running, "orbital_dir", PARAM.inp.orbital_dir);
@@ -194,13 +181,7 @@ void Input_Conv::Convert()
     }
 
 
-    GlobalV::NBANDS = PARAM.inp.nbands;
-
-    GlobalV::device_flag = base_device::information::get_device_flag(PARAM.inp.device,
-                                                                     PARAM.inp.ks_solver,
-                                                                     PARAM.inp.basis_type);
-
-    if (GlobalV::device_flag == "gpu" && PARAM.inp.basis_type == "pw")
+    if (PARAM.inp.device  == "gpu" && PARAM.inp.basis_type == "pw")
     {
         GlobalV::KPAR = base_device::information::get_device_kpar(PARAM.inp.kpar);
     }
@@ -216,7 +197,7 @@ void Input_Conv::Convert()
     {
         GlobalV::KPAR = PARAM.inp.kpar;
     }
-    if (GlobalV::device_flag == "cpu" and PARAM.inp.precision == "single")
+    if (PARAM.inp.device  == "cpu" and PARAM.inp.precision == "single")
     {
 // cpu single precision is not supported while float_fftw lib is not available
 #ifndef __ENABLE_FLOAT_FFTW
@@ -226,8 +207,6 @@ void Input_Conv::Convert()
             \n Please recompile with cmake flag \"-DENABLE_FLOAT_FFTW=ON\".\n");
 #endif // __ENABLE_FLOAT_FFTW
     }
-
-    GlobalV::NSPIN = PARAM.inp.nspin;
 
 
 #ifdef __LCAO
@@ -242,20 +221,14 @@ void Input_Conv::Convert()
     Ions_Move_Basic::relax_bfgs_rmin = PARAM.inp.relax_bfgs_rmin;
     Ions_Move_Basic::relax_bfgs_init = PARAM.inp.relax_bfgs_init;
     Ions_Move_Basic::out_stru = PARAM.inp.out_stru; // mohan add 2012-03-23
+    Ions_Move_Basic::relax_method = PARAM.inp.relax_method;
     Lattice_Change_Basic::fixed_axes = PARAM.inp.fixed_axes;
-
-    GlobalV::CAL_STRESS = PARAM.inp.cal_stress;
-
-
-    GlobalV::RELAX_METHOD = PARAM.inp.relax_method;
 
 
     Ions_Move_CG::RELAX_CG_THR = PARAM.inp.relax_cg_thr; // pengfei add 2013-09-09
 
     ModuleSymmetry::Symmetry::symm_flag = std::stoi(PARAM.inp.symmetry);
     ModuleSymmetry::Symmetry::symm_autoclose = PARAM.inp.symmetry_autoclose;
-    GlobalV::KS_SOLVER = PARAM.inp.ks_solver;
-    GlobalV::SEARCH_RADIUS = PARAM.inp.search_radius;
 
     //----------------------------------------------------------
     // planewave (8/8)
@@ -264,10 +237,7 @@ void Input_Conv::Convert()
     //----------------------------------------------------------
     // diagonalization  (5/5)
     //----------------------------------------------------------
-    GlobalV::PW_DIAG_NDIM = PARAM.inp.pw_diag_ndim;
 
-    GlobalV::PW_DIAG_THR = PARAM.inp.pw_diag_thr;
-    GlobalV::NB2D = PARAM.inp.nb2d;
 
     //----------------------------------------------------------
     // iteration (1/3)
@@ -289,37 +259,6 @@ void Input_Conv::Convert()
         }
     }
 #endif
-    //--------------------------------------------
-    // added by zhengdy-soc
-    //--------------------------------------------
-    if (PARAM.inp.noncolin || PARAM.inp.lspinorb)
-    {
-        GlobalV::NSPIN = 4;
-    }
-
-    if (GlobalV::NSPIN == 4)
-    {
-        GlobalV::NONCOLIN = PARAM.inp.noncolin;
-        // wavefunctions are spinors with 2 components
-        GlobalV::NPOL = 2;
-        // set the domag variable to make a spin-orbit calculation with zero
-        // magnetization
-        GlobalV::DOMAG = false;
-        GlobalV::DOMAG_Z = true;
-        GlobalV::LSPINORB = PARAM.inp.lspinorb;
-        if (PARAM.globalv.gamma_only_local)
-        {
-            ModuleBase::WARNING_QUIT("input_conv",
-                                     "nspin=4(soc or noncollinear-spin) does "
-                                     "not support gamma only calculation");
-        }
-    } else {
-        GlobalV::LSPINORB = false;
-        GlobalV::NONCOLIN = false;
-        GlobalV::DOMAG = false;
-        GlobalV::DOMAG_Z = false;
-        GlobalV::NPOL = 1;
-    }
 
     //----------------------------------------------------------
     // Yu Liu add 2022-05-18
@@ -332,12 +271,6 @@ void Input_Conv::Convert()
     //----------------------------------------------------------
     // Yu Liu add 2022-09-13
     //----------------------------------------------------------
-    GlobalV::nelec = PARAM.inp.nelec;
-    if (PARAM.globalv.two_fermi)
-    {
-        GlobalV::TWO_EFERMI = true;
-        GlobalV::nupdown = PARAM.inp.nupdown;
-    }
     elecstate::Gatefield::zgate = PARAM.inp.zgate;
     elecstate::Gatefield::relax = PARAM.inp.relax;
     elecstate::Gatefield::block = PARAM.inp.block;
@@ -441,7 +374,7 @@ void Input_Conv::Convert()
         // EXX case, convert all EXX related variables
         // GlobalC::exx_info.info_global.cal_exx = true;
         GlobalC::exx_info.info_global.hybrid_alpha = std::stod(PARAM.inp.exx_hybrid_alpha);
-        XC_Functional::get_hybrid_alpha(std::stod(PARAM.inp.exx_hybrid_alpha));
+        XC_Functional::set_hybrid_alpha(std::stod(PARAM.inp.exx_hybrid_alpha));
         GlobalC::exx_info.info_global.hse_omega = PARAM.inp.exx_hse_omega;
         GlobalC::exx_info.info_global.separate_loop = PARAM.inp.exx_separate_loop;
         GlobalC::exx_info.info_global.hybrid_step = PARAM.inp.exx_hybrid_step;
@@ -488,7 +421,7 @@ void Input_Conv::Convert()
     }
     // In these case, inversion symmetry is also not allowed, symmetry should be
     // reset to -1
-    if (GlobalV::LSPINORB)
+    if (PARAM.inp.lspinorb)
     {
         ModuleSymmetry::Symmetry::symm_flag = -1;
     }
@@ -513,8 +446,6 @@ void Input_Conv::Convert()
     //----------------------------------------------------------
     // wavefunction / charge / potential / (2/4)
     //----------------------------------------------------------
-    GlobalV::nelec = PARAM.inp.nelec;
-    GlobalV::out_pot = PARAM.inp.out_pot;
 
 #ifdef __LCAO
 
@@ -557,45 +488,6 @@ void Input_Conv::Convert()
 //-----------------------------------------------
 // caoyu add for DeePKS
 //-----------------------------------------------
-#ifdef __DEEPKS
-    GlobalV::deepks_scf = PARAM.inp.deepks_scf;
-    GlobalV::deepks_bandgap = PARAM.inp.deepks_bandgap; // QO added for bandgap label 2021-12-15
-    GlobalV::deepks_v_delta = PARAM.inp.deepks_v_delta;
-    GlobalV::deepks_out_labels = PARAM.inp.deepks_out_labels;
-    GlobalV::deepks_equiv = PARAM.inp.deepks_equiv;
-
-    if (GlobalV::deepks_equiv && GlobalV::deepks_bandgap) {
-        ModuleBase::WARNING_QUIT(
-            "Input_conv",
-            "deepks_equiv and deepks_bandgap cannot be used together");
-    }
-    if (PARAM.inp.deepks_out_unittest)
-    {
-        GlobalV::deepks_out_labels = true;
-        GlobalV::deepks_scf = true;
-        if (GlobalV::NPROC > 1)
-        {
-            ModuleBase::WARNING_QUIT("Input_conv", "generate deepks unittest with only 1 processor");
-        }
-        if (PARAM.inp.cal_force != 1)
-        {
-            ModuleBase::WARNING_QUIT("Input_conv", "force is required in generating deepks unittest");
-        }
-        if (GlobalV::CAL_STRESS != 1)
-        {
-            ModuleBase::WARNING_QUIT("Input_conv", "stress is required in generating deepks unittest");
-        }
-    }
-    if (GlobalV::deepks_scf || GlobalV::deepks_out_labels)
-    {
-        GlobalV::deepks_setorb = true;
-    }
-#else
-    if (PARAM.inp.deepks_scf || PARAM.inp.deepks_out_labels || PARAM.inp.deepks_bandgap || PARAM.inp.deepks_v_delta)
-    {
-        ModuleBase::WARNING_QUIT("Input_conv", "please compile with DeePKS");
-    }
-#endif
     //-----------------------------------------------
     // sunml add for implicit solvation model
     //-----------------------------------------------

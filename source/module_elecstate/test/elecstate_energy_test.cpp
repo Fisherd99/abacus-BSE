@@ -76,18 +76,18 @@ class MockElecState : public ElecState
         PARAM.input.imp_sol = false;
         PARAM.input.dft_plus_u = 0;
         // base class
-        GlobalV::NSPIN = 1;
-        GlobalV::nelec = 10.0;
-        GlobalV::nupdown = 0.0;
-        GlobalV::TWO_EFERMI = false;
-        GlobalV::NBANDS = 6;
-        GlobalV::NLOCAL = 6;
+        PARAM.input.nspin = 1;
+        PARAM.input.nelec = 10.0;
+        PARAM.input.nupdown  = 0.0;
+        PARAM.sys.two_fermi = false;
+        PARAM.input.nbands = 6;
+        PARAM.sys.nlocal = 6;
         PARAM.input.esolver_type = "ksdft";
-        GlobalV::LSPINORB = false;
+        PARAM.input.lspinorb = false;
         PARAM.input.basis_type = "pw";
         GlobalV::KPAR = 1;
         GlobalV::NPROC_IN_POOL = 1;
-        PARAM.input.sc_mag_switch = 1;
+        PARAM.input.sc_mag_switch = true;
     }
 };
 const double* ElecState::getRho(int spin) const
@@ -193,10 +193,10 @@ TEST_F(ElecStateEnergyTest, CalBandgap)
     K_Vectors* klist = new K_Vectors;
     klist->set_nks(5);
     elecstate->klist = klist;
-    elecstate->ekb.create(klist->get_nks(), GlobalV::NBANDS);
+    elecstate->ekb.create(klist->get_nks(), PARAM.input.nbands);
     for (int ik = 0; ik < klist->get_nks(); ik++)
     {
-        for (int ib = 0; ib < GlobalV::NBANDS; ib++)
+        for (int ib = 0; ib < PARAM.input.nbands; ib++)
         {
             elecstate->ekb(ik, ib) = ib;
         }
@@ -230,10 +230,10 @@ TEST_F(ElecStateEnergyTest, CalBandgapUpDw)
         } 
     }
     elecstate->klist = klist;
-    elecstate->ekb.create(klist->get_nks(), GlobalV::NBANDS);
+    elecstate->ekb.create(klist->get_nks(), PARAM.input.nbands);
     for (int ik = 0; ik < klist->get_nks(); ik++)
     {
-        for (int ib = 0; ib < GlobalV::NBANDS; ib++)
+        for (int ib = 0; ib < PARAM.input.nbands; ib++)
         {
             if (ik < 3)
             {

@@ -164,23 +164,23 @@ void Charge::check_rho()
 
 void Set_GlobalV_Default()
 {
-    GlobalV::device_flag = "cpu";
+    PARAM.input.device = "cpu";
     PARAM.input.precision = "double";
-    GlobalV::DOMAG = false;
-    GlobalV::DOMAG_Z = false;
+    PARAM.sys.domag = false;
+    PARAM.sys.domag_z = false;
     // Base class dependent
-    GlobalV::NSPIN = 1;
-    GlobalV::nelec = 10.0;
-    GlobalV::nupdown = 0.0;
-    GlobalV::TWO_EFERMI = false;
-    GlobalV::NBANDS = 6;
-    GlobalV::NLOCAL = 6;
+    PARAM.input.nspin = 1;
+    PARAM.input.nelec = 10.0;
+    PARAM.input.nupdown  = 0.0;
+    PARAM.sys.two_fermi = false;
+    PARAM.input.nbands = 6;
+    PARAM.sys.nlocal = 6;
     PARAM.input.esolver_type = "ksdft";
-    GlobalV::LSPINORB = false;
+    PARAM.input.lspinorb = false;
     PARAM.input.basis_type = "pw";
     GlobalV::KPAR = 1;
     GlobalV::NPROC_IN_POOL = 1;
-    GlobalV::use_uspp = false;
+    PARAM.sys.use_uspp = false;
 }
 
 /************************************************
@@ -299,7 +299,7 @@ TEST_F(ElecStatePWTest, InitRhoDataSingle)
 {
     PARAM.input.precision = "single";
     elecstate::tmp_xc_func_type = 3;
-    chg->nspin = GlobalV::NSPIN;
+    chg->nspin = PARAM.input.nspin;
     chg->nrxx = 1000;
     elecstate_pw_s = new elecstate::ElecStatePW<std::complex<float>, base_device::DEVICE_CPU>(wfcpw,
                                                                                               chg,

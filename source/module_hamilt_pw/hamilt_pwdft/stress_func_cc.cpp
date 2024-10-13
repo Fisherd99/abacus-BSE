@@ -1,8 +1,14 @@
 #include "stress_func.h"
 #include "module_hamilt_general/module_xc/xc_functional.h"
+#include "module_parameter/parameter.h"
 #include "module_base/math_integral.h"
 #include "module_base/timer.h"
 #include "module_hamilt_pw/hamilt_pwdft/global.h"
+
+#ifdef USE_LIBXC
+#include "module_hamilt_general/module_xc/xc_functional_libxc.h"
+#endif
+
 
 //NLCC term, need to be tested
 template <typename FPTYPE, typename Device>
@@ -46,7 +52,7 @@ void Stress_Func<FPTYPE, Device>::stress_cc(ModuleBase::matrix& sigma,
 	{
 #ifdef USE_LIBXC
         const auto etxc_vtxc_v
-            = XC_Functional::v_xc_meta(rho_basis->nrxx, GlobalC::ucell.omega, GlobalC::ucell.tpiba, chr);
+            = XC_Functional_Libxc::v_xc_meta(XC_Functional::get_func_id(), rho_basis->nrxx, GlobalC::ucell.omega, GlobalC::ucell.tpiba, chr);
 
         // etxc = std::get<0>(etxc_vtxc_v);
         // vtxc = std::get<1>(etxc_vtxc_v);
@@ -57,7 +63,7 @@ void Stress_Func<FPTYPE, Device>::stress_cc(ModuleBase::matrix& sigma,
 	}
 	else
 	{
-		if(GlobalV::NSPIN==4) { GlobalC::ucell.cal_ux();
+		if(PARAM.inp.nspin==4) { GlobalC::ucell.cal_ux();
 }
         const auto etxc_vtxc_v = XC_Functional::v_xc(rho_basis->nrxx, chr, &GlobalC::ucell);
         // etxc = std::get<0>(etxc_vtxc_v); // may delete?
@@ -67,7 +73,7 @@ void Stress_Func<FPTYPE, Device>::stress_cc(ModuleBase::matrix& sigma,
 
     std::complex<FPTYPE>* psic = new std::complex<FPTYPE>[rho_basis->nmaxgr];
 
-    if(GlobalV::NSPIN==1||GlobalV::NSPIN==4)
+    if(PARAM.inp.nspin==1||PARAM.inp.nspin==4)
 	{
 #ifdef _OPENMP
 #pragma omp parallel for schedule(static, 1024)

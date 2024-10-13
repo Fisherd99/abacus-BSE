@@ -148,7 +148,7 @@ namespace ModuleESolver
 
             if (PARAM.inp.out_bandgap)
             {
-                if (!GlobalV::TWO_EFERMI)
+                if (!PARAM.globalv.two_fermi)
                 {
                     this->pelec->cal_bandgap();
                 }
@@ -172,7 +172,7 @@ namespace ModuleESolver
         this->pelec->cal_energies(1);
 
         Symmetry_rho srho;
-        for (int is = 0; is < GlobalV::NSPIN; is++)
+        for (int is = 0; is < PARAM.inp.nspin; is++)
         {
             srho.begin(is, *(this->pelec->charge), this->pw_rhod, GlobalC::ucell.symm);
         }
@@ -197,7 +197,7 @@ namespace ModuleESolver
         ESolver_KS_PW<T>::iter_finish(iter);
 
 #ifdef __EXX
-        if (GlobalC::exx_info.info_global.cal_exx && this->conv_elec)
+        if (GlobalC::exx_info.info_global.cal_exx && this->conv_esolver)
         {
             // no separate_loop case
             if (!GlobalC::exx_info.info_global.separate_loop)
@@ -215,7 +215,7 @@ namespace ModuleESolver
                     iter = 0;
                     std::cout << " Entering 2nd SCF, where EXX is updated" << std::endl;
                     this->two_level_step++;
-                    this->conv_elec = false;
+                    this->conv_esolver = false;
                 }
             }
             // has separate_loop case
@@ -223,7 +223,7 @@ namespace ModuleESolver
             else if (this->two_level_step == GlobalC::exx_info.info_global.hybrid_step
                      || (iter == 1 && this->two_level_step != 0))
             {
-                this->conv_elec = true;
+                this->conv_esolver = true;
             }
             else
             {
@@ -247,7 +247,7 @@ namespace ModuleESolver
                           << (double)(t_end.tv_sec - t_start.tv_sec)
                                  + (double)(t_end.tv_usec - t_start.tv_usec) / 1000000.0
                           << std::defaultfloat << " (s)" << std::endl;
-                this->conv_elec = false;
+                this->conv_esolver = false;
             }
         }
 #endif
@@ -261,7 +261,7 @@ namespace ModuleESolver
 #ifdef __LCAO
         if (PARAM.inp.out_mat_xc)
         {
-            ModuleIO::write_Vxc(GlobalV::NSPIN, GlobalV::NLOCAL,
+            ModuleIO::write_Vxc(PARAM.inp.nspin, PARAM.globalv.nlocal,
                 GlobalV::DRANK, *this->kspw_psi, GlobalC::ucell, this->sf,
                 *this->pw_wfc, *this->pw_rho, *this->pw_rhod,
                 GlobalC::ppcell.vloc, *this->pelec->charge, this->kv, this->pelec->wg
