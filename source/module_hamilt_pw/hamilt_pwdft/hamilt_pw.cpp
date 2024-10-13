@@ -225,7 +225,7 @@ void HamiltPW<T, Device>::sPsi(const T* psi_in, // psi
     }
 
     syncmem_op()(this->ctx, this->ctx, spsi, psi_in, static_cast<size_t>(nbands * nrow));
-    if (GlobalV::use_uspp)
+    if (PARAM.globalv.use_uspp)
     {
         T* becp = nullptr;
         T* ps = nullptr;
@@ -276,7 +276,7 @@ void HamiltPW<T, Device>::sPsi(const T* psi_in, // psi
         setmem_complex_op()(this->ctx, ps, 0, this->ppcell->nkb * nbands);
 
         // spsi = psi + sum qq <beta|psi> |beta>
-        if (GlobalV::NONCOLIN)
+        if (PARAM.inp.noncolin)
         {
             // spsi_nc
             std::cout << " noncolinear in uspp is not implemented yet " << std::endl;

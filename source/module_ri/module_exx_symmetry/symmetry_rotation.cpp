@@ -1,5 +1,6 @@
 #include "symmetry_rotation.h"
 #include "module_base/constants.h"
+#include "module_parameter/parameter.h"
 #include <cmath>
 #include "module_base/parallel_reduce.h"
 #include "module_base/scalapack_connector.h"
@@ -99,7 +100,7 @@ namespace ModuleSymmetry
                 return z_conj;
             };
         std::vector<std::vector<std::complex<double>>> dm_k_full;
-        int nspin0 = GlobalV::NSPIN == 2 ? 2 : 1;
+        int nspin0 = PARAM.inp.nspin == 2 ? 2 : 1;
         dm_k_full.reserve(kv.get_nkstot_full() * nspin0); //nkstot_full didn't doubled by spin
         int nk = kv.get_nkstot() / nspin0;
         for (int is = 0;is < nspin0;++is) {
@@ -419,7 +420,7 @@ namespace ModuleSymmetry
         const char notrans = 'N';
         std::complex<double> alpha(1.0, 0.0);
         const std::complex<double> beta(0.0, 0.0);
-        const int nbasis = GlobalV::NLOCAL;
+        const int nbasis = PARAM.globalv.nlocal;
         const int i1 = 1;
         if (TRS_conj)
         {

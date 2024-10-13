@@ -14,7 +14,7 @@ void ModuleIO::write_dos_pw(const ModuleBase::matrix& ekb,
     ModuleBase::TITLE("ModuleIO", "write_dos_pw");
 
     int nspin0 = 1;
-    if (GlobalV::NSPIN == 2)
+    if (PARAM.inp.nspin == 2)
         nspin0 = 2;
 
     // find energy range
@@ -22,7 +22,7 @@ void ModuleIO::write_dos_pw(const ModuleBase::matrix& ekb,
     double emin = ekb(0, 0);
     for (int ik = 0; ik < kv.get_nks(); ++ik)
     {
-        for (int ib = 0; ib < GlobalV::NBANDS; ++ib)
+        for (int ib = 0; ib < PARAM.inp.nbands; ++ib)
         {
             emax = std::max(emax, ekb(ik, ib));
             emin = std::min(emin, ekb(ik, ib));
@@ -78,7 +78,7 @@ void ModuleIO::write_dos_pw(const ModuleBase::matrix& ekb,
                                 kv.get_nkstot(),
                                 kv.wk,
                                 kv.isk,
-                                GlobalV::NBANDS,
+                                PARAM.inp.nbands,
                                 ekb,
                                 wg);
     }

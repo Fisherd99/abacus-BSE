@@ -1,5 +1,6 @@
 #include "forces.h"
 #include "stress_func.h"
+#include "module_parameter/parameter.h"
 #include "module_hamilt_pw/hamilt_pwdft/global.h"
 #include "module_io/output_log.h"
 // new
@@ -22,6 +23,9 @@
 #include "module_cell/module_paw/paw_cell.h"
 #endif
 
+#ifdef USE_LIBXC
+#include "module_hamilt_general/module_xc/xc_functional_libxc.h"
+#endif
 
 
 template <typename FPTYPE, typename Device>
@@ -49,13 +53,13 @@ void Forces<FPTYPE, Device>::cal_force_cc(ModuleBase::matrix& forcecc,
         return;
     }
 
-    ModuleBase::matrix v(GlobalV::NSPIN, rho_basis->nrxx);
+    ModuleBase::matrix v(PARAM.inp.nspin, rho_basis->nrxx);
 
     if (XC_Functional::get_func_type() == 3 || XC_Functional::get_func_type() == 5)
     {
 #ifdef USE_LIBXC
         const auto etxc_vtxc_v
-            = XC_Functional::v_xc_meta(rho_basis->nrxx, ucell_in.omega, ucell_in.tpiba, chr);
+            = XC_Functional_Libxc::v_xc_meta(XC_Functional::get_func_id(), rho_basis->nrxx, ucell_in.omega, ucell_in.tpiba, chr);
 
         // etxc = std::get<0>(etxc_vtxc_v);
         // vtxc = std::get<1>(etxc_vtxc_v);
@@ -66,7 +70,7 @@ void Forces<FPTYPE, Device>::cal_force_cc(ModuleBase::matrix& forcecc,
     }
     else
     {
-        if (GlobalV::NSPIN == 4) {
+        if (PARAM.inp.nspin == 4) {
             ucell_in.cal_ux();
 }
         const auto etxc_vtxc_v = XC_Functional::v_xc(rho_basis->nrxx, chr, &ucell_in);
@@ -78,7 +82,7 @@ void Forces<FPTYPE, Device>::cal_force_cc(ModuleBase::matrix& forcecc,
 
     const ModuleBase::matrix vxc = v;
     std::complex<double>* psiv = new std::complex<double>[rho_basis->nmaxgr];
-    if (GlobalV::NSPIN == 1 || GlobalV::NSPIN == 4)
+    if (PARAM.inp.nspin == 1 || PARAM.inp.nspin == 4)
     {
 #ifdef _OPENMP
 #pragma omp parallel for schedule(static, 1024)

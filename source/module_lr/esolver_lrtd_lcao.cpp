@@ -20,12 +20,14 @@
 template<>
 void LR::ESolver_LR<double>::move_exx_lri(std::shared_ptr<Exx_LRI<double>>& exx_ks)
 {
+    ModuleBase::TITLE("ESolver_LR<double>", "move_exx_lri");
     this->exx_lri = exx_ks;
     exx_ks = nullptr;
 }
 template<>
 void LR::ESolver_LR<std::complex<double>>::move_exx_lri(std::shared_ptr<Exx_LRI<std::complex<double>>>& exx_ks)
 {
+    ModuleBase::TITLE("ESolver_LR<complex>", "move_exx_lri");
     this->exx_lri = exx_ks;
     exx_ks = nullptr;
 }
@@ -84,16 +86,16 @@ void LR::ESolver_LR<T, TR>::parameter_check()const
 template<typename T, typename TR>
 void LR::ESolver_LR<T, TR>::set_dimension()
 {
-    this->nspin = GlobalV::NSPIN;
+    this->nspin = PARAM.inp.nspin;
     if (nspin == 2) { std::cout << "** Assuming the spin-up and spin-down states are degenerate. **" << std::endl;
 }
     this->nstates = input.lr_nstates;
-    this->nbasis = GlobalV::NLOCAL;
+    this->nbasis = PARAM.globalv.nlocal;
     // calculate the number of occupied and unoccupied states
     // which determines the basis size of the excited states
     this->nocc_max = LR_Util::cal_nocc(LR_Util::cal_nelec(ucell));
     this->nocc = std::max(1, std::min(input.nocc, this->nocc_max));
-    this->nvirt = GlobalV::NBANDS - this->nocc_max;   //nbands-nocc
+    this->nvirt = PARAM.inp.nbands - this->nocc_max;   //nbands-nocc
     if (input.nvirt > this->nvirt) {
         GlobalV::ofs_warning << "ESolver_LR: input nvirt is too large to cover by nbands, set nvirt = nbands - nocc = " << this->nvirt << std::endl;
     } else if (input.nvirt > 0) { this->nvirt = input.nvirt;
@@ -128,7 +130,7 @@ LR::ESolver_LR<T, TR>::ESolver_LR(ModuleESolver::ESolver_KS_LCAO<T, TR>&& ks_sol
 #endif
 {
     redirect_log(inp.out_alllog);
-    ModuleBase::TITLE("ESolver_LR", "ESolver_LR");
+    ModuleBase::TITLE("ESolver_LR", "ESolver_LR(KS)");
 
     if (this->input.lr_solver == "spectrum") {
         throw std::invalid_argument("when lr_solver==spectrum, esolver_type must be set to `lr` to skip the KS calculation.");
@@ -164,7 +166,7 @@ LR::ESolver_LR<T, TR>::ESolver_LR(ModuleESolver::ESolver_KS_LCAO<T, TR>&& ks_sol
             this->eig_ks = std::move(ks_sol.pelec->ekb);
         };
 #ifdef __MPI
-    if (this->nbands == GlobalV::NBANDS) { move_gs(); }
+    if (this->nbands == PARAM.inp.nbands) { move_gs(); }
     else    // copy the part of ground state info according to paraC_
     {
         this->psi_ks = new psi::Psi<T>(this->kv.get_nks(), this->paraC_.get_col_size(), this->paraC_.get_row_size());
@@ -226,7 +228,7 @@ LR::ESolver_LR<T, TR>::ESolver_LR(const Input_para& inp, UnitCell& ucell) : inpu
 #endif
 {
     redirect_log(inp.out_alllog);
-    ModuleBase::TITLE("ESolver_LR", "ESolver_LR");
+    ModuleBase::TITLE("ESolver_LR", "ESolver_LR(from scratch)");
     // xc kernel
     this->xc_kernel = inp.xc_kernel;
     std::transform(xc_kernel.begin(), xc_kernel.end(), xc_kernel.begin(), tolower);
@@ -236,15 +238,14 @@ LR::ESolver_LR<T, TR>::ESolver_LR(const Input_para& inp, UnitCell& ucell) : inpu
     this->pelec = new elecstate::ElecStateLCAO<T>();
 
     // necessary steps in ESolver_KS::before_all_runners : symmetry and k-points
-    ucell.cal_nelec(GlobalV::nelec);
     if (ModuleSymmetry::Symmetry::symm_flag == 1)
     {
         GlobalC::ucell.symm.analy_sys(ucell.lat, ucell.st, ucell.atoms, GlobalV::ofs_running);
         ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "SYMMETRY");
     }
-    this->kv.set(ucell.symm, PARAM.inp.kpoint_file, GlobalV::NSPIN, ucell.G, ucell.latvec, GlobalV::ofs_running);
+    this->kv.set(ucell.symm, PARAM.inp.kpoint_file, PARAM.inp.nspin, ucell.G, ucell.latvec, GlobalV::ofs_running);
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "INIT K-POINTS");
-    Print_Info::setup_parameters(ucell, this->kv);
+    ModuleIO::setup_parameters(ucell, this->kv);
 
     this->parameter_check();
 
@@ -298,7 +299,8 @@ LR::ESolver_LR<T, TR>::ESolver_LR(const Input_para& inp, UnitCell& ucell) : inpu
 
     // search adjacent atoms and init Gint
     std::cout << "ucell.infoNL.get_rcutmax_Beta(): " << GlobalC::ucell.infoNL.get_rcutmax_Beta() << std::endl;
-    GlobalV::SEARCH_RADIUS = atom_arrange::set_sr_NL(GlobalV::ofs_running,
+    double search_radius = -1.0;
+    search_radius = atom_arrange::set_sr_NL(GlobalV::ofs_running,
         PARAM.inp.out_level,
         orb.get_rcutmax_Phi(),
         GlobalC::ucell.infoNL.get_rcutmax_Beta(),
@@ -307,7 +309,7 @@ LR::ESolver_LR<T, TR>::ESolver_LR(const Input_para& inp, UnitCell& ucell) : inpu
         GlobalV::ofs_running,
         GlobalC::GridD,
         this->ucell,
-        GlobalV::SEARCH_RADIUS,
+        search_radius,
         PARAM.inp.test_atom_input);
     this->set_gint();
     this->gint_->gridt = &this->gt_;
@@ -518,7 +520,7 @@ void LR::ESolver_LR<T, TR>::set_X_initial_guess()
     ix2ioiv = std::move(std::get<1>(indexmap));
 
     // use unit vectors as the initial guess
-    // for (int i = 0; i < std::min(this->nstates * GlobalV::PW_DIAG_NDIM, nocc * nvirt); i++)
+    // for (int i = 0; i < std::min(this->nstates * PARAM.inp.pw_diag_ndim, nocc * nvirt); i++)
     for (int is = 0;is < this->nspin;++is)
     {
         for (int s = 0; s < nstates; ++s)
@@ -560,7 +562,6 @@ template<typename T, typename TR>
 void LR::ESolver_LR<T, TR>::read_ks_wfc()
 {
     assert(this->psi_ks != nullptr);
-    GlobalV::NB2D = 1;
     this->pelec->ekb.create(this->kv.get_nks(), this->nbands);
     this->pelec->wg.create(this->kv.get_nks(), this->nbands);
 

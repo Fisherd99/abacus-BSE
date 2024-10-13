@@ -60,7 +60,7 @@ void ESolver_SDFT_PW::before_all_runners(const Input_para& inp, UnitCell& ucell)
                                                   pw_big);
 
     // 4) inititlize the charge density.
-    this->pelec->charge->allocate(GlobalV::NSPIN);
+    this->pelec->charge->allocate(PARAM.inp.nspin);
     this->pelec->omega = ucell.omega;
 
     // 5) initialize the potential.
@@ -78,7 +78,7 @@ void ESolver_SDFT_PW::before_all_runners(const Input_para& inp, UnitCell& ucell)
 
     // 6) prepare some parameters for electronic wave functions initilization
     this->p_wf_init = new psi::WFInit<std::complex<double>>(PARAM.inp.init_wfc,
-                                                            GlobalV::KS_SOLVER,
+                                                            PARAM.inp.ks_solver,
                                                             PARAM.inp.basis_type,
                                                             PARAM.inp.psi_initializer,
                                                             &this->wf,
@@ -86,7 +86,7 @@ void ESolver_SDFT_PW::before_all_runners(const Input_para& inp, UnitCell& ucell)
     // 7) set occupatio, redundant?
     if (PARAM.inp.ocp)
     {
-        this->pelec->fixed_weights(PARAM.inp.ocp_kb, GlobalV::NBANDS, GlobalV::nelec);
+        this->pelec->fixed_weights(PARAM.inp.ocp_kb, PARAM.inp.nbands, PARAM.inp.nelec);
     }
 
     // 8) initialize the global classes
@@ -120,7 +120,7 @@ void ESolver_SDFT_PW::before_all_runners(const Input_para& inp, UnitCell& ucell)
 
     ModuleBase::Memory::record("SDFT::shchi", size * sizeof(std::complex<double>));
 
-    if (GlobalV::NBANDS > 0)
+    if (PARAM.inp.nbands > 0)
     {
         this->stowf.chiortho
             = new psi::Psi<std::complex<double>>(kv.get_nks(), stowf.nchip_max, wf.npwx, kv.ngk.data());
@@ -182,8 +182,8 @@ void ESolver_SDFT_PW::hamilt2density(int istep, int iter, double ethr)
                     PARAM.inp.basis_type,
                     PARAM.inp.ks_solver,
                     PARAM.inp.use_paw,
-                    GlobalV::use_uspp,
-                    GlobalV::NSPIN,
+                    PARAM.globalv.use_uspp,
+                    PARAM.inp.nspin,
                     hsolver::DiagoIterAssist<std::complex<double>>::SCF_ITER,
                     hsolver::DiagoIterAssist<std::complex<double>>::PW_DIAG_NMAX,
                     hsolver::DiagoIterAssist<std::complex<double>>::PW_DIAG_THR,
@@ -206,7 +206,7 @@ void ESolver_SDFT_PW::hamilt2density(int istep, int iter, double ethr)
     if (GlobalV::MY_STOGROUP == 0)
     {
         Symmetry_rho srho;
-        for (int is = 0; is < GlobalV::NSPIN; is++)
+        for (int is = 0; is < PARAM.inp.nspin; is++)
         {
             srho.begin(is, *(this->pelec->charge), pw_rho, GlobalC::ucell.symm);
         }
@@ -333,7 +333,7 @@ void ESolver_SDFT_PW::nscf()
 
     const int iter = 1;
 
-    const double diag_thr = std::max(std::min(1e-5, 0.1 * PARAM.inp.scf_thr / std::max(1.0, GlobalV::nelec)), 1e-12);
+    const double diag_thr = std::max(std::min(1e-5, 0.1 * PARAM.inp.scf_thr / std::max(1.0, PARAM.inp.nelec)), 1e-12);
 
     std::cout << " DIGA_THR          : " << diag_thr << std::endl;
 

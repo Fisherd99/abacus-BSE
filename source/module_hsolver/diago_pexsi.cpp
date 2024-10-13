@@ -1,5 +1,6 @@
 #include <mpi.h>
 #include <complex>
+#include "module_parameter/parameter.h"
 #include <memory>
 #ifdef __PEXSI
 #include "diago_pexsi.h"
@@ -19,8 +20,8 @@ std::vector<double> DiagoPexsi<T>::mu_buffer;
 template <typename T>
 DiagoPexsi<T>::DiagoPexsi(const Parallel_Orbitals* ParaV_in)
 {
-    int nspin = GlobalV::NSPIN;
-    if (GlobalV::NSPIN == 4)
+    int nspin = PARAM.inp.nspin;
+    if (PARAM.inp.nspin == 4)
     {
         nspin = 1;
     }
@@ -46,8 +47,8 @@ DiagoPexsi<T>::DiagoPexsi(const Parallel_Orbitals* ParaV_in)
 template <typename T>
 DiagoPexsi<T>::~DiagoPexsi()
 {
-    int nspin = GlobalV::NSPIN;
-    if (GlobalV::NSPIN == 4)
+    int nspin = PARAM.inp.nspin;
+    if (PARAM.inp.nspin == 4)
     {
         nspin = 1;
     }
@@ -65,7 +66,7 @@ void DiagoPexsi<double>::diag(hamilt::Hamilt<double>* phm_in, psi::Psi<double>& 
     ModuleBase::TITLE("DiagoPEXSI", "diag");
     matd h_mat, s_mat;
     phm_in->matrix(h_mat, s_mat);
-    std::vector<double> eigen(GlobalV::NLOCAL, 0.0);
+    std::vector<double> eigen(PARAM.globalv.nlocal, 0.0);
     int ik = psi.get_current_k();
     this->ps->prepare(this->ParaV->blacs_ctxt,
                       this->ParaV->nb,

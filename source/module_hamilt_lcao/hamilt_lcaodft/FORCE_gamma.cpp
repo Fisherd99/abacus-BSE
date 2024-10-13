@@ -41,7 +41,7 @@ void Force_LCAO<double>::allocate(const Parallel_Orbitals& pv,
     ModuleBase::GlobalFunc::ZEROS(fsr.DSloc_z, pv.nloc);
     ModuleBase::Memory::record("Force::dS_GO", sizeof(double) * pv.nloc * 3);
     // allocate stress part in gamma_only-line, added by zhengdy-stress
-    if (GlobalV::CAL_STRESS)
+    if (PARAM.inp.cal_stress)
     {
         fsr.DSloc_11 = new double[pv.nloc];
         fsr.DSloc_12 = new double[pv.nloc];
@@ -73,6 +73,7 @@ void Force_LCAO<double>::allocate(const Parallel_Orbitals& pv,
     LCAO_domain::build_ST_new(fsr,
                               'S',
                               cal_deri,
+                              PARAM.inp.cal_stress,
                               GlobalC::ucell,
                               orb,
                               pv,
@@ -96,6 +97,7 @@ void Force_LCAO<double>::allocate(const Parallel_Orbitals& pv,
     LCAO_domain::build_ST_new(fsr,
                               'T',
                               cal_deri,
+                              PARAM.inp.cal_stress,
                               GlobalC::ucell,
                               orb,
                               pv,
@@ -133,7 +135,7 @@ void Force_LCAO<double>::finish_ftable(ForceStressArrays& fsr)
     delete[] fsr.DHloc_fixed_y;
     delete[] fsr.DHloc_fixed_z;
 
-    if (GlobalV::CAL_STRESS) // added by zhengdy-stress
+    if (PARAM.inp.cal_stress) // added by zhengdy-stress
     {
         delete[] fsr.DSloc_11;
         delete[] fsr.DSloc_12;
@@ -156,13 +158,13 @@ void Force_LCAO<double>::finish_ftable(ForceStressArrays& fsr)
 //{
 //    std::cout << "\n PRINT " << name << std::endl;
 //    std::cout << std::setprecision(6) << std::endl;
-//    for (int i = 0; i < GlobalV::NLOCAL; i++)
+//    for (int i = 0; i < PARAM.globalv.nlocal; i++)
 //    {
-//        for (int j = 0; j < GlobalV::NLOCAL; j++)
+//        for (int j = 0; j < PARAM.globalv.nlocal; j++)
 //        {
-//            if (std::abs(mm[i * GlobalV::NLOCAL + j]) > 1.0e-5)
+//            if (std::abs(mm[i * PARAM.globalv.nlocal + j]) > 1.0e-5)
 //            {
-//                std::cout << std::setw(12) << mm[i * GlobalV::NLOCAL + j];
+//                std::cout << std::setw(12) << mm[i * PARAM.globalv.nlocal + j];
 //            }
 //            else
 //            {
@@ -233,7 +235,7 @@ void Force_LCAO<double>::ftable(const bool isforce,
 
     // caoyu add for DeePKS
 #ifdef __DEEPKS
-    if (GlobalV::deepks_scf)
+    if (PARAM.inp.deepks_scf)
     {
         const std::vector<std::vector<double>>& dm_gamma = dm->get_DMK_vector();
 
@@ -269,7 +271,7 @@ void Force_LCAO<double>::ftable(const bool isforce,
 
         if (PARAM.inp.deepks_out_unittest)
         {
-            LCAO_deepks_io::print_dm(dm_gamma[0], GlobalV::NLOCAL, this->ParaV->nrow);
+            LCAO_deepks_io::print_dm(dm_gamma[0], PARAM.globalv.nlocal, this->ParaV->nrow);
 
             GlobalC::ld.check_projected_dm();
 

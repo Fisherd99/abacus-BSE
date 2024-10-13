@@ -51,6 +51,9 @@ TEST_F(InputParaTest, ParaRead)
     EXPECT_EQ(param.inp.nbands_sto, 256);
     EXPECT_EQ(param.inp.nbands_istate, 5);
     EXPECT_EQ(param.inp.bands_to_print.size(), 0);
+    EXPECT_EQ(param.inp.out_pchg.size(), 0);
+    EXPECT_EQ(param.inp.out_wfc_norm.size(), 0);
+    EXPECT_EQ(param.inp.out_wfc_re_im.size(), 0);
     EXPECT_FALSE(param.inp.if_separate_k);
     EXPECT_EQ(param.inp.pw_seed, 1);
     EXPECT_EQ(param.inp.emin_sto, 0.0);
@@ -180,6 +183,8 @@ TEST_F(InputParaTest, ParaRead)
     EXPECT_EQ(param.inp.out_freq_ion, 0);
     EXPECT_EQ(param.inp.out_chg[0], 0);
     EXPECT_EQ(param.inp.out_chg[1], 3);
+    EXPECT_EQ(param.inp.out_elf[0], 0);
+    EXPECT_EQ(param.inp.out_elf[1], 3);
     EXPECT_EQ(param.inp.out_dm, 0);
     EXPECT_EQ(param.inp.out_dm1, 0);
     EXPECT_EQ(param.inp.deepks_out_labels, 0);
@@ -350,9 +355,6 @@ TEST_F(InputParaTest, ParaRead)
     EXPECT_FALSE(param.inp.of_read_kernel);
     EXPECT_EQ(param.inp.of_kernel_file, "WTkernel.txt");
     EXPECT_EQ(param.inp.device, "cpu");
-    EXPECT_EQ(param.globalv.ncx, 0);
-    EXPECT_EQ(param.globalv.ncy, 0);
-    EXPECT_EQ(param.globalv.ncz, 0);
     EXPECT_NEAR(param.inp.force_thr_ev, 0.025711245953622324, 1e-8);
     EXPECT_DOUBLE_EQ(param.globalv.hubbard_u[0], 0);
     EXPECT_EQ(param.inp.orbital_corr[0], -1);

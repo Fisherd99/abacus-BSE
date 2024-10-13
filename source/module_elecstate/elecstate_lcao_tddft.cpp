@@ -1,5 +1,6 @@
 #include "elecstate_lcao_tddft.h"
 
+#include "module_parameter/parameter.h"
 #include "cal_dm.h"
 #include "module_base/timer.h"
 #include "module_elecstate/module_dm/cal_dm_psi.h"
@@ -22,14 +23,14 @@ void ElecStateLCAO_TDDFT::psiToRho_td(const psi::Psi<std::complex<double>>& psi)
     // this part for calculating DMK in 2d-block format, not used for charge now
     //    psi::Psi<std::complex<double>> dm_k_2d();
 
-    if (GlobalV::KS_SOLVER == "genelpa" || GlobalV::KS_SOLVER == "scalapack_gvx"
-        || GlobalV::KS_SOLVER == "lapack") // Peize Lin test 2019-05-15
+    if (PARAM.inp.ks_solver == "genelpa" || PARAM.inp.ks_solver == "scalapack_gvx"
+        || PARAM.inp.ks_solver == "lapack") // Peize Lin test 2019-05-15
     {
         elecstate::cal_dm_psi(this->DM->get_paraV_pointer(), this->wg, psi, *(this->DM));
         this->DM->cal_DMR();
     }
 
-    for (int is = 0; is < GlobalV::NSPIN; is++)
+    for (int is = 0; is < PARAM.inp.nspin; is++)
     {
         ModuleBase::GlobalFunc::ZEROS(this->charge->rho[is], this->charge->nrxx); // mohan 2009-11-10
     }
@@ -56,7 +57,7 @@ void ElecStateLCAO_TDDFT::calculate_weights_td()
     if (PARAM.inp.ocp == 1)
     {
         int num = 0;
-        num = this->klist->get_nks() * GlobalV::NBANDS;
+        num = this->klist->get_nks() * PARAM.inp.nbands;
         if (num != PARAM.inp.ocp_kb.size())
         {
             ModuleBase::WARNING_QUIT("ElecStateLCAO_TDDFT::calculate_weights_td",
@@ -68,7 +69,7 @@ void ElecStateLCAO_TDDFT::calculate_weights_td()
         {
             num_elec += PARAM.inp.ocp_kb[i];
         }
-        if (std::abs(num_elec - GlobalV::nelec) > 1.0e-5)
+        if (std::abs(num_elec - PARAM.inp.nelec) > 1.0e-5)
         {
             ModuleBase::WARNING_QUIT("ElecStateLCAO_TDDFT::calculate_weights_td",
                                      "total number of occupations is wrong , please check ocp_set");
@@ -76,9 +77,9 @@ void ElecStateLCAO_TDDFT::calculate_weights_td()
 
         for (int ik = 0; ik < this->klist->get_nks(); ik++)
         {
-            for (int ib = 0; ib < GlobalV::NBANDS; ib++)
+            for (int ib = 0; ib < PARAM.inp.nbands; ib++)
             {
-                this->wg(ik, ib) = PARAM.inp.ocp_kb[ik * GlobalV::NBANDS + ib];
+                this->wg(ik, ib) = PARAM.inp.ocp_kb[ik * PARAM.inp.nbands + ib];
             }
         }
     }

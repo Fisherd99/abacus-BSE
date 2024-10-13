@@ -16,7 +16,7 @@ void test_deepks::preparation()
     this->set_orbs(ucell.lat0);
     this->prep_neighbour();
 
-    this->ParaO.set_serial(GlobalV::NLOCAL, GlobalV::NLOCAL);
+    this->ParaO.set_serial(PARAM.sys.nlocal, PARAM.sys.nlocal);
 }
 
 void test_deepks::set_parameters()
@@ -27,7 +27,7 @@ void test_deepks::set_parameters()
     PARAM.sys.global_out_dir = "./";
     GlobalV::ofs_warning.open("warning.log");
     GlobalV::ofs_running.open("running.log");
-    GlobalV::deepks_setorb = true;
+    PARAM.sys.deepks_setorb = true;
     PARAM.input.cal_force = 1;
 
     std::ifstream ifs("INPUT");
@@ -161,7 +161,7 @@ void test_deepks::set_orbs(const double& lat0_in)
                            lcao_dk,
                            lcao_dr,
                            lcao_rmax,
-                           GlobalV::deepks_setorb,
+                           PARAM.sys.deepks_setorb,
                            out_mat_r,
                            PARAM.input.cal_force,
                            my_rank);
@@ -191,7 +191,7 @@ void test_deepks::set_orbs(const double& lat0_in)
 void test_deepks::setup_kpt()
 {
     this->kv.set("KPT",
-                 GlobalV::NSPIN,
+                 PARAM.input.nspin,
                  ucell.G,
                  ucell.latvec,
                  PARAM.sys.gamma_only_local,
