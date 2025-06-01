@@ -6,6 +6,7 @@
 #include "source_lcao/module_lr/utils/lr_util.h"
 #include "source_basis/module_nao/two_center_bundle.h"
 #include "source_lcao/module_rt/velocity_op.h"
+#include "module_lr/utils/lr_util_rR_reader.h"
 namespace LR
 {
     template<typename T>
@@ -23,7 +24,7 @@ namespace LR
             gint(gint), rho_basis(rho_basis), ucell(ucell), kv(kv_in), gd_(gd),
             orb_cutoff_(orb_cutoff), two_center_bundle_(two_center_bundle_),
             pX(pX_in), pc(pc_in), pmat(pmat_in),
-            eig(eig), X(X), nstate(nstate),
+            eig(eig), X(X), nstate(nstate), gauge(gauge),
             ldim(nk* (nspin_x == 2 ? pX_in[0].get_local_size() + pX_in[1].get_local_size() : pX_in[0].get_local_size())),
             gdim(nk* std::inner_product(nocc.begin(), nocc.end(), nvirt.begin(), 0))
         {
@@ -49,6 +50,8 @@ namespace LR
         void oscillator_strength();
         /// calculate the transition dipole of state S in length gauge: $\sum_{iak}X^S_{iak}<ik|r|ak>$
         ModuleBase::Vector3<T> cal_transition_dipole_istate_length(const int istate);
+        /// calculate the transition dipole of state S in length gauge from rR csr file
+        ModuleBase::Vector3<T> cal_transition_dipole_istate_length_from_file(const int istate, const LR_Util::rRFileReader& rRReader);
         /// calculate the transition dipole of all states in length gauge
         void cal_transition_dipoles_length();
         /// calculate the transition dipole of state S in velocity gauge: $i(\sum_{iak}X^S_{iak}<ik|v|ak>)/\Omega_S$
@@ -81,6 +84,7 @@ namespace LR
         const UnitCell& ucell;
         const std::vector<double>& orb_cutoff_;
         const TwoCenterBundle& two_center_bundle_;
+        const std::string& gauge;
 
         void cal_gint_rho(double** rho, const int& nrxx);
         std::map<std::string, int> get_pair_info(const int i); ///< given the index in X, return its ispin, ik, iocc, ivirt

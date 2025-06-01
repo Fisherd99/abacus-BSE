@@ -88,6 +88,13 @@ namespace LR_Util
     void setup_2d_division(Parallel_2D& pv, int nb, int gr, int gc);
 
 #ifdef __MPI
+    /// @brief assign global X to 2d-matrix, its col is band(excition state), and row is { spin, k-point, occ, virt }
+    /// @attention pX is 2d-blocked as {occ, virt}, this assignment is used to calculate transition density matrix c_b X_{bj} c_j
+    template <typename T>
+    void global2local_X(T* local_X, T* global_X, const int& nband, const int& nk, 
+        const std::vector<int>& nocc, const std::vector<int>& nvirt, const std::vector<Parallel_2D>& pX,
+        const bool openshell);
+
     // pack the process to setup 2d divion reusing blacs_ctxt of an existing 2d-matrix
     void setup_2d_division(Parallel_2D& pv, int nb, int gr, int gc, const int& blacs_ctxt_in);
     /// @brief  gather 2d matrix to full matrix

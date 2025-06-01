@@ -159,6 +159,32 @@ ModuleBase::Vector3<std::complex<double>> LR::LR_Spectrum<std::complex<double>>:
     return trans_dipole;
 }
 
+template<typename T>
+ModuleBase::Vector3<T> LR::LR_Spectrum<T>::cal_transition_dipole_istate_length_from_file(const int istate, const LR_Util::rRFileReader& rRReader)
+{
+    ModuleBase::Vector3<T> trans_dipole(0.0, 0.0, 0.0);
+    // 1. transition density matrix
+    const elecstate::DensityMatrix<T, T>& DM_trans= this->cal_transition_density_matrix(istate);
+
+    // 2. fold r(R) to r(k) and transition dipole moment = sum_k r(k)D(k)
+    for (int i = 0; i < 3; ++i) //direction
+    {
+        for (int is = 0;is < this->nspin_x;++is)
+        {
+            for (int ik = 0;ik < nk;++ik)
+            {
+                std::vector<T> rk(pmat.get_local_size(), 0.0);
+                hamilt::folding_HR(rRReader.rR[i], rk.data(), kv.kvec_d[ik], pmat.get_row_size(), 1);
+                trans_dipole[i] += std::inner_product(rk.begin(), rk.end(), DM_trans.get_DMK_pointer(is * nk + ik), static_cast<T>(0));
+            }
+        }   // end for spin_x, only matter in open-shell system
+        trans_dipole[i] *= static_cast<double>(this->nk);  // nk is divided inside DM_trans, now recover it
+        if (this->nspin_x == 1) { trans_dipole[i] *= sqrt(2.0); } // *2 for 2 spins, /sqrt(2) for the halfed dimension of X in the normalizaiton
+        Parallel_Reduce::reduce_all(trans_dipole[i]);
+    }   // end for direction
+    return trans_dipole;
+}
+
 template<> double LR::LR_Spectrum<double>::cal_mean_squared_dipole(ModuleBase::Vector3<double> dipole)
 {
     return dipole.norm2() / 3.;
@@ -174,6 +200,19 @@ void LR::LR_Spectrum<T>::cal_transition_dipoles_length()
 {
     transition_dipole_.resize(nstate);
     this->mean_squared_transition_dipole_.resize(nstate);
+    if (this->gauge == "length-file")
+    {
+        LR_Util::rRFileReader rRReader (PARAM.globalv.global_readin_dir + "data-rR-sparse.csr", this->pmat, ucell.nat);
+        rRReader.convert_rR_HContainer();
+        rRReader.output_rR_HContainer(PARAM.globalv.global_out_dir + "data-test-rR-sparse.csr");
+        for (int istate = 0;istate < nstate;++istate)
+        {
+            transition_dipole_[istate] = cal_transition_dipole_istate_length_from_file(istate, rRReader);
+            mean_squared_transition_dipole_[istate] = cal_mean_squared_dipole(transition_dipole_[istate]);
+        }
+        return;
+    }
+
     for (int istate = 0;istate < nstate;++istate)
     {
         transition_dipole_[istate] = cal_transition_dipole_istate_length(istate);
@@ -308,13 +347,14 @@ void LR::LR_Spectrum<T>::write_transition_dipole(const std::string& filename)
 {
     std::ofstream ofs(filename);
     ofs << "Transition dipole moment (a.u.)" << std::endl;
-    ofs << std::setw(20) << "State" << std::setw(20) << "x" << std::setw(20) << "y" << std::setw(20) << "z" << std::setw(20) << "average" << std::endl;
+    ofs << std::setw(6) << "State" << std::setw(13) << "Energy (eV)" << std::setw(15) << "x" << std::setw(23) << "|x|^2" << std::setw(19) << "y" << std::setw(23) <<"|y|^2" << std::setw(19) << "z" << std::setw(23) <<"|z|^2" << std::setw(13) << "average" << std::endl;
     for (int istate = 0;istate < nstate;++istate)
     {
-        ofs << std::setw(20) << istate << std::setw(20) << transition_dipole_[istate].x << std::setw(20)
-            << transition_dipole_[istate].y << std::setw(20)
-            << transition_dipole_[istate].z << std::setw(20)
-            << mean_squared_transition_dipole_[istate] << std::endl;
+        ofs << std::setw(4) << istate << std::setw(13) << std::setprecision(6) << eig[istate] * ModuleBase::Ry_to_eV
+        << std::setw(29) << transition_dipole_[istate].x << std::setw(13) << std::norm(transition_dipole_[istate].x)
+        << std::setw(29) << transition_dipole_[istate].y << std::setw(13) << std::norm(transition_dipole_[istate].y)
+        << std::setw(29) << transition_dipole_[istate].z << std::setw(13) << std::norm(transition_dipole_[istate].z)
+        << std::setw(13) << mean_squared_transition_dipole_[istate] << std::endl;
     }
     ofs.close();
 }

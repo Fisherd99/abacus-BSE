@@ -499,14 +499,16 @@ void LR::ESolver_LR<T, TR>::runner(UnitCell& ucell, const int istep)
     this->setup_eigenvectors_X();
     this->pelec->ekb.create(nspin, this->nstates);
 
-    auto efile = [&](const std::string& label)->std::string {return PARAM.globalv.global_out_dir + "Excitation_Energy_" + label + ".dat";};
-    auto vfile = [&](const std::string& label)->std::string {return PARAM.globalv.global_out_dir + "Excitation_Amplitude_" + label + "_" + std::to_string(GlobalV::MY_RANK) + ".dat";};
+    auto efile_out = [&](const std::string& label)->std::string {return PARAM.globalv.global_out_dir + "Excitation_Energy_" + label + ".dat";};
+    auto vfile_out = [&](const std::string& label)->std::string {return PARAM.globalv.global_out_dir + "Excitation_Amplitude_" + label + "_" + std::to_string(GlobalV::MY_RANK) + ".dat";};
+    auto efile_in = [&](const std::string& label)->std::string {return PARAM.globalv.global_readin_dir + "Excitation_Energy_" + label + ".dat";};
+    auto vfile_in = [&](const std::string& label)->std::string {return PARAM.globalv.global_readin_dir + "Excitation_Amplitude_" + label + "_" + std::to_string(GlobalV::MY_RANK) + ".dat";};
     if (this->input.lr_solver != "spectrum")
     {
         auto write_states = [&](const std::string& label, const Real<T>* e, const T* v, const int& dim, const int& nst, const int& prec = 8)->void
             {
-                if (GlobalV::MY_RANK == 0) { assert(nst == LR_Util::write_value(efile(label), prec, e, nst)); }
-                assert(nst * dim == LR_Util::write_value(vfile(label), prec, v, nst, dim));
+                if (GlobalV::MY_RANK == 0) { assert(nst == LR_Util::write_value(efile_out(label), prec, e, nst)); }
+                assert(nst * dim == LR_Util::write_value(vfile_out(label), prec, v, nst, dim));
             };
         std::vector<double> precondition(this->input.lr_solver == "lapack" ? 0 : nloc_per_band, 1.0);
         // allocate and initialize A matrix and density matrix
@@ -585,8 +587,8 @@ void LR::ESolver_LR<T, TR>::runner(UnitCell& ucell, const int istep)
     {
         auto read_states = [&](const std::string& label, Real<T>* e, T* v, const int& dim, const int& nst)->void
             {
-                if (GlobalV::MY_RANK == 0) { assert(nst == LR_Util::read_value(efile(label), e, nst)); }
-                assert(nst * dim == LR_Util::read_value(vfile(label), v, nst, dim));
+                if (GlobalV::MY_RANK == 0) { assert(nst == LR_Util::read_value(efile_in(label), e, nst)); }
+                assert(nst * dim == LR_Util::read_value(vfile_in(label), v, nst, dim));
             };
         std::cout << "reading the excitation amplitudes from file: \n";
         if (openshell)
@@ -633,7 +635,7 @@ void LR::ESolver_LR<T, TR>::after_all_runners(UnitCell& ucell)
             // =============================================== for test ====================================================
             // spectrum.optical_absorption_method2(freq, input.abs_broadening);
             // spectrum.test_transition_dipoles_velocity_ks(eig_ks.c);
-            // spectrum.write_transition_dipole(PARAM.globalv.global_out_dir + "dipole_velocity_ks.dat");
+            spectrum.write_transition_dipole(PARAM.globalv.global_out_dir + "dipole_test.dat");
             // =============================================== for test ====================================================
         }
     }

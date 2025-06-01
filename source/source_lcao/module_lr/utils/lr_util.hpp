@@ -142,8 +142,48 @@ namespace LR_Util
         psi_bfirst.fix_kb(ik_now, ib_now);
         return psi_kfirst;
     }
+//=================2D-block Parallel===============
 
 #ifdef __MPI
+    /// @brief assign global X to 2d-matrix, its col is band(excition state), and row is { spin, k-point, occ, virt }
+    /// @attention pX is 2d-blocked as {occ, virt}, this assignment is used to calculate transition density matrix c_b X_{bj} c_j
+    /// @todo this function is a merge version of HamiltULR::global2local and HamiltLR::global2local, they should be replaced
+    template <typename T>
+    void global2local_X(T* local_X, T* global_X, const int& nband, const int& nk, 
+        const std::vector<int>& nocc, const std::vector<int>& nvirt, const std::vector<Parallel_2D>& pX,
+        const bool openshell)
+    {
+        const int nspin_X = openshell ? 2 : 1;
+        const std::vector<int> npairs = { nocc[0] * nvirt[0], nocc[1] * nvirt[1] };
+        const int gdim = openshell ? nk * (npairs[0] + npairs[1] ) : nk * npairs[0];
+        const int ldim = openshell ? nk * (pX[0].get_local_size() + pX[1].get_local_size()) : nk * pX[0].get_local_size();
+        
+        for (int ib = 0;ib < nband;++ib)
+        {
+            const int loffset_b = ib * ldim;
+            const int goffset_b = ib * gdim;
+            for (int is = 0;is < nspin_X;++is)
+            {
+                const int loffset_bs = loffset_b + is * nk * pX[0].get_local_size();
+                const int goffset_bs = goffset_b + is * nk * npairs[0];                    
+                for (int ik = 0;ik < nk;++ik)
+                {
+                    const int loffset = loffset_bs + ik * pX[is].get_local_size();
+                    const int goffset = goffset_bs + ik * npairs[is];
+                    for (int lo = 0;lo < pX[is].get_col_size();++lo)
+                    {
+                        const int go = pX[is].local2global_col(lo);
+                        for (int lv = 0;lv < pX[is].get_row_size();++lv)
+                        {
+                            const int gv = pX[is].local2global_row(lv);
+                            local_X[loffset + lo * pX[is].get_row_size() + lv] = global_X[goffset + go * nvirt[is] + gv];
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     template <typename T>
     void gather_2d_to_full(const Parallel_2D& pv, const T* submat, T* fullmat, bool col_first, int global_nrow, int global_ncol)
     {
