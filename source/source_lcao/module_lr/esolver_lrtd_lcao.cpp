@@ -588,6 +588,10 @@ void LR::ESolver_LR<T, TR>::runner(UnitCell& ucell, const int istep)
         auto read_states = [&](const std::string& label, Real<T>* e, T* v, const int& dim, const int& nst)->void
             {
                 if (GlobalV::MY_RANK == 0) { assert(nst == LR_Util::read_value(efile_in(label), e, nst)); }
+#ifdef __MPI
+// in velocity gauge, the eigenvalues are used to calculate the transition dipole, so we'd better broadcast them
+                    MPI_Bcast(e, nst, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+#endif
                 assert(nst * dim == LR_Util::read_value(vfile_in(label), v, nst, dim));
             };
         std::cout << "reading the excitation amplitudes from file: \n";

@@ -117,7 +117,7 @@ class rRFileReader
 #endif */
                             // add AtomPair to HContainer
                             rR[idirection].insert_pair(tmp_ap);
-/**/
+/*
                             GlobalV::ofs_running<<"RANK:"<<GlobalV::MY_RANK<< " Now check HC data in atom pair: " << iat << " " << jat << " R: " << RCoord[0] << " " << RCoord[1] << " " << RCoord[2] << std::endl;
                             auto ap = rR[idirection].get_atom_pair(iat, jat);
                             double* data = ap.get_HR_values(RCoord[0], RCoord[1], RCoord[2]).get_pointer();
@@ -130,7 +130,7 @@ class rRFileReader
                             }
                             GlobalV::ofs_running.flush();
                             // seems only rank 0 can output to ofs_running
-
+*/
                         }
                     }
                 }
