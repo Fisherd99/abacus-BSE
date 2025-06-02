@@ -755,8 +755,9 @@ void LR::ESolver_LR<T, TR>::read_ks_wfc()
     }
 	else if (!ModuleIO::read_wfc_nao(PARAM.globalv.global_readin_dir, this->paraMat_, *this->psi_ks, 
 				this->pelec,
-				this->pelec->klist->ik2iktot,
-				this->pelec->klist->get_nkstot(),
+				this->kv.ik2iktot,
+				this->kv.get_nkstot(),
+                PARAM.inp.nspin,
 				/*skip_bands=*/this->nocc_max - this->nocc_in)) {
         ModuleBase::WARNING_QUIT("ESolver_LR", "read ground-state wavefunction failed.");
     }
@@ -768,11 +769,11 @@ void LR::ESolver_LR<T, TR>::read_ks_chg(Charge& chg_gs)
 {
     chg_gs.set_rhopw(this->pw_rho);
     chg_gs.allocate(this->nspin);
-    GlobalV::ofs_running << " try to read charge from file : ";
+    GlobalV::ofs_running << "LRTDDFT try to read charge from file : \n";
     for (int is = 0; is < this->nspin; ++is)
     {
         std::stringstream ssc;
-        ssc << PARAM.globalv.global_readin_dir << "SPIN" << is + 1 << "_CHG.cube";
+        ssc << PARAM.globalv.global_readin_dir << "chgs" << is + 1 << ".cube";
         GlobalV::ofs_running << ssc.str() << std::endl;
         double ef;
         if (ModuleIO::read_vdata_palgrid(Pgrid,
@@ -785,7 +786,7 @@ void LR::ESolver_LR<T, TR>::read_ks_chg(Charge& chg_gs)
         } else {    // prenspin for nspin=4 is not supported currently
             ModuleBase::WARNING_QUIT(
                 "init_rho",
-                "!!! Couldn't find the charge file !!! The default directory \n of SPIN1_CHG.cube is OUT.suffix, "
+                "!!! Couldn't find the charge file !!! The default directory \n of " + ssc.str() +" is OUT.suffix, "
                 "or you must set read_file_dir \n to a specific directory. ");
 }
     }
