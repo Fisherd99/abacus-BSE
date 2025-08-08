@@ -167,16 +167,24 @@ ModuleBase::Vector3<T> LR::LR_Spectrum<T>::cal_transition_dipole_istate_length_f
     const elecstate::DensityMatrix<T, T>& DM_trans= this->cal_transition_density_matrix(istate);
 
     // 2. fold r(R) to r(k) and transition dipole moment = sum_k r(k)D(k)
+    // ATTENTION: Since r_\mu\nu(R1,R1+R) = r_\mu\nu(R) + R1 S_\mu\nu(R), R1 should be considered carefully.
+    // But temporarily R1 is hard to decide, so only use length-file gauge in non-periodic system, 
+    // and put system in the center of the supercell, so that R1 is always 0. 
     for (int i = 0; i < 3; ++i) //direction
     {
         for (int is = 0;is < this->nspin_x;++is)
-        {
+        {// NOTE: both dot_R and folding_HR + inner_product are valid, keep both for test
+            /*
             for (int ik = 0;ik < nk;++ik)
             {
                 std::vector<T> rk(pmat.get_local_size(), 0.0);
                 hamilt::folding_HR(rRReader.rR[i], rk.data(), kv.kvec_d[ik], pmat.get_row_size(), 1);
                 trans_dipole[i] += std::inner_product(rk.begin(), rk.end(), DM_trans.get_DMK_pointer(is * nk + ik), static_cast<T>(0));
             }
+            */
+           //LR_Util::print_DMR(DM_trans, ucell.nat, "DM_trans");
+           //LR_Util::print_HR(rRReader.rR[i], ucell.nat, "rR_" + std::to_string(i));
+            trans_dipole[i] += LR_Util::dot_R_matrix(*DM_trans.get_DMR_pointer(is + 1), rRReader.rR[i], ucell.nat);
         }   // end for spin_x, only matter in open-shell system
         trans_dipole[i] *= static_cast<double>(this->nk);  // nk is divided inside DM_trans, now recover it
         if (this->nspin_x == 1) { trans_dipole[i] *= sqrt(2.0); } // *2 for 2 spins, /sqrt(2) for the halfed dimension of X in the normalizaiton

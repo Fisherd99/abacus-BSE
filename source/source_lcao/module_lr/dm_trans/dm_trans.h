@@ -11,7 +11,7 @@ namespace LR
 
 #ifndef MO_TYPE_H
 #define MO_TYPE_H
-    enum MO_TYPE { OO, VO, VV };
+    enum MO_TYPE { OO, VO, VV, ALL };
 #endif
 
 #ifdef __MPI

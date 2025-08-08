@@ -29,12 +29,13 @@ namespace LR
         assert(pmat_mo.get_local_size() > 0);
 
         const int nks = mat_ao.size();
+        int nmo1_set, nmo2_set, imo1_set, imo2_set;
+        set_dim(type, nocc, nvirt, nmo1_set, nmo2_set, imo1_set, imo2_set);
+        const int nmo1 = nmo1_set;
+        const int nmo2 = nmo2_set;
+        const int imo1 = imo1_set + 1;
+        const int imo2 = imo2_set + 1;
         const int i1 = 1;
-        const int ivirt = nocc + 1;
-        const int nmo1 = type == MO_TYPE::VV ? nvirt : nocc;
-        const int nmo2 = type == MO_TYPE::OO ? nocc : nvirt;
-        const int imo1 = type == MO_TYPE::VV ? ivirt : i1;
-        const int imo2 = type == MO_TYPE::OO ? i1 : ivirt;
 
         Parallel_2D pVc;        // for intermediate Vc
         LR_Util::setup_2d_division(pVc, pmat_ao.get_block_size(), naos, nmo1, pmat_ao.blacs_ctxt);
@@ -87,12 +88,13 @@ namespace LR
         assert(pmat_mo.get_local_size() > 0);
 
         const int nks = mat_ao.size();
+        int nmo1_set, nmo2_set, imo1_set, imo2_set;
+        set_dim(type, nocc, nvirt, nmo1_set, nmo2_set, imo1_set, imo2_set);
+        const int nmo1 = nmo1_set;
+        const int nmo2 = nmo2_set;
+        const int imo1 = imo1_set + 1;
+        const int imo2 = imo2_set + 1;
         const int i1 = 1;
-        const int ivirt = nocc + 1;
-        const int nmo1 = type == MO_TYPE::VV ? nvirt : nocc;
-        const int nmo2 = type == MO_TYPE::OO ? nocc : nvirt;
-        const int imo1 = type == MO_TYPE::VV ? ivirt : i1;
-        const int imo2 = type == MO_TYPE::OO ? i1 : ivirt;
 
         Parallel_2D pVc;        // for intermediate Vc
         LR_Util::setup_2d_division(pVc, pmat_ao.get_block_size(), naos, nmo1, pmat_ao.blacs_ctxt);

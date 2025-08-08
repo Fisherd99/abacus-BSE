@@ -82,15 +82,19 @@ void LR::ESolver_LR<T, TR>::parameter_check()const
 {
     const std::set<std::string> lr_solvers = { "dav", "lapack" , "spectrum", "dav_subspace", "cg" };
     const std::set<std::string> xc_kernels = { "rpa", "lda", "pwlda", "pbe", "hf" , "hse" };
+    const std::set<std::string> abs_gauge = { "velocity", "length", "length-file" };
     if (lr_solvers.find(this->input.lr_solver) == lr_solvers.end()) {
         throw std::invalid_argument("ESolver_LR: unknown type of lr_solver");
-}
+    }
     if (xc_kernels.find(this->xc_kernel) == xc_kernels.end()) {
         throw std::invalid_argument("ESolver_LR: unknown type of xc_kernel");
-}
+    }
+    if (abs_gauge.find(input.abs_gauge) == abs_gauge.end()) {
+        throw std::invalid_argument("ESolver_LR: unknown type of abs_gauge");
+    }
     if (this->nspin != 1 && this->nspin != 2) {
         throw std::invalid_argument("LR-TDDFT only supports nspin = 1 or 2 now");
-}
+    }
 }
 
 template<typename T, typename TR>
@@ -587,14 +591,18 @@ void LR::ESolver_LR<T, TR>::runner(UnitCell& ucell, const int istep)
     {
         auto read_states = [&](const std::string& label, Real<T>* e, T* v, const int& dim, const int& nst)->void
             {
-                if (GlobalV::MY_RANK == 0) { assert(nst == LR_Util::read_value(efile_in(label), e, nst)); }
+                if (GlobalV::MY_RANK == 0) {
+                    assert(nst == LR_Util::read_value(efile_in(label), e, nst));
+                    std::cout <<"Rank "<< GlobalV::MY_RANK << ": finish reading " << efile_in(label) << std::endl;
+                }
 #ifdef __MPI
 // in velocity gauge, the eigenvalues are used to calculate the transition dipole, so we'd better broadcast them
                     MPI_Bcast(e, nst, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 #endif
                 assert(nst * dim == LR_Util::read_value(vfile_in(label), v, nst, dim));
+                std::cout <<"Rank "<< GlobalV::MY_RANK << ": finish reading " << vfile_in(label) << std::endl;
             };
-        std::cout << "reading the excitation amplitudes from file: \n";
+        std::cout << "reading the excitation states from file: \n";
         if (openshell)
         {
             read_states("openshell", this->pelec->ekb.c, this->X[0].template data<T>(), nloc_per_band, nstates);
@@ -640,6 +648,7 @@ void LR::ESolver_LR<T, TR>::after_all_runners(UnitCell& ucell)
             // spectrum.optical_absorption_method2(freq, input.abs_broadening);
             // spectrum.test_transition_dipoles_velocity_ks(eig_ks.c);
             spectrum.write_transition_dipole(PARAM.globalv.global_out_dir + "dipole_test.dat");
+            // spectrum.test_velocity_KS(eig_ks.c);
             // =============================================== for test ====================================================
         }
     }

@@ -147,7 +147,7 @@ class rRFileReader
             if (GlobalV::MY_RANK == 0) {
                 ofs_out.open(output_filename, std::ios::out);
                 ofs_out << "STEP: " << 0 << std::endl;
-                ofs_out << "Matrix Dimension of r(R): " << paraV.get_col_size() << std::endl;
+                ofs_out << "Matrix Dimension of r(R): " << matrixDimension << std::endl;
                 ofs_out << "Matrix number of r(R): " << rR[0].size_R_loop() << std::endl;
             }
             for(auto& Rcoord : RCoordinates) 
