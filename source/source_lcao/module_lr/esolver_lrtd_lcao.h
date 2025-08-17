@@ -49,7 +49,7 @@ namespace LR
 
       protected:
         const Input_para& input;
-        const UnitCell& ucell;
+        UnitCell& ucell;
         Grid_Driver gd;
         std::vector<double> orb_cutoff_;
 

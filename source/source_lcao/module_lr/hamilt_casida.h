@@ -10,6 +10,7 @@
 #include "source_lcao/module_lr/operator_casida/operator_lr_exx.h"
 #include "source_lcao/module_lr/ri_benchmark/operator_ri_hartree.h"
 #include "source_lcao/module_ri/LRI_CV_Tools.h"
+#include "source_lcao/module_lr/ri_benchmark/ri_benchmark.h"
 #endif
 namespace LR
 {
@@ -44,15 +45,15 @@ namespace LR
           : nspin(nspin), nocc(nocc), nvirt(nvirt), pX(pX_in), nk(kv_in.get_nks() / nspin)
         {
             ModuleBase::TITLE("HamiltLR", "HamiltLR");
-            if (ri_hartree_benchmark != "aims") { assert(aims_nbasis.empty()); }
+            if (ri_hartree_benchmark != "aims" && ri_hartree_benchmark !="aims-librpa") { assert(aims_nbasis.empty()); }
             // always use nspin=1 for transition density matrix
             this->DM_trans = LR_Util::make_unique<elecstate::DensityMatrix<T, T>>(&pmat_in, 1, kv_in.kvec_d, nk);
             if (ri_hartree_benchmark == "none") { LR_Util::initialize_DMR(*this->DM_trans, pmat_in, ucell_in, gd_in, orb_cutoff); }
             // this->DM_trans->init_DMR(&gd_in, &ucell_in); // too large due to not restricted by orb_cutoff
 
-            // add the diag operator  (the first one)
+            // 1.add the diag operator  (the first one)
             this->ops = new OperatorLRDiag<T>(eig_ks.c, pX[0], nk, nocc[0], nvirt[0]);
-            //add Hxc operator
+            // 2.add Hxc operator
 #ifdef __EXX
             using TAC = std::pair<int, std::array<int, 3>>;
             using TLRI = std::map<int, std::map<TAC, RI::Tensor<T>>>;
@@ -70,23 +71,33 @@ namespace LR
 #ifdef __EXX
                 if (spin_type == "singlet")
                 {
-                    if (ri_hartree_benchmark == "aims") 
+                    if (ri_hartree_benchmark == "aims" | ri_hartree_benchmark == "aims-librpa") 
                     { 
+                        RI_Benchmark::RI_kRlist kRlist (dir + "stru_out", ucell_in);
+                        // though C and V are real, here still use <T> to multiply with psi
                         Cs_read = LRI_CV_Tools::read_Cs_ao<T>(dir + "Cs_data_0.txt");
-                        Vs_read = RI_Benchmark::read_coulomb_mat_general<T>(dir + "coulomb_mat_0.txt", Cs_read); 
+                        Vs_read = RI_Benchmark::read_coulomb_mat_general<T,T>(dir + "coulomb_mat_0.txt", Cs_read, kRlist);
                     }
                     else if (ri_hartree_benchmark == "abacus")
                     {
                         Cs_read = LRI_CV_Tools::read_Cs_ao<T>(dir + "Cs");
                         Vs_read = LRI_CV_Tools::read_Vs_abf<T>(dir + "Vs");
                     }
-                    if (!std::set<std::string>({ "rpa", "hf" }).count(xc_kernel)) { throw std::runtime_error("ri_hartree_benchmark is only supported for xc_kernel rpa and hf"); }
+                    else if (ri_hartree_benchmark == "abacus-librpa")
+                    {
+                        RI_Benchmark::RI_kRlist kRlist (dir + "stru_out", ucell_in);
+                        Cs_read = LRI_CV_Tools::read_Cs_ao<T>(dir + "Cs_data_0.txt");
+                        Vs_read = RI_Benchmark::read_coulomb_mat<T,T>(dir + "coulomb_mat_0.txt", Cs_read, kRlist);
+                    }
+                    if (!std::set<std::string>({ "rpa", "hf", "bse"}).count(xc_kernel)) {
+                        throw std::runtime_error("ri_hartree_benchmark is only supported for xc_kernel = rpa, hf, bse"); 
+                    }
                     RI_Benchmark::OperatorRIHartree<T>* ri_hartree_op
                         = new RI_Benchmark::OperatorRIHartree<T>(ucell_in, naos, nocc[0], nvirt[0], psi_ks_in,
                             Cs_read, Vs_read, ri_hartree_benchmark == "aims", aims_nbasis);
                     this->ops->add(ri_hartree_op);
                 }
-                else if (spin_type == "triplet") { std::cout << "f_Hxc based on grid integral is not needed." << std::endl; }
+                else if (spin_type == "triplet") { std::cout << "Hatree term is not needed for S2:triplet." << std::endl; }
 #else
                 ModuleBase::WARNING_QUIT("ESolver_LR", "RI benchmark is only supported when compile with LibRI.");
 #endif
@@ -98,10 +109,10 @@ namespace LR
                     this->DM_trans, gint_in, pot_in, ucell_in, orb_cutoff, gd_in, kv_in, pX_in, pc_in, pmat_in);
                 this->ops->add(lr_hxc);
             }
-#ifdef __EXX
+#ifdef __EXX// 3.add Exx operator
             if (xc_kernel == "hf" || xc_kernel == "hse")
-            {   //add Exx operator
-                if (ri_hartree_benchmark != "none" && spin_type == "singlet")
+            {   
+                if (ri_hartree_benchmark != "none" && spin_type == "singlet")//read in singlet and don't need to read again in triplet
                 {
                     exx_lri_in.lock()->reset_Cs(Cs_read);
                     exx_lri_in.lock()->reset_Vs(Vs_read);
@@ -109,9 +120,19 @@ namespace LR
                 // std::cout << "exx_alpha=" << exx_alpha << std::endl; // the default value of exx_alpha is 0.25 when dft_functional is pbe or hse
                 hamilt::Operator<T>* lr_exx = new OperatorLREXX<T>(nspin, naos, nocc[0], nvirt[0], ucell_in, psi_ks_in,
                     this->DM_trans, exx_lri_in, kv_in, pX_in[0], pc_in, pmat_in,
-                    xc_kernel == "hf" ? 1.0 : exx_alpha, //alpha
+                    (xc_kernel == "hf") ? 1.0 : exx_alpha, //alpha
                     aims_nbasis);
                 this->ops->add(lr_exx);
+            }
+            if (xc_kernel == "bse")
+            {
+                //FISH_TODO Change to RI_Benchmark::OperatorRIW<T>* ri_W_op
+                //hamit::Operator<T>* bse_W = new OperatorRIW<T>(...
+                hamilt::Operator<T>* bse_W = new OperatorLREXX<T>(nspin, naos, nocc[0], nvirt[0], ucell_in, psi_ks_in,
+                    this->DM_trans, exx_lri_in, kv_in, pX_in[0], pc_in, pmat_in,
+                    1.0, //alpha
+                    aims_nbasis);
+                this->ops->add(bse_W);
             }
 #endif
 

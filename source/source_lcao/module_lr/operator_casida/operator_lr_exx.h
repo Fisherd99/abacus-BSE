@@ -7,7 +7,7 @@
 namespace LR
 {
 
-    /// @brief  Hxc part of A operator
+    /// @brief  Exx part of A operator
     template<typename T = double>
     class OperatorLREXX : public hamilt::Operator<T, base_device::DEVICE_CPU>
     {

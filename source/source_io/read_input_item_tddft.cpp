@@ -400,5 +400,11 @@ void ReadInput::item_lr_tddft()
         read_sync_double(input.abs_broadening);
         this->add_item(item);
     }
+    {
+        Input_Item item("lr_tda");
+        item.annotation = "whether Tamm-Dancoff Approximation is used (can be 'tda', 'full' or 'both')";
+        read_sync_string(input.lr_tda);
+        this->add_item(item);
+    }
 }
 }

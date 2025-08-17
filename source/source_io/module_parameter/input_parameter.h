@@ -358,6 +358,8 @@ struct Input_para
                                                ///< LR-TDDFT for benchmark (with FHI-aims/ABACUS read-in style)
     std::vector<int> aims_nbasis
         = {}; ///< the number of basis functions for each atom type used in FHI-aims (for benchmark)
+    std::string lr_tda = "tda"; ///< TDA type can be: "tda", "full", "both"
+    
     // ==============   #Parameters (11.Output) ===========================
     bool out_stru = false;                ///< outut stru file each ion step
     int out_freq_elec = 0;                ///< the frequency of electronic iter to output charge and wavefunction

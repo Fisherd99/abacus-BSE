@@ -38,7 +38,14 @@ namespace LRI_CV_Tools
             infile >> ia1 >> ia2 >> ic_1 >> ic_2 >> ic_3 >> nw1 >> nw2 >> nabf;
             const TC& box = { ic_1, ic_2, ic_3 };
             RI::Tensor<T> tensor_cs({ nabf, nw1, nw2 });
-            for (std::size_t i = 0; i != nw1; i++) { for (std::size_t j = 0; j != nw2; j++) { for (std::size_t mu = 0; mu != nabf; mu++) { infile >> tensor_cs(mu, i, j); } } }
+            for (std::size_t i = 0; i != nw1; i++) {
+                for (std::size_t j = 0; j != nw2; j++) {
+                    for (std::size_t mu = 0; mu != nabf; mu++) {
+            // Note: in <complex>, operator >> can apply to both "(r,i)" format and "r" for only real part
+                        infile >> tensor_cs(mu, i, j); 
+                    }
+                }
+            }
             // no screening for data-structure consistency
             if (absmax(tensor_cs) >= threshold) { Cs[ia1 - 1][{ia2 - 1, box}] = tensor_cs; }
         }

@@ -1,6 +1,10 @@
 #pragma once
+#include <algorithm>
+#include <dirent.h>
 #include "ri_benchmark.h"
 #include "source_base/module_container/base/third_party/blas.h"
+#include "source_psi/psi.h"
+#include "source_base/module_external/scalapack_connector.h"
 namespace RI_Benchmark
 {
     // std::cout << "the size of Cs:" << std::endl;
@@ -304,6 +308,83 @@ namespace RI_Benchmark
         std::cout << std::endl;
         return bands_final;
     }
+
+    /// @brief  read the eigenvectors from librpa, only for spin degenerate
+    template <typename TK>
+    void read_librpa_eigenvectors(psi::Psi<TK>& wfc_ks, const std::string& path, const int ncore, const int nbands_file, Parallel_Orbitals& pmat) {
+        int nbands = pmat.get_wfc_global_nbands();// nbands = nocc + nvirt
+        int nbasis = pmat.get_wfc_global_nbasis();
+        const size_t nk = PARAM.inp.nspin == 2 ? wfc_ks.get_nk() / 2 : wfc_ks.get_nk();
+        const size_t npsin_tmp = PARAM.inp.nspin == 2 ? 2 : 1;// not used temporarily 25/03/31
+        std::vector<TK> wfc_ks_tot((GlobalV::MY_RANK==0) ? nbands_file * nbasis : 0);// glboal wfc for single k
+        if (GlobalV::MY_RANK == 0) {
+            struct dirent *ptr;
+            DIR *dir;
+            dir = opendir(path.c_str());
+            std::vector<bool> readen_k(nk, false);
+
+            while ((ptr = readdir(dir)) != NULL){// read all the files in the directory
+                std::string fm(ptr->d_name);
+                if (fm.find("KS_eigenvector") == 0)// find file KS_eigenvectorXXX
+                {
+                    std::cout << "found librpa_eigenvector file:" << fm << std::endl;
+                    std::ifstream file_librpa_ks(path + fm);
+                    std::string tmp;
+                    while (file_librpa_ks.peek() != EOF)
+                    {
+                        int ik;
+                        file_librpa_ks >> ik;
+                        ik = ik - 1; // convert to 0-based index
+                        assert(readen_k[ik] == false);
+                        for (int iw = 0; iw < nbasis; ++iw)
+                        {
+                            for (int ib = 0; ib < nbands_file; ++ib)
+                            {
+                                if (ib >= ncore && ib< (ncore+nbands)) {
+                                    RI_Benchmark::read_one_data(file_librpa_ks, wfc_ks_tot[(ib - ncore) * nbasis + iw]);
+                                    file_librpa_ks >> std::ws; // skip the blank if there is
+                                }
+                                else {
+                                    std::getline(file_librpa_ks, tmp); //skip the useless bands
+                                }
+                            }
+                        }
+                        // test: output wfc
+                        std::cout << "wfc_gs_read_from_librpa for ik:" << ik << std::endl;
+                        for (int ib = 0;ib < nbands;++ib)
+                        {
+                            for (int iw = 0;iw < nbasis;++iw)
+                            {
+                                std::cout << wfc_ks_tot[ib * nbasis + iw] << "  ";
+                            }
+                            std::cout << std::endl;
+                        }
+                        // test: output wfc
+                        readen_k[ik] = true;
+                    }
+                }
+            }
+            closedir(dir);
+            for(int ik = 0; ik < nk; ++ik) {
+                if (!readen_k[ik])
+                    throw std::runtime_error("librpa_eigenvector file not found for k-point " + std::to_string(ik+1));
+            }
+        }// end of if (GlobalV::MY_RANK == 0) ;
+        for (int ik = 0; ik < nk; ++ik){
+            wfc_ks.fix_k(ik);
+        #ifdef __MPI
+            Parallel_2D pv_glb;
+            pv_glb.set(nbasis, nbands, std::max(nbasis, nbands), pmat.blacs_ctxt);
+            Cpxgemr2d(nbasis, nbands, wfc_ks_tot.data(), 1, 1, pv_glb.desc,
+                        wfc_ks.get_pointer(), 1, 1, const_cast<int*>(pmat.desc_wfc),
+                        pv_glb.blacs_ctxt);
+        #else
+            BlasConnector::copy(nbands*nlocal, wfc_ks_tot.data(), 1, wfc_ks.get_pointer(), 1);
+        #endif
+        }
+    }
+
+    /// @brief  read the eigenvectors from FHI-aims, only for gamma_only and spin degenerate
     template <typename TK>
     void read_aims_eigenvectors(psi::Psi<TK>& wfc_ks, const std::string& file, const int ncore, const int nbands, const int nbasis)
     {
@@ -347,67 +428,102 @@ namespace RI_Benchmark
             std::cout << std::endl;
         }
     }
-    template < typename TR> // only for blocking by atom pairs
-    TLRI<TR> read_coulomb_mat(const std::string& file, const TLRI<TR>& Cs)
-    {   //for gamma_only, V(q)=V(R=0)
+    
+    template <typename TCs, typename TR> // only for blocking by atom pairs (abacus type)
+    TLRI<TR> read_coulomb_mat(const std::string& file, const TLRI<TCs>& Cs, RI_kRlist& kRlist )
+    {
         std::ifstream ifs;
         ifs.open(file);
-        size_t nks = 0, nabf = 0, istart = 0, jstart = 0, iend = 0, jend = 0;
+        size_t nk = 0, nabf = 0, istart = 0, jstart = 0, iend = 0, jend = 0;
         std::string tmp;
-        ifs >> nks;//   nkstot=1
-        if (nks > 1) { std::cout << "Warning: nks>1 is not supported yet!" << std::endl; }
+        std::unique_ptr<K_Vectors>& klist = kRlist.klist;
+        ifs >> nk;//   nkstot(actually nk)
+        assert(nk == klist->get_nks());
+        int ik_readin = -1;
         TLRI<TR> Vs;
+        std::map<int, std::map<std::pair<int,int>, RI::Tensor<std::complex<double>>>> Vq; // <iat1, <<iat2,ik>, T>>
         const int nat = Cs.size();
         for (int iat1 = 0;iat1 < nat;++iat1)
         {
-            const size_t nabf1 = Cs.at(iat1).at({ 0, {0,0,0} }).shape[0];
-            for (int iat2 = 0;iat2 < nat;++iat2)
+            for (int ik =0;ik < nk;++ik)
             {
-                if (iat1 > iat2)
-                {   // coulomb_mat has only the upper triangle part
-                    Vs[iat1][{iat2, { 0,0,0 }}] = Vs[iat2][{iat1, { 0,0,0 }}].transpose();
-                    continue;
-                }
-                const size_t nabf2 = Cs.at(iat2).at({ 0, {0,0,0} }).shape[0];
-                ifs >> nabf >> istart >> iend >> jstart >> jend >> tmp /*ik*/ >> tmp/*wk*/;
-                assert(nabf1 == iend - istart + 1);
-                assert(nabf2 == jend - jstart + 1);
-                RI::Tensor<TR> t({ nabf1, nabf2 });
-                for (int i = 0;i < nabf1;++i)
+                const size_t nabf1 = Cs.at(iat1).at({ 0, {0,0,0} }).shape[0];
+                for (int iat2 = 0;iat2 < nat;++iat2)
                 {
-                    for (int j = 0;j < nabf2;++j)
+                    if (iat1 > iat2)
+                    {   // coulomb_mat has only the upper triangle part
+                        Vq[iat1][{iat2, ik}] = Vq[iat2][{iat1, ik}].dagger();
+                        continue;
+                    }
+                    const size_t nabf2 = Cs.at(iat2).at({ 0, {0,0,0} }).shape[0];
+                    ifs >> nabf >> istart >> iend >> jstart >> jend >> ik_readin >> klist->wk[ik];
+                    assert(ik_readin == ik+1);
+                    assert(nabf1 == iend - istart + 1);
+                    assert(nabf2 == jend - jstart + 1);
+                    RI::Tensor<std::complex<double>> t({ nabf1, nabf2 });
+                    for (int i = 0;i < nabf1;++i)
                     {
-                        // t(i, j) = Vq[(istart + i) * nabf + jstart + j];
-                        ifs >> t(i, j) >> tmp;
+                        for (int j = 0;j < nabf2;++j)
+                        {
+                            RI_Benchmark::read_one_data(ifs, t(i, j));
+                        }
+                    }
+                    Vq[iat1][{iat2, ik}] = t;
+                }
+            }
+        }
+
+        auto array3_to_Vector3_double = [](const std::array<int, 3>& v) -> ModuleBase::Vector3<double> {
+            return ModuleBase::Vector3<double>{static_cast<double>(v[0]), 
+                                            static_cast<double>(v[1]), 
+                                            static_cast<double>(v[2])};
+        };
+        for ( const TC& iR : kRlist.Rlist )
+        {
+            std::cout<<"FISH_OUTPUT: in read V: iR="<<iR[0]<<" "<<iR[1]<<" "<<iR[2]<<std::endl;
+            
+            for (int iat1 = 0;iat1 < nat;++iat1)
+            {
+                for (int iat2 = 0;iat2 < nat;++iat2)
+                {
+                    Vs[iat1][{iat2, iR}] = RI::Tensor<TR>({ Vq[iat1][{iat2, 0}].shape[0], Vq[iat1][{iat2, 0}].shape[1] });
+                    for (int ik = 0;ik < nk;++ik)
+                    {
+                    const double arg = -1.0 * ModuleBase::TWO_PI * (klist->kvec_d[ik] * array3_to_Vector3_double(iR));
+                    const std::complex<double> kphase (cos(arg), sin(arg));
+                    Vs[iat1][{iat2, iR}] += RI::Global_Func::convert<TR> (Vq[iat1][{iat2, ik}] * kphase) * RI::Global_Func::convert<TR>(klist->wk[ik]);
                     }
                 }
-                Vs[iat1][{iat2, { 0,0,0 }}] = t;
             }
         }
         return Vs;
     }
 
-    template < typename TR> // any blocking
-    TLRI<TR> read_coulomb_mat_general(const std::string& file, const TLRI<TR>& Cs)
-    {   //for gamma_only, V(q)=V(R=0)
+    template <typename TCs, typename TR> // any blocking (aims type)
+    TLRI<TR> read_coulomb_mat_general(const std::string& file, const TLRI<TCs>& Cs, RI_kRlist& kRlist)
+    {
         std::ifstream ifs;
         ifs.open(file);
-        size_t nks = 0, nabf = 0, istart = 0, jstart = 0, iend = 0, jend = 0;
+        size_t nk = 0, nabf = 0, istart = 0, jstart = 0, iend = 0, jend = 0;
         std::string tmp;
-        ifs >> nks;//   nkstot=1
-        if (nks > 1) { std::cout << "Warning: nks>1 is not supported yet!" << std::endl; }
+        std::unique_ptr<K_Vectors>& klist = kRlist.klist;
+        ifs >> nk;//   nkstot(actually nk)
+        assert(nk == klist->get_nks());
+        int ik_readin = -1;
         TLRI<TR> Vs;
-        std::vector<TR> Vq;
+        std::map<int, std::map<std::pair<int,int>, RI::Tensor<std::complex<double>>>> Vq; // <iat1, <<iat2,ik>, T>>
+        std::map<int,std::vector<std::complex<double>>> Vq_tmp; //<ik, vector> 
         while (ifs.peek() != EOF)
         {
-            ifs >> nabf >> istart >> iend >> jstart >> jend >> tmp /*ik*/ >> tmp/*wk*/;
+            ifs >> nabf >> istart >> iend >> jstart >> jend >> ik_readin >> klist->wk[ik_readin-1];
             if (ifs.peek() == EOF) { break; }
-            if (Vq.empty()) { Vq.resize(nabf * nabf, 0.0); }
+            int ik = ik_readin - 1;
+            if (Vq_tmp[ik].empty()) { Vq_tmp[ik].resize(nabf * nabf, 0.0); }
             for (int i = istart - 1;i < iend;++i)
             {
                 for (int j = jstart - 1;j < jend;++j)
                 {
-                    ifs >> Vq[i * nabf + j] >> tmp;
+                    RI_Benchmark::read_one_data(ifs, Vq_tmp.at(ik)[i * nabf + j]);
                 }
             }
         }
@@ -420,21 +536,23 @@ namespace RI_Benchmark
             for (int iat2 = 0;iat2 < nat;++iat2)
             {
                 const size_t nabf2 = Cs.at(iat2).at({ 0, {0,0,0} }).shape[0];
-                if (iat1 > iat2)
-                {   // coulomb_mat has only the upper triangle part
-                    Vs[iat1][{iat2, { 0,0,0 }}] = Vs[iat2][{iat1, { 0,0,0 }}].transpose();
-                }
-                else
-                {
-                    RI::Tensor<TR> t({ nabf1, nabf2 });
-                    for (int i = 0;i < nabf1;++i)
-                    {
-                        for (int j = 0;j < nabf2;++j)
-                        {
-                            t(i, j) = Vq[(istart + i) * nabf + jstart + j];
-                        }
+                for (int ik = 0; ik < nk; ++ik){                    
+                    if (iat1 > iat2)
+                    {   // coulomb_mat has only the upper triangle part
+                        Vq[iat1][{iat2, ik}] = Vq[iat2][{iat1, ik}].dagger();
                     }
-                    Vs[iat1][{iat2, { 0,0,0 }}] = t;
+                    else
+                    {
+                        RI::Tensor<std::complex<double>> t({ nabf1, nabf2 });
+                        for (int i = 0;i < nabf1;++i)
+                        {
+                            for (int j = 0;j < nabf2;++j)
+                            {
+                                t(i, j) = Vq_tmp[ik][(istart + i) * nabf + jstart + j];
+                            }
+                        }
+                        Vq[iat1][{iat2, ik}] = t;
+                    }
                 }
                 jstart += nabf2;
             }
@@ -442,6 +560,29 @@ namespace RI_Benchmark
             istart += nabf1;
         }
         assert(istart == nabf);
+
+        auto array3_to_Vector3_double = [](const std::array<int, 3>& v) -> ModuleBase::Vector3<double> {
+            return ModuleBase::Vector3<double>{static_cast<double>(v[0]), 
+                                            static_cast<double>(v[1]), 
+                                            static_cast<double>(v[2])};
+        };
+        for ( const TC& iR : kRlist.Rlist )
+        {
+            std::cout<<"FISH_OUTPUT: in read V: iR="<<iR[0]<<" "<<iR[1]<<" "<<iR[2]<<std::endl;
+            for (int iat1 = 0;iat1 < nat;++iat1)
+            {
+                for (int iat2 = 0;iat2 < nat;++iat2)
+                {
+                    Vs[iat1][{iat2, iR}] = RI::Tensor<TR>({ Vq[iat1][{iat2, 0}].shape[0], Vq[iat1][{iat2, 0}].shape[1] });
+                    for (int ik = 0; ik < nk; ++ik)
+                    {
+                    const double arg = -1.0 * ModuleBase::TWO_PI * (klist->kvec_d[ik] * array3_to_Vector3_double(iR));
+                    const std::complex<double> kphase (cos(arg), sin(arg));
+                    Vs[iat1][{iat2, iR}] += RI::Global_Func::convert<TR>(Vq[iat1][{iat2, ik}] * kphase) * RI::Global_Func::convert<TR>(klist->wk[ik]);
+                    }
+                }
+            }
+        }
         return Vs;
     }
 
@@ -470,7 +611,7 @@ namespace RI_Benchmark
         return true;
     }
     template <typename TR>
-    std::vector<TLRI<TR>> split_Ds(const std::vector<std::vector<TR>>& Ds, const std::vector<int>& aims_nbasis, const UnitCell& ucell)
+    std::vector<TLRI<TR>> split_Ds(const std::vector<std::vector<TR>>& Ds, const std::vector<int>& aims_nbasis, const UnitCell& ucell) // vector index: ispin
     {
         // Due to the hard-coded constructor of elecstate::DensityMatrix, singlet-triplet with nspin=2 cannot use DM_trans with size 1
         // if(Ds.size()>1) { throw std::runtime_error("split_Ds only supports gamma-only spin-1 Ds now."); }

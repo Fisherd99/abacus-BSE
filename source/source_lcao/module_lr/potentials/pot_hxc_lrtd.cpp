@@ -42,7 +42,7 @@ namespace LR
             break;
         }
         // XC
-        if (this->xc_kernel_ == "rpa" || this->xc_kernel_ == "hf") { return; }    // no xc
+        if (std::set<std::string>({ "rpa", "hf", "bse" }).count(this->xc_kernel_)) { return; }    // no xc
 #ifdef USE_LIBXC
         this->kernel_to_potential_[spin_type_](rho[0], v_eff, ispin_op);
 #else

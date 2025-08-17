@@ -3,6 +3,7 @@ if(ENABLE_LCAO)
   add_subdirectory(ao_to_mo_transformer)
   add_subdirectory(dm_trans)
   add_subdirectory(ri_benchmark)
+  add_subdirectory(bse)
 
   list(APPEND objects
     utils/lr_util.cpp
@@ -19,7 +20,8 @@ if(ENABLE_LCAO)
     lr_spectrum_velocity.cpp
     hamilt_casida.cpp
     esolver_lrtd_lcao.cpp
-    potentials/xc_kernel.cpp)
+    potentials/xc_kernel.cpp
+    bse/bse_io.cpp)
 
 add_library(
     lr

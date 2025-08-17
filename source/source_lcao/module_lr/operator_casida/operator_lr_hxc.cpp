@@ -21,6 +21,9 @@ namespace LR
     {
         ModuleBase::TITLE("OperatorLRHxc", "act");
         ModuleBase::timer::tick("OperatorLRHxc", "act");
+
+        if(true){ //FISH_NOTE: for debug
+        std::cout<<"in OperatorLRHxc act"<<std::endl;
         const int& sl = ispin_ks[0];
         const auto psil_ks = LR_Util::get_psi_spin(psi_ks, sl, nk);
 
@@ -48,7 +51,7 @@ namespace LR
         ao_to_mo_blas(v_hxc_2d, psil_ks, nocc[sl], nvirt[sl], hpsi);
 #endif
         ModuleBase::timer::tick("OperatorLRHxc", "act");
-    }
+    }}
 
 
     template<>

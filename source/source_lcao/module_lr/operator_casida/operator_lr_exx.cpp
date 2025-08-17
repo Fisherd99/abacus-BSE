@@ -15,9 +15,8 @@ namespace LR
             for (int iat2 = 0;iat2 < ucell.nat;++iat2) {
                 const int it2 = ucell.iat2it[iat2];
                 for (auto cell : this->BvK_cells) {
-                    this->Ds_onebase[iat1][std::make_pair(iat2, cell)] = aims_nbasis.empty() ?
-                        RI::Tensor<T>({ static_cast<size_t>(ucell.atoms[it1].nw),  static_cast<size_t>(ucell.atoms[it2].nw) }) :
-                        RI::Tensor<T>({ static_cast<size_t>(aims_nbasis[it1]),  static_cast<size_t>(aims_nbasis[it2]) });
+                    this->Ds_onebase[iat1][std::make_pair(iat2, cell)] = 
+                        RI::Tensor<T>({ static_cast<size_t>(ucell.atoms[it1].nw),  static_cast<size_t>(ucell.atoms[it2].nw) });
                 }
             }
         }
@@ -41,8 +40,8 @@ namespace LR
                             int iat1 = ucell.itia2iat(it1, ia1);
                             int iat2 = ucell.itia2iat(it2, ia2);
                             auto& D2d = this->Ds_onebase[iat1][std::make_pair(iat2, cell)];
-                            const int nw1 = aims_nbasis.empty() ? ucell.atoms[it1].nw : aims_nbasis[it1];
-                            const int nw2 = aims_nbasis.empty() ? ucell.atoms[it2].nw : aims_nbasis[it2];
+                            const int nw1 = ucell.atoms[it1].nw;
+                            const int nw2 = ucell.atoms[it2].nw;
                             for (int iw1 = 0;iw1 < nw1;++iw1)
                                 for (int iw2 = 0;iw2 < nw2;++iw2)
                                 {
@@ -74,8 +73,8 @@ namespace LR
                             int iat1 = ucell.itia2iat(it1, ia1);
                             int iat2 = ucell.itia2iat(it2, ia2);
                             auto& D2d = this->Ds_onebase[iat1][std::make_pair(iat2, cell)];
-                            const int nw1 = aims_nbasis.empty() ? ucell.atoms[it1].nw : aims_nbasis[it1];
-                            const int nw2 = aims_nbasis.empty() ? ucell.atoms[it2].nw : aims_nbasis[it2];
+                            const int nw1 = ucell.atoms[it1].nw;
+                            const int nw2 = ucell.atoms[it2].nw;
                             for (int iw1 = 0;iw1 < nw1;++iw1)
                                 for (int iw2 = 0;iw2 < nw2;++iw2)
                                 {
@@ -83,6 +82,8 @@ namespace LR
                                     const int iwt2 = ucell.itiaiw2iwt(it2, ia2, iw2);
                                     if (this->pmat.in_this_processor(iwt1, iwt2))
                                         D2d(iw1, iw2) = frac * std::conj(this->psi_ks_full(ik, io, iwt2)) * this->psi_ks_full(ik, nocc + iv, iwt1);
+                                        std::cout<<"FISH_DEBUG: ik:" <<ik<< "\t io:"<< io <<"\t iw1:"<<iw1<<"\t psi_ks_full:"<<psi_ks_full(ik, io, iwt2)<<std::endl;
+                                        std::cout<<"FISH_DEBUG: iv:"<< iv <<"\t iw2:"<<iw2<<"\t psi_ks_full:"<<psi_ks_full(ik, nocc + iv, iwt1)<<std::endl;
                                 }
                         }
         }
@@ -99,6 +100,10 @@ namespace LR
     {
         ModuleBase::TITLE("OperatorLREXX", "act");
         ModuleBase::timer::tick("OperatorLREXX", "act");
+        
+        if(true){ //FISH_NOTE: for debug
+        std::cout<<"in OperatorLREXX act"<<std::endl;
+
         // convert parallel info to LibRI interfaces
         std::vector<std::tuple<std::set<TA>, std::set<TA>>> judge = RI_2D_Comm::get_2D_judge(ucell,this->pmat);
 
@@ -117,15 +122,15 @@ namespace LR
             RI_2D_Comm::split_m2D_ktoR<T>(ucell,this->kv, DMk_trans_pointer, this->pmat, 1)
             : RI_Benchmark::split_Ds(DMk_trans_vector, aims_nbasis, ucell); //0.5 will be multiplied
         // LR_Util::print_CV(Ds_trans[0], "Ds_trans in OperatorLREXX", 1e-10);
+        
         // 2. cal_Hs
         auto lri = this->exx_lri.lock();
-
-        // LR_Util::print_CV(Ds_trans[is], "Ds_trans in OperatorLREXX", 1e-10);
         lri->exx_lri.set_Ds(std::move(Ds_trans[0]), lri->info.dm_threshold);
         lri->exx_lri.cal_Hs();
         lri->Hexxs[0] = RI::Communicate_Tensors_Map_Judge::comm_map2_first(
             lri->mpi_comm, std::move(lri->exx_lri.Hs), std::get<0>(judge[0]), std::get<1>(judge[0]));
         lri->post_process_Hexx(lri->Hexxs[0]);
+        // LR_Util::print_CV(lri->Hexxs[0], "Hexxs in OperatorLREXX", 1e-10);
 
         // 3. set [AX]_iak = DM_onbase * Hexxs for each occ-virt pair and each k-point
         // caution: parrallel
@@ -145,11 +150,13 @@ namespace LR
                     {
                         hpsi[xstart_bk + this->pX.global2local_col(io) * this->pX.get_row_size() + this->pX.global2local_row(iv)] += ene;
                     }
+                    //FISH_NOTE: for debug
+                    std::cout<<"W(direct) term: ik:"<<ik<<"\t io:"<<io<<"\t iv:"<<iv<<"\t ene:"<<ene<<std::endl;
                 }
             }
         }
         ModuleBase::timer::tick("OperatorLREXX", "act");
-    }
+    }}
     template class OperatorLREXX<double>;
     template class OperatorLREXX<std::complex<double>>;
 }

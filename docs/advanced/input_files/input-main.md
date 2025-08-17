@@ -479,6 +479,7 @@
     - [nvirt](#nvirt)
     - [lr\_nstates](#lr_nstates)
     - [lr\_unrestricted](#lr_unrestricted)
+    - [lr\_tda (Under Development Feature)](#lr_tda (Under Development Feature))
     - [abs\_wavelen\_range](#abs_wavelen_range)
     - [out\_wfc\_lr](#out_wfc_lr)
     - [abs\_broadening](#abs_broadening)
@@ -4467,7 +4468,7 @@ These parameters are used to solve the excited states using. e.g. LR-TDDFT.
 
 - **Type**: String
 - **Description**: The exchange-correlation kernel used in the calculation. 
-Currently supported: `RPA`, `LDA`, `PBE`, `HSE`, `HF`.
+Currently supported: `RPA`, `LDA`, `PBE`, `HSE`, `HF`, `BSE`.
 - **Default**: LDA
 
 ### lr_init_xc_kernel (Under Development Feature)
@@ -4485,6 +4486,7 @@ Currently supported: `RPA`, `LDA`, `PBE`, `HSE`, `HF`.
 - **Description**: The method to solve the Casida equation $AX=\Omega X$ in LR-TDDFT under Tamm-Dancoff approximation (TDA), where $A_{ai,bj}=(\epsilon_a-\epsilon_i)\delta_{ij}\delta_{ab}+(ai|f_{Hxc}|bj)+\alpha_{EX}(ab|ij)$ is the particle-hole excitation matrix and $X$ is the transition amplitude.
   - `dav`/`dav_subspace`/ `cg`: Construct $AX$ and diagonalize the Hamiltonian matrix iteratively with Davidson/Non-ortho-Davidson/CG algorithm.
   - `lapack`: Construct the full $A$ matrix and directly diagonalize with LAPACK.
+  - `elpa`: Construct the full $A$ and $B$ matrix and diagonalize with ELPA.
   - `spectrum`: Calculate absorption spectrum only without solving Casida equation. The `OUT.${suffix}/` directory should contain the
   files for LR-TDDFT eigenstates and eigenvalues, i.e. `Excitation_Energy.dat` and `Excitation_Amplitude_${processor_rank}.dat`
    output by setting `out_wfc_lr` to true.
@@ -4521,6 +4523,12 @@ Currently supported: `RPA`, `LDA`, `PBE`, `HSE`, `HF`.
   - True:  Always use unrestricted LR-TDDFT. 
   - False: Use unrestricted LR-TDDFT only when the system is open-shell.
 - **Default**: False
+
+### lr_tda (Under Development Feature)
+
+- **Type**: String
+- **Description**:  Whether Tamm-Dancoff Approximation is used (can be 'tda', 'full' or 'both')
+- **Default**: tda
 
 ### abs_wavelen_range (Under Development Feature)
 
