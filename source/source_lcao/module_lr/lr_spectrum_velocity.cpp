@@ -45,7 +45,7 @@ namespace LR
         return ModuleBase::Vector3<std::complex<double>>(vec[0], vec[1], vec[2]);
     }
 
-    /// this algorithm has bug in multi-k cases, just for test
+    /// this algorithm has bug in multi-k cases, just for test /// has been fixed in 25-08-22 by ZiqingGuan 
     template<typename T>
     ModuleBase::Vector3<T> LR::LR_Spectrum<T>::cal_transition_dipole_istate_velocity_R(const int istate, const Velocity_op<std::complex<double>>& vR)
     {
@@ -180,9 +180,9 @@ namespace LR
                         hamilt::folding_HR(*vR.get_current_term_pointer(i), vk.data(), kv.kvec_d[ik], pmat.get_row_size(), 1);
                         tmp_trans_dipole[i] += std::inner_product(vk.begin(), vk.end(), DM_trans.get_DMK_pointer(is * nk + ik), std::complex<double>(0., 0.)) * ModuleBase::IMAG_UNIT;
                     }
-                    /*
+                /*
                     tmp_trans_dipole[i] += LR_Util::dot_R_matrix(*vR.get_current_term_pointer(i), *DM_trans.get_DMR_pointer(is + 1), ucell.nat) * ModuleBase::IMAG_UNIT;
-                 */   
+                */   
                 }   // end for spin_x, only matter in open-shell system
                 tmp_trans_dipole[i] *= static_cast<double>(this->nk);  // nk is divided inside DM_trans, now recover it
                 if (this->nspin_x == 1) { tmp_trans_dipole[i] *= sqrt(2.0); } // *2 for 2 spins, /sqrt(2) for the halfed dimension of X in the normalizaiton
@@ -192,115 +192,7 @@ namespace LR
             this->mean_squared_transition_dipole_[istate] = cal_mean_squared_dipole(transition_dipole_[istate]);
         }
     }
-
-    template<typename T>
-    void LR::LR_Spectrum<T>::cal_velocity_KS(const double* const ks_eig)
-    {
-        ModuleBase::TITLE("LR::LR_Spectrum", "test_velocity_KS");
-        // velocity matrix v(R)
-        const TD_current& vR = get_velocity_matrix_R(ucell, gd_, pmat, two_center_bundle_);
-
-        // temperarily only spin 0 is calculated
-        int KS_num = nocc[0] + nvirt[0];
-        std::vector<std::complex<double>> test_velocity(3 * nk * KS_num * KS_num, 0.0);
-        Parallel_2D pmo;
-        LR_Util::setup_2d_division(pmo, 1, KS_num, KS_num
-    #ifdef __MPI
-        , pc.blacs_ctxt
-    #endif
-        );
-
-        std::vector<ct::Tensor> vk(nk, LR_Util::newTensor<std::complex<double>>({ pmat.get_col_size(), pmat.get_row_size() }));
-        
-        for (int i = 0;i < 3;++i)
-        {
-            for (auto& v : vk) v.zero();
-            for (int ik = 0;ik < nk;++ik)
-            {            
-                hamilt::folding_HR(*vR.get_current_term_pointer(i), vk[ik].data<std::complex<double>>(), kv.kvec_d[ik], pmat.get_row_size(), 1/*column-major*/);
-            }
-            std::vector<std::complex<double>> v_mo(nk * pmo.get_local_size(), 0.0);
-            psi::Psi<std::complex<double>> c_psi_ks(nk,
-                                            pc.get_col_size(), 
-                                            pc.get_row_size(), 
-                                            kv.ngk, 
-                                            true);
-            for(int ik = 0; ik < nk; ++ik)
-            {
-                for(int ic = 0; ic < pc.get_col_size(); ++ic)//band
-                {
-                    for(int ir = 0; ir < pc.get_row_size(); ++ir)//basis
-                    {
-                        c_psi_ks(ik, ic, ir) = std::complex<double>(psi_ks[0](ik, ic, ir));
-                    }
-                }
-            }
-
-    #ifdef __MPI
-            ao_to_mo_pblas<std::complex<double>>(vk,
-                                                this->pmat,
-                                                c_psi_ks,
-                                                this->pc,
-                                                naos,
-                                                nocc[0],
-                                                nvirt[0],
-                                                pmo,
-                                                v_mo.data(),
-                                                false, // add_on
-                                                LR::MO_TYPE::ALL);
-    #else
-            ao_to_mo_blas<std::complex<double>>(vk,
-                                                c_psi_ks,
-                                                nocc[0],
-                                                nvirt[0],
-                                                v_mo.data(),
-                                                false , //add_on
-                                                LR::MO_TYPE::ALL);
-    #endif
-
-            // gather local vk to global test_velocity
-            std::vector<std::complex<double>> tmp_v_mo(KS_num * KS_num, 0.0);
-            for (int ik = 0;ik < nk;++ik)
-            {
-                LR_Util::gather_2d_to_full(pmo, v_mo.data() + ik * pmo.get_local_size(), tmp_v_mo.data(), false/*col_first*/, KS_num, KS_num);
-                
-                std::cout<< "id: " << i << " ik: " << ik << " v_mo: " << std::endl;            
-                LR_Util::print_value(tmp_v_mo.data(), KS_num, KS_num);
-
-                std::copy(tmp_v_mo.begin(), tmp_v_mo.end(), &test_velocity[(ik + i * nk) * KS_num * KS_num ]); 
-                LR_Util::print_value(test_velocity.data()+(ik + i * nk) * KS_num * KS_num, KS_num, KS_num);
-            }
-        }
-
-        std::ofstream ofs(PARAM.globalv.global_out_dir + "test_velocity_KS.dat");
-        ofs << "Transition velocity matrix (a.u.)" << std::endl;
-        ofs << "NOTICE: KS_index are restricted in nocc and nvirt" << std::endl;
-        for (int ik = 0;ik < nk;++ik)
-        {
-            ofs << "k-point: " << ik << " " << kv.kvec_d[ik] << std::endl;
-            ofs << std::setw(4) << "KS1" << std::setw(12) << "Energy1(eV)" << std::setw(4) << "KS2" << std::setw(12) << "Energy2(eV)" << std::setw(15) << "x" << std::setw(23) << "|x|^2" << std::setw(19) << "y" << std::setw(23) <<"|y|^2" << std::setw(19) << "z" << std::setw(23) <<"|z|^2" << std::setw(13) << "average" << std::endl;
-
-            for (int i = 0; i < KS_num; ++i)
-            {
-                for (int j = i; j < KS_num ; ++j)
-                {
-                    int ipair = ik + KS_num * KS_num + i * KS_num + j;
-                    int step = nk * KS_num * KS_num;
-                    double average = (std::norm(test_velocity[ipair]) + std::norm(test_velocity[ipair + step]) + std::norm(test_velocity[ipair + 2 * step])) / 3.0;
-                    ofs << std::setw(4) << i << std::setw(8) << std::setprecision(6) << eig[i] * ModuleBase::Ry_to_eV
-                    << std::setw(4) << j << std::setw(8) << std::setprecision(6) << eig[j] * ModuleBase::Ry_to_eV
-                    << std::setw(29) << test_velocity[ipair] << std::setw(13) << std::norm(test_velocity[ipair])
-                    << std::setw(29) << test_velocity[ipair + step] << std::setw(13) << std::norm(test_velocity[ipair + step])
-                    << std::setw(29) << test_velocity[ipair + 2 * step]  << std::setw(13) << std::norm(test_velocity[ipair + 2 * step] )
-                    << std::setw(13) << average << std::endl; 
-                }
-            }
-            ofs.close();
-        }
-    }
-}
-
-
+} // namespace LR
 
 template class LR::LR_Spectrum<double>;
 template class LR::LR_Spectrum<std::complex<double>>;

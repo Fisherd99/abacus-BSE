@@ -6,9 +6,9 @@
 #include "source_lcao/module_lr/utils/lr_util.h"
 #include "source_basis/module_nao/two_center_bundle.h"
 #include "source_lcao/module_rt/velocity_op.h"
-#include "module_lr/utils/lr_util_rR_reader.h"
-#include "module_lr/ao_to_mo_transformer/ao_to_mo.h"
-#include "module_lr/utils/lr_util_print.h"
+#include "source_lcao/module_lr/utils/lr_util_rR_reader.h"
+#include "source_lcao/module_lr/utils/spectrum_mo.hpp"
+
 namespace LR
 {
     template<typename T>
@@ -46,10 +46,6 @@ namespace LR
         void write_transition_dipole(const std::string& filename);
         /// @brief calculate transition dipole in velocity gauge using ks eigenvalues instead of excitation energies
         void test_transition_dipoles_velocity_ks(const double* const ks_eig);
-        /// @brief calculate dipole matrix in KS pair representation
-        void test_dipole_KS(const double* const ks_eig);
-        /// @brief calculate velocity matrix in KS pair representation
-        void cal_velocity_KS(const double* const ks_eig);
 
         //======================================================================================================
     private:

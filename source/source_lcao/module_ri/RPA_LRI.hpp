@@ -13,6 +13,7 @@
 
 #include "RPA_LRI.h"
 #include "source_io/module_parameter/parameter.h"
+#include "source_lcao/module_lr/utils/spectrum_mo.hpp"
 
 template <typename T, typename Tdata>
 void RPA_LRI<T, Tdata>::init(const MPI_Comm& mpi_comm_in, const K_Vectors& kv_in, const std::vector<double>& orb_cutoff)
@@ -27,6 +28,7 @@ void RPA_LRI<T, Tdata>::init(const MPI_Comm& mpi_comm_in, const K_Vectors& kv_in
 
     //	this->cv = std::move(exx_lri_rpa.cv);
     //    exx_lri_rpa.cv = exx_lri_rpa.cv;
+    ModuleBase::timer::tick("RPA_LRI", "init");
 }
 
 template <typename T, typename Tdata>
@@ -285,7 +287,7 @@ void RPA_LRI<T, Tdata>::out_bands(const elecstate::ElecState* pelec)
     std::ofstream ofs;
     ofs.open(ss.str().c_str(), std::ios::out);
     ofs << nks_tot << std::endl;
-    ofs << PARAM.inp.nspin << std::endl;
+    ofs << nspin_tmp << std::endl;
     ofs << PARAM.inp.nbands << std::endl;
     ofs << PARAM.globalv.nlocal << std::endl;
     ofs << (pelec->eferm.ef / 2.0) << std::endl;
@@ -409,6 +411,40 @@ void RPA_LRI<T, Tdata>::out_coulomb_k(const UnitCell &ucell)
         }
     }
     ofs.close();
+}
+
+template <typename T, typename Tdata>
+void RPA_LRI<T, Tdata>::out_velocity(const UnitCell &ucell,
+                                    const Grid_Driver &gd,
+                                    const TwoCenterBundle &two_center_bundle,
+                                    const Parallel_Orbitals &parav,/*nbasis×nbasis*/
+                                    const psi::Psi<T> &psi)
+{
+    ModuleBase::TITLE("DFT_RPA_interface", "out_velocity");
+    ModuleBase::timer::tick("RPA_LRI", "out_velocity");
+
+    Parallel_2D parac;/*nbasis×nbands*/
+    LR_Util::setup_2d_division(parac, parav.get_block_size(), PARAM.globalv.nlocal, PARAM.inp.nbands
+        #ifdef __MPI
+            , parav.blacs_ctxt
+        #endif
+            );
+
+    const int nk = PARAM.inp.nspin == 2 ? p_kv->get_nks() / 2 : p_kv->get_nks();
+    const int nspin_tmp = PARAM.inp.nspin == 2 ? 2 : 1;
+
+    // nocc and nvirt dosen't matter, their sum is actually used
+    std::vector<int> nocc(2, PARAM.inp.nbands);
+    std::vector<int> nvirt(2, 0);
+
+    std::vector<std::complex<double>> velocity_mo = LR_Util::cal_velocity_mo(ucell, gd, two_center_bundle,
+        parav, parac, *this->p_kv, psi, nk, nspin_tmp, PARAM.globalv.nlocal, nocc, nvirt);
+    if (GlobalV::MY_RANK == 0){
+        LR_Util::output_spectrum_mo_librpa(velocity_mo, "velocity_matrix",
+            nk, nspin_tmp, PARAM.inp.nbands, *this->p_kv);
+    }
+
+    ModuleBase::timer::tick("RPA_LRI", "out_velocity");
 }
 
 // template<typename Tdata>

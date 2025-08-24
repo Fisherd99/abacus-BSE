@@ -96,9 +96,10 @@ class rRFileReader
                                 {
                                     continue;
                                 }
-                                tmp_matrix.add_element(row-begin_row, col-begin_col, element.second);
+                                tmp_matrix.add_element(row - begin_row, col - begin_col, element.second);
 /*#ifdef __DEBUG
-                                GlobalV::ofs_running<<"RANK:"<<GlobalV::MY_RANK << " adding element: " << row - begin_row << " " << col - begin_col << " value: " <<std::setprecision(10) <<element.second << std::endl;
+                                GlobalV::ofs_running<<"RANK:"<<GlobalV::MY_RANK << " adding element: " << row - begin_row << " "
+                                    << col - begin_col << " value: " <<std::setprecision(10) <<element.second << std::endl;
 #endif*/
                             }
                             // add BaseMatrix to AtomPair
@@ -118,7 +119,8 @@ class rRFileReader
                             // add AtomPair to HContainer
                             rR[idirection].insert_pair(tmp_ap);
 /*
-                            GlobalV::ofs_running<<"RANK:"<<GlobalV::MY_RANK<< " Now check HC data in atom pair: " << iat << " " << jat << " R: " << RCoord[0] << " " << RCoord[1] << " " << RCoord[2] << std::endl;
+                            GlobalV::ofs_running<<"RANK:"<<GlobalV::MY_RANK<< " Now check HC data in atom pair: " << iat << " " << jat
+                                << " R: " << RCoord[0] << " " << RCoord[1] << " " << RCoord[2] << std::endl;
                             auto ap = rR[idirection].get_atom_pair(iat, jat);
                             double* data = ap.get_HR_values(RCoord[0], RCoord[1], RCoord[2]).get_pointer();
                             for(int iw=0;iw<numberofRow;iw++){

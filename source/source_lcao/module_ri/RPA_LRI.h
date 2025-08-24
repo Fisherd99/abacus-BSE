@@ -51,6 +51,11 @@ template <typename T, typename Tdata> class RPA_LRI
     void out_eigen_vector(const Parallel_Orbitals& parav, const psi::Psi<T>& psi);
     void out_struc(const UnitCell &ucell);
     void out_bands(const elecstate::ElecState *pelec);
+    void out_velocity(const UnitCell &ucell,
+        const Grid_Driver &gd,
+        const TwoCenterBundle &two_center_bundle,
+        const Parallel_Orbitals &parav,/*nbasis×nbasis*/
+        const psi::Psi<T> &psi);
 
     void out_Cs(const UnitCell &ucell);
     void out_coulomb_k(const UnitCell &ucell);

@@ -114,7 +114,7 @@ namespace LR_Util
                 }
             }
         }
-        Parallel_Reduce::reduce_all(sum);
+        // Parallel_Reduce::reduce_all(sum);  // not needed, since it will be reduced outside
         return sum;
     }
 

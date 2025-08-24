@@ -374,12 +374,13 @@ void ctrl_output_lcao(UnitCell& ucell,
     if (PARAM.inp.rpa)
     {
         RPA_LRI<TK, double> rpa_lri_double(GlobalC::exx_info.info_ri);
+        rpa_lri_double.init(MPI_COMM_WORLD, kv, orb.cutoffs());
+        rpa_lri_double.out_velocity(ucell, gd, two_center_bundle, pv, *psi);
         rpa_lri_double.cal_postSCF_exx(*dynamic_cast<const elecstate::ElecStateLCAO<TK>*>(pelec)->get_DM(),
                                        MPI_COMM_WORLD,
                                        ucell,
                                        kv,
                                        orb);
-        rpa_lri_double.init(MPI_COMM_WORLD, kv, orb.cutoffs());
         rpa_lri_double.out_for_RPA(ucell, pv, *psi, pelec);
     }
 #endif

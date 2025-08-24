@@ -210,9 +210,9 @@ void LR::LR_Spectrum<T>::cal_transition_dipoles_length()
     this->mean_squared_transition_dipole_.resize(nstate);
     if (this->gauge == "length-file")
     {
-        LR_Util::rRFileReader rRReader (PARAM.globalv.global_readin_dir + "data-rR-sparse.csr", this->pmat, ucell.nat);
+        LR_Util::rRFileReader rRReader (PARAM.globalv.global_readin_dir + "rr.csr", this->pmat, ucell.nat);
         rRReader.convert_rR_HContainer();
-        rRReader.output_rR_HContainer(PARAM.globalv.global_out_dir + "data-test-rR-sparse.csr");
+        rRReader.output_rR_HContainer(PARAM.globalv.global_out_dir + "rr-test.csr");
         for (int istate = 0;istate < nstate;++istate)
         {
             transition_dipole_[istate] = cal_transition_dipole_istate_length_from_file(istate, rRReader);
