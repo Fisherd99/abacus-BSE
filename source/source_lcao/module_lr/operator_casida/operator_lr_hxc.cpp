@@ -20,6 +20,7 @@ namespace LR
     void OperatorLRHxc<T, Device>::act(const int nbands, const int nbasis, const int npol, const T* psi_in, T* hpsi, const int ngk_ik, const bool is_first_node)const
     {
         ModuleBase::TITLE("OperatorLRHxc", "act");
+        ModuleBase::timer::tick("OperatorLRHxc", "act");
         const int& sl = ispin_ks[0];
         const auto psil_ks = LR_Util::get_psi_spin(psi_ks, sl, nk);
 
@@ -46,6 +47,7 @@ namespace LR
 #else
         ao_to_mo_blas(v_hxc_2d, psil_ks, nocc[sl], nvirt[sl], hpsi);
 #endif
+        ModuleBase::timer::tick("OperatorLRHxc", "act");
     }
 
 

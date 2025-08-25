@@ -32,7 +32,7 @@ std::vector<std::complex<double>> cal_velocity_mo(const UnitCell& ucell,
     LCAO_Orbitals orb;
     const auto& inp = PARAM.inp;
     two_center_bundle.to_LCAO_Orbitals(orb, inp.lcao_ecut, inp.lcao_dk, inp.lcao_dr, inp.lcao_rmax);
-    // actually this class calculates the velocity matrix v(R) at A=0
+
     Velocity_op<std::complex<double>> vR(&ucell, &gd, &pmat, orb, two_center_bundle.overlap_orb.get());
     vR.calculate_grad_term();   // $<\mu, 0|-i∇r|\nu, R>$
     vR.calculate_vcomm_r(); // $<\mu, 0|i[Vnl, r]|\nu, R>$
@@ -61,8 +61,6 @@ std::vector<std::complex<double>> cal_velocity_mo(const UnitCell& ucell,
     
     for(int iks = 0; iks < nks; ++iks)
     {
-        GlobalV::ofs_running << "iks: " << iks << std::endl;
-        GlobalV::ofs_running << "pc.get_row_size(): " << pc.get_row_size() << " pc.get_col_size(): " << pc.get_col_size() << std::endl;
         for(int ic = 0; ic < pc.get_col_size(); ++ic)//band
         {
             for(int ir = 0; ir < pc.get_row_size(); ++ir)//basis

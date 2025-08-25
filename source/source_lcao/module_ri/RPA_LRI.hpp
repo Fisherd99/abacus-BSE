@@ -418,7 +418,8 @@ void RPA_LRI<T, Tdata>::out_velocity(const UnitCell &ucell,
                                     const Grid_Driver &gd,
                                     const TwoCenterBundle &two_center_bundle,
                                     const Parallel_Orbitals &parav,/*nbasis×nbasis*/
-                                    const psi::Psi<T> &psi)
+                                    const psi::Psi<T> &psi,
+                                    const elecstate::ElecState* pelec)
 {
     ModuleBase::TITLE("DFT_RPA_interface", "out_velocity");
     ModuleBase::timer::tick("RPA_LRI", "out_velocity");
@@ -441,6 +442,8 @@ void RPA_LRI<T, Tdata>::out_velocity(const UnitCell &ucell,
         parav, parac, *this->p_kv, psi, nk, nspin_tmp, PARAM.globalv.nlocal, nocc, nvirt);
     if (GlobalV::MY_RANK == 0){
         LR_Util::output_spectrum_mo_librpa(velocity_mo, "velocity_matrix",
+            nk, nspin_tmp, PARAM.inp.nbands, *this->p_kv);
+        LR_Util::output_spectrum_mo(velocity_mo, "velocity_matrix_rpa", pelec->ekb.c,
             nk, nspin_tmp, PARAM.inp.nbands, *this->p_kv);
     }
 

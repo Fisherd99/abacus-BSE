@@ -55,7 +55,8 @@ template <typename T, typename Tdata> class RPA_LRI
         const Grid_Driver &gd,
         const TwoCenterBundle &two_center_bundle,
         const Parallel_Orbitals &parav,/*nbasis×nbasis*/
-        const psi::Psi<T> &psi);
+        const psi::Psi<T> &psi,
+        const elecstate::ElecState* pelec);
 
     void out_Cs(const UnitCell &ucell);
     void out_coulomb_k(const UnitCell &ucell);

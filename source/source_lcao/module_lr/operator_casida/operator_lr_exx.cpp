@@ -98,6 +98,7 @@ namespace LR
                                const bool is_first_node)const
     {
         ModuleBase::TITLE("OperatorLREXX", "act");
+        ModuleBase::timer::tick("OperatorLREXX", "act");
         // convert parallel info to LibRI interfaces
         std::vector<std::tuple<std::set<TA>, std::set<TA>>> judge = RI_2D_Comm::get_2D_judge(ucell,this->pmat);
 
@@ -147,7 +148,7 @@ namespace LR
                 }
             }
         }
-
+        ModuleBase::timer::tick("OperatorLREXX", "act");
     }
     template class OperatorLREXX<double>;
     template class OperatorLREXX<std::complex<double>>;
