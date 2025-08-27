@@ -285,7 +285,14 @@ LR::ESolver_LR<T, TR>::ESolver_LR(ModuleESolver::ESolver_KS_LCAO<T, TR>&& ks_sol
         } else    // construct C, V from scratch
         {
             // set ccp_type according to the xc_kernel
-            if (xc_kernel == "hf") { exx_info.info_global.ccp_type = Conv_Coulomb_Pot_K::Ccp_Type::Hf; }
+            if (xc_kernel == "hf") {
+                exx_info.info_global.ccp_type = Conv_Coulomb_Pot_K::Ccp_Type::Hf;
+                exx_info.info_global.hybrid_alpha = 1;
+                exx_info.info_global.coulomb_param[Conv_Coulomb_Pot_K::Coulomb_Type::Fock].resize(1);
+                exx_info.info_global.coulomb_param[Conv_Coulomb_Pot_K::Coulomb_Type::Fock] = {{
+                    {"alpha", "1"},
+                    {"singularity_correction", "spencer"} }};
+            }
             else if (xc_kernel == "hse") { exx_info.info_global.ccp_type = Conv_Coulomb_Pot_K::Ccp_Type::Erfc; }
             this->exx_lri = std::make_shared<Exx_LRI<T>>(exx_info.info_ri);
             this->exx_lri->init(MPI_COMM_WORLD, ucell,this->kv, ks_sol.orb_);
@@ -483,7 +490,14 @@ LR::ESolver_LR<T, TR>::ESolver_LR(const Input_para& inp, UnitCell& ucell) : inpu
     if ((xc_kernel == "hf" || xc_kernel == "hse") && this->input.lr_solver != "spectrum")
     {
         // set ccp_type according to the xc_kernel
-        if (xc_kernel == "hf") { exx_info.info_global.ccp_type = Conv_Coulomb_Pot_K::Ccp_Type::Hf; }
+        if (xc_kernel == "hf") {
+            exx_info.info_global.ccp_type = Conv_Coulomb_Pot_K::Ccp_Type::Hf;
+            exx_info.info_global.hybrid_alpha = 1;
+            exx_info.info_global.coulomb_param[Conv_Coulomb_Pot_K::Coulomb_Type::Fock].resize(1);
+            exx_info.info_global.coulomb_param[Conv_Coulomb_Pot_K::Coulomb_Type::Fock] = {{
+                {"alpha", "1"},
+                {"singularity_correction", "spencer"} }};
+        }
         else if (xc_kernel == "hse") { exx_info.info_global.ccp_type = Conv_Coulomb_Pot_K::Ccp_Type::Erfc; }
         this->exx_lri = std::make_shared<Exx_LRI<T>>(exx_info.info_ri);
         this->exx_lri->init(MPI_COMM_WORLD, ucell,this->kv, orb);

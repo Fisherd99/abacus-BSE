@@ -447,6 +447,12 @@ void RPA_LRI<T, Tdata>::out_velocity(const UnitCell &ucell,
             nk, nspin_tmp, PARAM.inp.nbands, *this->p_kv);
     }
 
+    std::vector<std::complex<double>> dipole_mo = LR_Util::cal_dipole_r_mo(ucell,
+        parav, parac, *this->p_kv, psi, nk, nspin_tmp, PARAM.globalv.nlocal, nocc, nvirt);
+    if (GlobalV::MY_RANK == 0){
+        LR_Util::output_spectrum_mo(dipole_mo, "dipole_matrix_rpa", pelec->ekb.c,
+            nk, nspin_tmp, PARAM.inp.nbands, *this->p_kv);
+    }
     ModuleBase::timer::tick("RPA_LRI", "out_velocity");
 }
 
