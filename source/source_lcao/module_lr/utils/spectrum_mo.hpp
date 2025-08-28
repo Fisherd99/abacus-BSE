@@ -199,7 +199,7 @@ std::vector<std::complex<double>> cal_dipole_r_mo(const UnitCell& ucell,
         // gather local rk to global r_mo
         for (int is = 0; is < nspin_tmp; ++is)
         {
-            for (int ik = 0; ik < nks; ++ik)
+            for (int ik = 0; ik < nk; ++ik)
             {
                 LR_Util::gather_2d_to_full(pmo, r_mo.data() + ik * pmo.get_local_size(), 
                 &dipole_mo[(is * 3 * nk + id * nk + ik) * KS_num * KS_num ],
