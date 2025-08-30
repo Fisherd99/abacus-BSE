@@ -729,17 +729,23 @@ void LR::ESolver_LR<T, TR>::after_all_runners(UnitCell& ucell)
             spectrum.optical_absorption_method1(freq, input.abs_broadening);
             // =============================================== for test ====================================================
             // spectrum.optical_absorption_method2(freq, input.abs_broadening);
-            // spectrum.test_transition_dipoles_velocity_ks(eig_ks.c);
             spectrum.write_transition_dipole(PARAM.globalv.global_out_dir + "transition_dipole.dat");
 
             if (LR_Util::tolower(input.abs_gauge) == "velocity")
             {
+                spectrum.test_transition_dipoles_velocity_ks(eig_ks.c);
+                spectrum.write_transition_dipole(PARAM.globalv.global_out_dir + "transition_dipole_velocity_ks.dat");
                 const int nk = PARAM.inp.nspin == 2 ? kv.get_nks() / 2 : kv.get_nks();
                 const int nspin_tmp = PARAM.inp.nspin == 2 ? 2 : 1;
                 std::vector<std::complex<double>> velocity_mo = LR_Util::cal_velocity_mo(this->ucell, this->gd, this->two_center_bundle_,
                     this->paraMat_, this->paraC_, this->kv, *this->psi_ks, nk, nspin_tmp, this->nbasis, this->nocc, this->nvirt);
                 if (GlobalV::MY_RANK == 0){
                     LR_Util::output_spectrum_mo(velocity_mo, "velocity_mo_lr", eig_ks.c, nk, nspin_tmp, nocc[0]+nvirt[0], this->kv);
+                }
+                std::vector<std::complex<double>> dipole_mo = LR_Util::cal_dipole_r_mo(ucell,
+                    this->paraMat_, this->paraC_, this->kv, *this->psi_ks, nk, nspin_tmp, this->nbasis, this->nocc, this->nvirt);
+                if (GlobalV::MY_RANK == 0){
+                    LR_Util::output_spectrum_mo(dipole_mo, "dipole_mo_lr", eig_ks.c, nk, nspin_tmp, nocc[0]+nvirt[0], this->kv);
                 }
             }
 

@@ -173,7 +173,8 @@ ModuleBase::Vector3<T> LR::LR_Spectrum<T>::cal_transition_dipole_istate_length_f
     for (int i = 0; i < 3; ++i) //direction
     {
         for (int is = 0;is < this->nspin_x;++is)
-        {// NOTE: both dot_R and folding_HR + inner_product are valid, keep both for test
+        {// NOTE: both dot_R and folding_HR + inner_product are valid, since DM_trans.cal_DMR will generate all non-zero R.
+         //  Keep both for test
             /*
             for (int ik = 0;ik < nk;++ik)
             {
@@ -210,7 +211,8 @@ void LR::LR_Spectrum<T>::cal_transition_dipoles_length()
     this->mean_squared_transition_dipole_.resize(nstate);
     if (this->gauge == "length-file")
     {
-        LR_Util::rRFileReader rRReader (PARAM.globalv.global_readin_dir + "rr.csr", this->pmat, ucell.nat);
+        LR_Util::rRFileReader rRReader (PARAM.globalv.global_readin_dir + "rr.csr",
+            PARAM.globalv.global_readin_dir + "srs1_nao.csr", this->pmat, ucell, kv);
         rRReader.convert_rR_HContainer();
         rRReader.output_rR_HContainer(PARAM.globalv.global_out_dir + "rr-test.csr");
         for (int istate = 0;istate < nstate;++istate)

@@ -8,6 +8,7 @@ if(ENABLE_LCAO)
   list(APPEND objects
     utils/lr_util.cpp
     utils/lr_util_hcontainer.cpp
+    utils/lr_util_rR_reader.cpp
     ao_to_mo_transformer/ao_to_mo_parallel.cpp
     ao_to_mo_transformer/ao_to_mo_serial.cpp
     dm_trans/dm_trans_parallel.cpp
