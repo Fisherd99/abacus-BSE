@@ -114,6 +114,7 @@ std::vector<std::complex<double>> cal_velocity_mo(const UnitCell& ucell,
             }
         }
     }//id
+    std::cout<<"Finish velocity matrix in KS presentation."<<std::endl;
     return velocity_mo;
 }
 
@@ -131,7 +132,8 @@ std::vector<std::complex<double>> cal_dipole_r_mo(const UnitCell& ucell,
 {
     ModuleBase::TITLE("LR::LR_Util", "cal_dipole_r_mo");
     std::cout<<"Calculating r-dipole matrix in KS presentation..."<<std::endl;
-    LR_Util::rRFileReader rRReader (PARAM.globalv.global_readin_dir + "rr.csr", pmat, ucell.nat);
+    LR_Util::rRFileReader rRReader (PARAM.globalv.global_readin_dir + "rr.csr",
+        PARAM.globalv.global_readin_dir + "srs1_nao.csr", pmat, ucell, kv);
     rRReader.convert_rR_HContainer();
 
     int nks = kv.get_nks(); // include spin
@@ -210,6 +212,7 @@ std::vector<std::complex<double>> cal_dipole_r_mo(const UnitCell& ucell,
             }
         }
     }//id
+    std::cout<<"Finish r-dipole matrix in KS presentation."<<std::endl;
     return dipole_mo;
 }
 
