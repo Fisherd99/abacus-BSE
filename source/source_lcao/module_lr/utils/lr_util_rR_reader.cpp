@@ -76,87 +76,109 @@ namespace LR_Util
         std::cout << ucell.latvec.e21 << " " << ucell.latvec.e22 << " " << ucell.latvec.e23 << std::endl;
         std::cout << ucell.latvec.e31 << " " << ucell.latvec.e32 << " " << ucell.latvec.e33 << std::endl;
         ModuleBase::Vector3<double> R1_Cartesian = R1_sum * ucell.latvec * ucell.lat0; // in unit of Bohr
-
+        for (int idirection = 0; idirection < 3; ++idirection) {
+            std::cout << "R1_Cartesian[" << idirection << "] = " << R1_Cartesian[idirection] << std::endl;
+        }
         for (int iR = 0; iR < numberOfR; iR++)// R coordinate
         {
             std::array<int,3> RCoord = RCoordinates[iR];
-            for (int iat = 0; iat < ucell.nat; iat++) //atom I
-            {
-                int begin_row = paraV.atom_begin_row[iat];
-                int end_row = paraV.atom_begin_row[iat + 1];
-                int numberofRow = end_row - begin_row;
-                for (int jat = 0; jat < ucell.nat; jat++) //atom J
+            if (RCoord[0]>0 || (RCoord[0]==0 && RCoord[1]>0) || (RCoord[0]==0 && RCoord[1]==0 && RCoord[2]>=0))
+            {// only convert for half of the rR matrices due to symmetric property rR(-R) = rR(R)^T
+                for (int iat = 0; iat < ucell.nat; iat++) //atom I
                 {
-                    int begin_col = paraV.atom_begin_col[jat];
-                    int end_col = paraV.atom_begin_col[jat + 1];
-                    int numberofCol = end_col - begin_col;
+                    int begin_row = paraV.atom_begin_row[iat];
+                    int end_row = paraV.atom_begin_row[iat + 1];
+                    int numberofRow = end_row - begin_row;
+                    for (int jat = 0; jat < ucell.nat; jat++) //atom J
+                    {
+                        int begin_col = paraV.atom_begin_col[jat];
+                        int end_col = paraV.atom_begin_col[jat + 1];
+                        int numberofCol = end_col - begin_col;
 
-                    GlobalV::ofs_running<<"Converting HContainer. RCoord: " 
-                    << RCoord[0] << " " << RCoord[1] << " " << RCoord[2] << ", iat: " << iat << ", jat: " << jat << std::endl;
+                        GlobalV::ofs_running<<"Converting HContainer. RCoord: " 
+                        << RCoord[0] << " " << RCoord[1] << " " << RCoord[2] << ", iat: " << iat << ", jat: " << jat << std::endl;
 
-                    hamilt::BaseMatrix<double> tmp_matrix(numberofRow, numberofCol);
-                    tmp_matrix.allocate(nullptr, true);
-                    for (int idirection = 0; idirection < 3; ++idirection){
-                        tmp_matrix.set_zero();
-                        for (const auto& element: this->sparse_matrices[idirection][iR].getElements())
-                        {
-                            int global_row = element.first.first;
-                            int global_col = element.first.second;
-                            int row = paraV.global2local_row(global_row);
-                            int col = paraV.global2local_col(global_col);
-                            if (row < begin_row || row >= end_row || col < begin_col || col >= end_col)
+                        hamilt::BaseMatrix<double> tmp_matrix(numberofRow, numberofCol);
+                        hamilt::BaseMatrix<double> tmp_matrix_T(numberofCol, numberofRow);
+                        tmp_matrix.allocate(nullptr, true);
+                        tmp_matrix_T.allocate(nullptr, true);
+                        for (int idirection = 0; idirection < 3; ++idirection){
+                            tmp_matrix.set_zero();
+                            tmp_matrix_T.set_zero();
+                            for (const auto& element: this->sparse_matrices[idirection][iR].getElements())
                             {
-                                continue;
+                                int global_row = element.first.first;
+                                int global_col = element.first.second;
+                                int row = paraV.global2local_row(global_row);
+                                int col = paraV.global2local_col(global_col);
+                                int row_T = paraV.global2local_row(global_col);
+                                int col_T = paraV.global2local_col(global_row);
+                                if (row >= begin_row && row < end_row && col >= begin_col && col < end_col)
+                                {
+                                    tmp_matrix.add_element(row - begin_row, col - begin_col, element.second);
+                                    tmp_matrix_T.add_element(row_T - begin_col, col_T - begin_row, element.second);
+                                }
+        /*#ifdef __DEBUG
+                                GlobalV::ofs_running<<"RANK:"<<GlobalV::MY_RANK << " adding element: " << row - begin_row << " "
+                                    << col - begin_col << " value: " <<std::setprecision(10) <<element.second << std::endl;
+        #endif*/
                             }
-                            tmp_matrix.add_element(row - begin_row, col - begin_col, element.second);
-    /*#ifdef __DEBUG
-                            GlobalV::ofs_running<<"RANK:"<<GlobalV::MY_RANK << " adding element: " << row - begin_row << " "
-                                << col - begin_col << " value: " <<std::setprecision(10) <<element.second << std::endl;
-    #endif*/
-                        }
-                        for (const auto& element: this->S_csr_reader.getMatrix(iR).getElements())
-                        {
-                            int global_row = element.first.first;
-                            int global_col = element.first.second;
-                            int row = paraV.global2local_row(global_row);
-                            int col = paraV.global2local_col(global_col);
-                            if (row < begin_row || row >= end_row || col < begin_col || col >= end_col)
-                            {
-                                continue;
+                            // for (const auto& element: this->S_csr_reader.getMatrix(iR).getElements())
+                            // {
+                            //     int global_row = element.first.first;
+                            //     int global_col = element.first.second;
+                            //     int row = paraV.global2local_row(global_row);
+                            //     int col = paraV.global2local_col(global_col);
+                            //     if (row < begin_row || row >= end_row || col < begin_col || col >= end_col)
+                            //     {
+                            //         continue;
+                            //     }
+                            //     tmp_matrix.add_element(row - begin_row, col - begin_col, element.second * R1_Cartesian[idirection]);
+                            // }
+                            // add BaseMatrix to AtomPair
+                            auto tmp_ap = hamilt::AtomPair<double>(iat, jat, RCoord[0], RCoord[1], RCoord[2], &paraV);
+                            tmp_ap.allocate(nullptr, true);
+                            tmp_ap.set_zero();
+                            tmp_ap.convert_add(tmp_matrix, RCoord[0], RCoord[1], RCoord[2]);
+        /*#ifdef __DEBUG
+                            GlobalV::ofs_running<<"RANK:"<<GlobalV::MY_RANK <<" Now check tmp_ap: " << iat << " " << jat << std::endl;
+                            for(int iw=0;iw<numberofRow;iw++){
+                                for(int jw=0;jw<numberofCol;jw++){
+                                    GlobalV::ofs_running<<std::setprecision(10) << tmp_ap.get_value(iw,jw) << " ";
+                                }
+                                GlobalV::ofs_running<<std::endl;
                             }
-                            tmp_matrix.add_element(row - begin_row, col - begin_col, element.second * R1_Cartesian[idirection]);
-                        }
-                        // add BaseMatrix to AtomPair
-                        auto tmp_ap = hamilt::AtomPair<double>(iat, jat, RCoord[0], RCoord[1], RCoord[2], &paraV);
-                        tmp_ap.allocate(nullptr, true);
-                        tmp_ap.set_zero();
-                        tmp_ap.convert_add(tmp_matrix, RCoord[0], RCoord[1], RCoord[2]);
-    /*#ifdef __DEBUG
-                        GlobalV::ofs_running<<"RANK:"<<GlobalV::MY_RANK <<" Now check tmp_ap: " << iat << " " << jat << std::endl;
-                        for(int iw=0;iw<numberofRow;iw++){
-                            for(int jw=0;jw<numberofCol;jw++){
-                                GlobalV::ofs_running<<std::setprecision(10) << tmp_ap.get_value(iw,jw) << " ";
+        #endif */
+                            // add AtomPair to HContainer
+                            rR[idirection].insert_pair(tmp_ap);
+
+                            if (RCoord[0]!=0 || RCoord[1]!=0 || RCoord[2]!=0){
+                                std::cout<<"Also add transpose part for -R: "<< -RCoord[0] << " " << -RCoord[1] << " " << -RCoord[2] << std::endl;
+                                // add the transpose part for -R
+                                auto tmp_ap_T = hamilt::AtomPair<double>(jat, iat, -RCoord[0], -RCoord[1], -RCoord[2], &paraV);
+                                tmp_ap_T.allocate(nullptr, true);
+                                tmp_ap_T.set_zero();
+                                tmp_ap_T.convert_add(tmp_matrix_T, -RCoord[0], -RCoord[1], -RCoord[2]);
+                                rR[idirection].insert_pair(tmp_ap_T);
                             }
-                            GlobalV::ofs_running<<std::endl;
-                        }
-    #endif */
-                        // add AtomPair to HContainer
-                        rR[idirection].insert_pair(tmp_ap);
-    /*
-                        GlobalV::ofs_running<<"RANK:"<<GlobalV::MY_RANK<< " Now check HC data in atom pair: " << iat << " " << jat
-                            << " R: " << RCoord[0] << " " << RCoord[1] << " " << RCoord[2] << std::endl;
-                        auto ap = rR[idirection].get_atom_pair(iat, jat);
-                        double* data = ap.get_HR_values(RCoord[0], RCoord[1], RCoord[2]).get_pointer();
-                        for(int iw=0;iw<numberofRow;iw++){
-                            for(int jw=0;jw<numberofCol;jw++){
-                                GlobalV::ofs_running<<std::setprecision(10) << *data << " ";
-                                data++;
+
+                            
+        /*
+                            GlobalV::ofs_running<<"RANK:"<<GlobalV::MY_RANK<< " Now check HC data in atom pair: " << iat << " " << jat
+                                << " R: " << RCoord[0] << " " << RCoord[1] << " " << RCoord[2] << std::endl;
+                            auto ap = rR[idirection].get_atom_pair(iat, jat);
+                            double* data = ap.get_HR_values(RCoord[0], RCoord[1], RCoord[2]).get_pointer();
+                            for(int iw=0;iw<numberofRow;iw++){
+                                for(int jw=0;jw<numberofCol;jw++){
+                                    GlobalV::ofs_running<<std::setprecision(10) << *data << " ";
+                                    data++;
+                                }
+                                GlobalV::ofs_running<<std::endl;
                             }
-                            GlobalV::ofs_running<<std::endl;
+                            GlobalV::ofs_running.flush();
+                            // seems only rank 0 can output to ofs_running
+        */
                         }
-                        GlobalV::ofs_running.flush();
-                        // seems only rank 0 can output to ofs_running
-    */
                     }
                 }
             }
