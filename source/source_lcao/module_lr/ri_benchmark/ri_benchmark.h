@@ -2,7 +2,7 @@
 #pragma once
 #include "source_cell/unitcell.h"
 #include "source_psi/psi.h"
-#include "source_lcao/module_ri/RI_Util.h" // for get_Born_von_Karmen_cells
+#include "source_lcao/module_lr/bse/bse_io.h"
 #include "source_basis/module_ao/parallel_orbitals.h"
 #include <RI/global/Tensor.h>
 namespace RI_Benchmark
@@ -15,51 +15,6 @@ namespace RI_Benchmark
     using TLRI = std::map<int, std::map<TAC, RI::Tensor<T>>>;
     template<typename T>
     using TLRIX = std::map<int, std::map<TAC, std::vector<T>>>;
-
-    class RI_kRlist{
-    public:
-        std::unique_ptr<K_Vectors> klist;
-        std::vector<TC> Rlist;
-
-        RI_kRlist(const std::string& file, const UnitCell& ucell){
-            this->klist = std::make_unique<K_Vectors>();
-            read_kpts(file, ucell, this->klist);
-            const TC period = RI_Util::get_Born_vonKarmen_period(*klist);
-            this->Rlist = RI_Util::get_Born_von_Karmen_cells(period);
-            std::cout << "Rlist:" << std::endl;
-            for (const auto& iR: Rlist)
-            {
-                std::cout << "iR:" << iR[0] << " " << iR[1] << " " << iR[2] << std::endl;
-            }
-        };
-        ~RI_kRlist(){};
-
-        void read_kpts(const std::string& file, const UnitCell& ucell, std::unique_ptr<K_Vectors> & klist)
-        {
-            std::ifstream ifs;
-            ifs.open(file);
-            if (!ifs) throw std::runtime_error(file + "not found");
-            std::string tmp;
-            for (int i = 0;i < 7;++i) { std::getline(ifs, tmp); } // skip the first 7 lines(include 7th atom coord line)
-            ifs >> klist->nmp[0] >> klist->nmp[1] >> klist->nmp[2];
-            int nk = klist->nmp[0] * klist->nmp[1] * klist->nmp[2];
-            klist->set_nks(nk);
-            klist->kvec_c.resize(nk);
-            klist->kvec_d.resize(nk);
-            klist->wk.resize(nk);
-            for (int ik = 0;ik < nk;++ik)
-            {
-                ifs >> klist->kvec_c[ik].x >> klist->kvec_c[ik].y >> klist->kvec_c[ik].z;
-                klist->kvec_d[ik] = klist->kvec_c[ik] * ucell.latvec / ModuleBase::TWO_PI;
-            }
-            std::cout << "FISH_output: klist:" << std::endl;
-            for (int ik = 0;ik < nk;++ik)
-            {
-                std::cout << "ik=" << ik <<": " << klist->kvec_c[ik].x << " " << klist->kvec_c[ik].y << " " << klist->kvec_c[ik].z 
-                << " | " << klist->kvec_d[ik].x << " " << klist->kvec_d[ik].y << " " << klist->kvec_d[ik].z << std::endl;
-            }
-        } 
-    };
 
     template <typename TK, typename TR>
     void benchmark_driver_A(std::string& file_Cs, std::string& file_Vs, std::string& file_kswfc, const int nocc, const int nvirt);
@@ -112,14 +67,6 @@ namespace RI_Benchmark
     template<typename FPTYPE>
     std::vector<FPTYPE> read_aims_ebands(const std::string& file, const int nocc, const int nvirt, int& ncore);
 
-    /// read the number of bands from the file `band_out`
-    inline void read_nbands_file(const std::string& file, int& nbands_file)
-    {
-        std::ifstream ifs;
-        ifs.open(file);
-        for (int i = 0;i < 3;++i) { ifs >> nbands_file; }
-    }
-
     inline void read_one_data(std::ifstream& ifs, double& data){
 		std::string temp;
 		ifs >> data >> temp;
@@ -138,10 +85,10 @@ namespace RI_Benchmark
 
     /// only for blocking by atom pairs (abacus type)
     template <typename TCs, typename TR>
-    TLRI<TR> read_coulomb_mat(const std::string& file, const TLRI<TCs>& Cs, const RI_kRlist& kRlist);
+    TLRI<TR> read_coulomb_mat(const std::string& file, const TLRI<TCs>& Cs, const BSE::RI_kRlist& kRlist);
     /// for any way of blocking (aims type)
     template <typename TCs, typename TR>
-    TLRI<TR> read_coulomb_mat_general(const std::string& file, const TLRI<TCs>& Cs, const RI_kRlist& kRlist);
+    TLRI<TR> read_coulomb_mat_general(const std::string& file, const TLRI<TCs>& Cs, const BSE::RI_kRlist& kRlist);
     template <typename TR>
     bool compare_Vs(const TLRI<TR>& Vs1, const TLRI<TR>& Vs2, const double thr = 1e-4);
     template <typename TR>

@@ -311,13 +311,15 @@ namespace RI_Benchmark
 
     /// @brief  read the eigenvectors from librpa, only for spin degenerate
     template <typename TK>
-    void read_librpa_eigenvectors(psi::Psi<TK>& wfc_ks, const std::string& path, const int ncore, const int nbands_file, Parallel_Orbitals& pmat) {
+    void read_librpa_eigenvectors(psi::Psi<TK>& wfc_ks, const std::string& path, const int ncore, const int nbands_file,
+        const int nspin_tmp, const int nspin_file, Parallel_Orbitals& pmat) {
         int nbands = pmat.get_wfc_global_nbands();// nbands = nocc + nvirt
         int nbasis = pmat.get_wfc_global_nbasis();
         const size_t nk = PARAM.inp.nspin == 2 ? wfc_ks.get_nk() / 2 : wfc_ks.get_nk();
-        const size_t npsin_tmp = PARAM.inp.nspin == 2 ? 2 : 1;// not used temporarily 25/03/31
-        std::vector<TK> wfc_ks_tot((GlobalV::MY_RANK==0) ? nbands_file * nbasis : 0);// glboal wfc for single k
-        if (GlobalV::MY_RANK == 0) {
+        std::vector<std::vector<TK>> wfc_ks_tot(
+            wfc_ks.get_nk(),
+            std::vector<TK>(((GlobalV::MY_RANK == 0) ? nbands * nbasis : 0), 0.0)); // glboal wfc
+            if (GlobalV::MY_RANK == 0) {
             struct dirent *ptr;
             DIR *dir;
             dir = opendir(path.c_str());
@@ -334,32 +336,24 @@ namespace RI_Benchmark
                     {
                         int ik;
                         file_librpa_ks >> ik;
-                        ik = ik - 1; // convert to 0-based index
+                        ik = ik - 1;
                         assert(readen_k[ik] == false);
-                        for (int iw = 0; iw < nbasis; ++iw)
-                        {
-                            for (int ib = 0; ib < nbands_file; ++ib)
-                            {
-                                if (ib >= ncore && ib< (ncore+nbands)) {
-                                    RI_Benchmark::read_one_data(file_librpa_ks, wfc_ks_tot[(ib - ncore) * nbasis + iw]);
-                                    file_librpa_ks >> std::ws; // skip the blank if there is
-                                }
-                                else {
-                                    std::getline(file_librpa_ks, tmp); //skip the useless bands
+                        for (int iw = 0; iw < nbasis; ++iw) {
+                            for (int ib = 0; ib < nbands_file; ++ib) {
+                                for (int is = 0; is < nspin_file; ++is) {
+                                    if (ib >= ncore && ib< (ncore+nbands)) {
+                                        RI_Benchmark::read_one_data(file_librpa_ks, wfc_ks_tot[ik+is*nk][(ib-ncore)*nbasis + iw]);
+                                        file_librpa_ks >> std::ws; // skip the blank if there is
+                                    }
+                                    else {
+                                        std::getline(file_librpa_ks, tmp); //skip the useless bands
+                                    }
                                 }
                             }
                         }
-                        // test: output wfc
-                        std::cout << "wfc_gs_read_from_librpa for ik:" << ik << std::endl;
-                        for (int ib = 0;ib < nbands;++ib)
-                        {
-                            for (int iw = 0;iw < nbasis;++iw)
-                            {
-                                std::cout << wfc_ks_tot[ib * nbasis + iw] << "  ";
-                            }
-                            std::cout << std::endl;
+                        if (nspin_tmp == 2 && nspin_file == 1) {
+                            wfc_ks_tot[ik + nk] = wfc_ks_tot[ik];
                         }
-                        // test: output wfc
                         readen_k[ik] = true;
                     }
                 }
@@ -369,18 +363,32 @@ namespace RI_Benchmark
                 if (!readen_k[ik])
                     throw std::runtime_error("librpa_eigenvector file not found for k-point " + std::to_string(ik+1));
             }
+            
         }// end of if (GlobalV::MY_RANK == 0) ;
-        for (int ik = 0; ik < nk; ++ik){
-            wfc_ks.fix_k(ik);
-        #ifdef __MPI
+        for (int iks = 0; iks < wfc_ks.get_nk(); ++iks){
+            // test: output wfc
+            if (GlobalV::MY_RANK == 0) {
+                std::cout << "wfc_gs_read_from_librpa for iks:" << iks << std::endl;
+                for (int ib = 0;ib < nbands;++ib)
+                {
+                    for (int iw = 0;iw < nbasis;++iw)
+                    {
+                        std::cout << wfc_ks_tot[iks][ib * nbasis + iw] << "  ";
+                    }
+                    std::cout << std::endl;
+                }
+            }
+            // test: output wfc
+            wfc_ks.fix_k(iks);
+#ifdef __MPI
             Parallel_2D pv_glb;
             pv_glb.set(nbasis, nbands, std::max(nbasis, nbands), pmat.blacs_ctxt);
-            Cpxgemr2d(nbasis, nbands, wfc_ks_tot.data(), 1, 1, pv_glb.desc,
+            Cpxgemr2d(nbasis, nbands, wfc_ks_tot[iks].data(), 1, 1, pv_glb.desc,
                         wfc_ks.get_pointer(), 1, 1, const_cast<int*>(pmat.desc_wfc),
                         pv_glb.blacs_ctxt);
-        #else
-            BlasConnector::copy(nbands*nlocal, wfc_ks_tot.data(), 1, wfc_ks.get_pointer(), 1);
-        #endif
+#else
+            BlasConnector::copy(nbands*nlocal, wfc_ks_tot[iks].data(), 1, wfc_ks.get_pointer(), 1);
+#endif
         }
     }
 
@@ -430,13 +438,13 @@ namespace RI_Benchmark
     }
     
     template <typename TCs, typename TR> // only for blocking by atom pairs (abacus type)
-    TLRI<TR> read_coulomb_mat(const std::string& file, const TLRI<TCs>& Cs, RI_kRlist& kRlist )
+    TLRI<TR> read_coulomb_mat(const std::string& file, const TLRI<TCs>& Cs, const BSE::RI_kRlist& kRlist )
     {
         std::ifstream ifs;
         ifs.open(file);
         size_t nk = 0, nabf = 0, istart = 0, jstart = 0, iend = 0, jend = 0;
         std::string tmp;
-        std::unique_ptr<K_Vectors>& klist = kRlist.klist;
+        const std::unique_ptr<K_Vectors>& klist = kRlist.klist;
         ifs >> nk;//   nkstot(actually nk)
         assert(nk == klist->get_nks());
         int ik_readin = -1;
@@ -500,13 +508,13 @@ namespace RI_Benchmark
     }
 
     template <typename TCs, typename TR> // any blocking (aims type)
-    TLRI<TR> read_coulomb_mat_general(const std::string& file, const TLRI<TCs>& Cs, RI_kRlist& kRlist)
+    TLRI<TR> read_coulomb_mat_general(const std::string& file, const TLRI<TCs>& Cs, const BSE::RI_kRlist& kRlist)
     {
         std::ifstream ifs;
         ifs.open(file);
         size_t nk = 0, nabf = 0, istart = 0, jstart = 0, iend = 0, jend = 0;
         std::string tmp;
-        std::unique_ptr<K_Vectors>& klist = kRlist.klist;
+        const std::unique_ptr<K_Vectors>& klist = kRlist.klist;
         ifs >> nk;//   nkstot(actually nk)
         assert(nk == klist->get_nks());
         int ik_readin = -1;

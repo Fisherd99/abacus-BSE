@@ -82,8 +82,6 @@ namespace LR
                                     const int iwt2 = ucell.itiaiw2iwt(it2, ia2, iw2);
                                     if (this->pmat.in_this_processor(iwt1, iwt2))
                                         D2d(iw1, iw2) = frac * std::conj(this->psi_ks_full(ik, io, iwt2)) * this->psi_ks_full(ik, nocc + iv, iwt1);
-                                        std::cout<<"FISH_DEBUG: ik:" <<ik<< "\t io:"<< io <<"\t iw1:"<<iw1<<"\t psi_ks_full:"<<psi_ks_full(ik, io, iwt2)<<std::endl;
-                                        std::cout<<"FISH_DEBUG: iv:"<< iv <<"\t iw2:"<<iw2<<"\t psi_ks_full:"<<psi_ks_full(ik, nocc + iv, iwt1)<<std::endl;
                                 }
                         }
         }

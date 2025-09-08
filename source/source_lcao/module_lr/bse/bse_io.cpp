@@ -1,12 +1,55 @@
 #include "bse_io.h"
 
 namespace BSE{
+
+    RI_kRlist::RI_kRlist(const std::string& file, const UnitCell& ucell){
+        this->klist = std::make_unique<K_Vectors>();
+        read_kpts(file, ucell, this->klist);
+        const TC period = RI_Util::get_Born_vonKarmen_period(*klist);
+        this->Rlist = RI_Util::get_Born_von_Karmen_cells(period);
+        std::cout << "Rlist:" << std::endl;
+        for (const auto& iR: Rlist)
+        {
+            std::cout << "iR:" << iR[0] << " " << iR[1] << " " << iR[2] << std::endl;
+        }
+    };
+
+    void RI_kRlist::read_kpts(const std::string& file, const UnitCell& ucell, std::unique_ptr<K_Vectors> & klist)
+    {
+        std::ifstream ifs;
+        ifs.open(file);
+        if (!ifs) throw std::runtime_error(file + "not found");
+        std::string tmp;
+        for (int i = 0; i < 7; ++i) { std::getline(ifs, tmp); } // get the 7th line(number of atoms)
+        std::cout << "FISH_output: nat:" << tmp << std::endl;
+        int nat = std::stoi(tmp);
+        for (int i = 0; i != nat; ++i) { std::getline(ifs, tmp); }
+        ifs >> klist->nmp[0] >> klist->nmp[1] >> klist->nmp[2];
+        int nk = klist->nmp[0] * klist->nmp[1] * klist->nmp[2];
+        std::cout << "FISH_output: nmp: " << klist->nmp[0] << " " << klist->nmp[1] << " " << klist->nmp[2] << std::endl;
+        klist->set_nks(nk);
+        klist->kvec_c.resize(nk);
+        klist->kvec_d.resize(nk);
+        klist->wk.resize(nk);
+        for (int ik = 0;ik < nk;++ik)
+        {
+            ifs >> klist->kvec_c[ik].x >> klist->kvec_c[ik].y >> klist->kvec_c[ik].z;
+            klist->kvec_d[ik] = klist->kvec_c[ik] * ucell.latvec / ModuleBase::TWO_PI;
+        }
+        std::cout << "FISH_output: klist:" << std::endl;
+        for (int ik = 0;ik < nk;++ik)
+        {
+            std::cout << "ik=" << ik <<": " << klist->kvec_c[ik].x << " " << klist->kvec_c[ik].y << " " << klist->kvec_c[ik].z 
+            << " | " << klist->kvec_d[ik].x << " " << klist->kvec_d[ik].y << " " << klist->kvec_d[ik].z << std::endl;
+        }
+    }
+
     std::vector<std::vector<std::pair<double,double>>> read_energy_qp(const std::string& file,
-    const int nocc, const int nvirt, int& ncore, const int nk)
+    const int nocc, const int nvirt, int& ncore, const int nk, const int nspin_tmp, const int nspin_file)
     {
         std::cout << "in read_energy_qp" << std::endl;
         std::cout << "FISH_OUTPUT: nbands(nocc+nvir): " << (nocc+nvirt) << std::endl;
-        std::vector<std::vector<std::pair<double, double>>> eig_gw(nk, std::vector<std::pair<double, double>>(nocc + nvirt));
+        std::vector<std::vector<std::pair<double, double>>> eig_gw(nk*nspin_tmp, std::vector<std::pair<double, double>>(nocc + nvirt));
         std::ifstream file_gw (file);
         if (!file_gw) throw std::runtime_error(file + "not found");
         std::string temp;
@@ -14,37 +57,48 @@ namespace BSE{
         double occ, gw_temp;
         // while(file_gw.peek() == '%') file_gw.ignore(2048, '\n');	//skip comments
 
-        for (int i = 0;i < 2;++i) { std::getline(file_gw, temp); } // skip the first 2 lines
-        for (int ik = 0; ik < nk; ++ik){
-            file_gw >> temp >> read_ik ;
-            assert(ik == (read_ik-1));
-            int ivirt = 0;
-            std::getline(file_gw, temp); // skip the interval line
-            std::getline(file_gw, temp); // skip the interval line
-            std::vector<double> gw_temps;
-            std::vector<double> occ_temps;
-            while (file_gw.peek() != '-')
-            {
-                file_gw >> temp >> occ >> temp >> gw_temp;
-                gw_temps.push_back(gw_temp * 2); // Ha to Ry
-                occ_temps.push_back(occ);
-                if (occ < 0.1) { ivirt++;}
-                if (ivirt == nvirt) { break; }
+        for (int is =0; is < nspin_file; ++is){
+            for (int ik = 0; ik < nk; ++ik){
+                for (int i = 0;i < 2;++i) { std::getline(file_gw, temp); } // skip the first 2 lines
+                file_gw >> temp >> read_ik ;
+                std::cout<<"read_ik: " << read_ik <<" is:" << is << std::endl;
+                assert(ik == (read_ik-1));
+                int ivirt = 0;
+                std::getline(file_gw, temp); // skip the interval line
+                std::getline(file_gw, temp); // skip the interval line
+                std::vector<double> gw_temps;
+                std::vector<double> occ_temps;
+                while (file_gw.peek() != '-')
+                {
+                    std::getline(file_gw, temp);
+                    std::istringstream iss(temp);
+                    iss >> temp >> occ >> temp >> gw_temp;
+                    gw_temps.push_back(gw_temp * 2); // Ha to Ry
+                    occ_temps.push_back(occ);
+                    if (occ < 0.1) { ivirt++;}
+                    if (ivirt == nvirt) { break; }
+                }
+                int ncore = gw_temps.size() - nocc - nvirt;
+                for (int ib = 0;ib < nocc + nvirt;++ib)
+                {
+                    eig_gw[ik+is*nk][ib] = std::pair<double, double>(occ_temps[ncore + ib], gw_temps[ncore + ib]);
+                    std::cout <<"FISH_OUTPUT: ik=" << ik << "\t" << ib << "\t" << eig_gw[ik+is*nk][ib].first 
+                        << "\t" << eig_gw[ik+is*nk][ib].second << std::endl; //check
+                }
+                while (file_gw.peek() != '-' && file_gw.peek() != EOF)
+                {
+                    std::getline(file_gw, temp); // skip the virtual bands to next k-point
+                }            
             }
-            int ncore = gw_temps.size() - nocc - nvirt;
-            for (int ib = 0;ib < nocc + nvirt;++ib)
-            {
-                eig_gw[ik][ib] = std::pair<double, double>(occ_temps[ncore+ib], gw_temps[ncore + ib]);
-                std::cout <<"FISH_OUTPUT: ik=" << ik << "\t" << ib << " " << eig_gw[ik][ib].first << eig_gw[ik][ib].second << std::endl; //check
-            }
-            while (file_gw.peek() != '-' && file_gw.peek() != EOF)
-            {
-                std::getline(file_gw, temp); // skip the virtual bands to next k-point
-            }
-            std::cout << "FISH_OUTPUT: Finish read gw, ncore=" << ncore << std::endl;
         }
+        if (nspin_file == 1 && nspin_tmp == 2) {
+            for (int ik = 0; ik < nk; ++ik) {
+                eig_gw[ik + nk] = eig_gw[ik];
+            }
+        }        
         file_gw.close();
-        return eig_gw;    
+        std::cout << "FISH_OUTPUT: Finish read gw, ncore=" << ncore << std::endl;
+        return eig_gw;
     }
 
     template<typename Tdata, typename TR>
@@ -67,7 +121,7 @@ namespace BSE{
                 for(int iR = 0; iR < nR; ++iR)
                 {
                     std::string filename = "Wc_Mu_"+std::to_string(iat)+"_Nu_"+std::to_string(jat)+"_iR_"+std::to_string(iR)+"_ifreq_0.mtx";
-                    infileW.open(PARAM.globalv.global_readin_dir + "librpa.d/" + filename);
+                    infileW.open("librpa.d/" + filename);
                     if(!infileW) throw std::runtime_error( filename + " not found!");
 
                     int nabf1 = Vs.at(iat).at({jat,{0,0,0}}).shape[0];
@@ -89,7 +143,7 @@ namespace BSE{
                         for(int j = 0; j != nabf2; ++j)
                         {
                             tensor_W(i, j) = Vs.at(iat).at({jat, Rlist[iR]})(i,j) + WcIJ[i * nabf2 + j];
-                            std::cout << "FISH_OUTPUT: Wxc: " << i << " " << j << " " << tensor_W(i,j) << std::endl; //check
+                            //std::cout << "FISH_OUTPUT: Wxc: " << i << " " << j << " " << tensor_W(i,j) << std::endl; //check
                         }
                     Ws[iat][{jat, Rlist[iR]}] = tensor_W;
                 }

@@ -73,7 +73,7 @@ namespace LR
                 {
                     if (ri_hartree_benchmark == "aims" | ri_hartree_benchmark == "aims-librpa") 
                     { 
-                        RI_Benchmark::RI_kRlist kRlist (dir + "stru_out", ucell_in);
+                        BSE::RI_kRlist kRlist (dir + "stru_out", ucell_in);
                         // though C and V are real, here still use <T> to multiply with psi
                         Cs_read = LRI_CV_Tools::read_Cs_ao<T>(dir + "Cs_data_0.txt");
                         Vs_read = RI_Benchmark::read_coulomb_mat_general<T,T>(dir + "coulomb_mat_0.txt", Cs_read, kRlist);
@@ -85,7 +85,7 @@ namespace LR
                     }
                     else if (ri_hartree_benchmark == "abacus-librpa")
                     {
-                        RI_Benchmark::RI_kRlist kRlist (dir + "stru_out", ucell_in);
+                        BSE::RI_kRlist kRlist (dir + "stru_out", ucell_in);
                         Cs_read = LRI_CV_Tools::read_Cs_ao<T>(dir + "Cs_data_0.txt");
                         Vs_read = RI_Benchmark::read_coulomb_mat<T,T>(dir + "coulomb_mat_0.txt", Cs_read, kRlist);
                     }

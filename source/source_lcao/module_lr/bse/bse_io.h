@@ -1,43 +1,68 @@
 #ifdef __EXX
 #pragma once
-#include <vector>
-#include <string>
-#include <iostream>
-#include <fstream>
-#include <stdexcept>
-#include <cassert>
 #include "source_base/tool_title.h"
 #include "source_io/module_parameter/parameter.h"
-#include <map>
+#include "source_lcao/module_ri/RI_Util.h" // for get_Born_von_Karmen_cells
+
 #include <RI/global/Tensor.h>
+#include <cassert>
+#include <fstream>
+#include <iostream>
+#include <map>
+#include <stdexcept>
+#include <string>
+#include <vector>
 
 namespace BSE
 {
-    using TA = int;
-    using TC = std::array<int, 3>;
-    using TAC = std::pair<int, TC>;
+using TA = int;
+using TC = std::array<int, 3>;
+using TAC = std::pair<int, TC>;
 
-    template <typename T>
-    using TLRI = std::map<int, std::map<TAC, RI::Tensor<T>>>;
+template <typename T>
+using TLRI = std::map<int, std::map<TAC, RI::Tensor<T>>>;
 
-    inline void read_one_data(std::ifstream& ifs, double& data){
-		std::string temp;
-		ifs >> data >> temp;
-	}    
-    inline void read_one_data(std::ifstream& ifs, std::complex<double>& data){
-		double real, imag;
-		ifs >> real >> imag;
-		data = std::complex<double>(real, imag);
-	}
-    
-/// @brief pair:<occ, qs_energy>, vector as {ik, iband} 
-/// @param ncore: as output, number of core orbitals parsed from file
-std::vector<std::vector<std::pair<double,double>>> read_energy_qp(
-    const std::string& file, const int nocc, const int nvirt, int& ncore, const int nk);
-    
-/// @brief read Wxc(R) = Wc(R) + Vx(R) from file
-template<typename Tdata, typename TR>
-std::map<TA,std::map<TAC,RI::Tensor<Tdata>>> read_Ws(const TLRI<TR>& Vs, const std::vector<TC>& Rlist);
+class RI_kRlist
+{
+  public:
+    std::unique_ptr<K_Vectors> klist;
+    std::vector<TC> Rlist;
+    RI_kRlist(const std::string& file, const UnitCell& ucell);
+    ~RI_kRlist() = default;
+    void read_kpts(const std::string& file, const UnitCell& ucell, std::unique_ptr<K_Vectors>& klist);
+};
 
+inline void parse_band_out_file(const std::string& file, int& nbands_file, int& nk_file, int& nspin_file)
+{
+    std::ifstream ifs;
+    ifs.open(file);
+    ifs >> nk_file >> nspin_file >> nbands_file;
 }
+inline void read_one_data(std::ifstream& ifs, double& data)
+{
+    std::string temp;
+    ifs >> data >> temp;
+}
+inline void read_one_data(std::ifstream& ifs, std::complex<double>& data)
+{
+    double real, imag;
+    ifs >> real >> imag;
+    data = std::complex<double>(real, imag);
+}
+
+/// @brief pair:<occ, qs_energy>, vector as {ik, iband}
+/// @param ncore: as output, number of core orbitals parsed from file
+std::vector<std::vector<std::pair<double, double>>> read_energy_qp(const std::string& file,
+                                                                   const int nocc,
+                                                                   const int nvirt,
+                                                                   int& ncore,
+                                                                   const int nk,
+                                                                   const int nspin_tmp,
+                                                                   const int nspin_file);
+
+/// @brief read Wxc(R) = Wc(R) + Vx(R) from file
+template <typename Tdata, typename TR>
+std::map<TA, std::map<TAC, RI::Tensor<Tdata>>> read_Ws(const TLRI<TR>& Vs, const std::vector<TC>& Rlist);
+
+} // namespace BSE
 #endif

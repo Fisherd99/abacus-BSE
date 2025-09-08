@@ -269,7 +269,7 @@ inline void output_spectrum_mo_librpa(const std::vector<std::complex<double>>& o
 {
     assert(out_spectrum_mo.size() == nspin_tmp * 3 * nk * KS_num * KS_num);
     std::ofstream ofs(filename);
-    ofs << nk << std::endl;
+    ofs << std::scientific << nk << std::endl;
     ofs << nspin_tmp << std::endl;
     ofs << PARAM.inp.nbands << std::endl;
     ofs << PARAM.globalv.nlocal << std::endl;
