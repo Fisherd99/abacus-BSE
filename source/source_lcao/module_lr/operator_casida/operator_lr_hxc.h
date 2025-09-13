@@ -36,6 +36,7 @@ namespace LR
             kv(kv_in), pX(pX_in), pc(pc_in), pmat(pmat_in), ispin_ks(ispin_ks)
       {
           ModuleBase::TITLE("OperatorLRHxc", "OperatorLRHxc");
+          std::cout<<"Initializing OperatorLRHxc"<<std::endl;
           this->cal_type = hamilt::calculation_type::lcao_gint;
           this->is_first_node = true;
           this->hR = std::unique_ptr<hamilt::HContainer<T>>(new hamilt::HContainer<T>(&pmat_in));

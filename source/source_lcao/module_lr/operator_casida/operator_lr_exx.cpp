@@ -7,23 +7,25 @@
 namespace LR
 {
     template<typename T>
-    void OperatorLREXX<T>::allocate_Ds_onebase()
+    TLRI<T> OperatorLREXX<T>::allocate_Ds_onebase() const
     {
         ModuleBase::TITLE("OperatorLREXX", "allocate_Ds_onebase");
+        TLRI<T> Ds_onebase;
         for (int iat1 = 0;iat1 < ucell.nat;++iat1) {
             const int it1 = ucell.iat2it[iat1];
             for (int iat2 = 0;iat2 < ucell.nat;++iat2) {
                 const int it2 = ucell.iat2it[iat2];
                 for (auto cell : this->BvK_cells) {
-                    this->Ds_onebase[iat1][std::make_pair(iat2, cell)] = 
+                    Ds_onebase[iat1][std::make_pair(iat2, cell)] = 
                         RI::Tensor<T>({ static_cast<size_t>(ucell.atoms[it1].nw),  static_cast<size_t>(ucell.atoms[it2].nw) });
                 }
             }
         }
+        return Ds_onebase;
     }
 
     template<>
-    void OperatorLREXX<double>::cal_DM_onebase(const int io, const int iv, const int ik) const
+    void OperatorLREXX<double>::cal_DM_onebase(const int io, const int iv, const int ik, TLRI<double>& Ds_onebase) const
     {
         ModuleBase::TITLE("OperatorLREXX", "cal_DM_onebase");
         // NOTICE: DM_onebase will be passed into `cal_energy` interface and conjugated by "zdotc". 
@@ -39,7 +41,7 @@ namespace LR
                         {
                             int iat1 = ucell.itia2iat(it1, ia1);
                             int iat2 = ucell.itia2iat(it2, ia2);
-                            auto& D2d = this->Ds_onebase[iat1][std::make_pair(iat2, cell)];
+                            auto& D2d = Ds_onebase[iat1][std::make_pair(iat2, cell)];
                             const int nw1 = ucell.atoms[it1].nw;
                             const int nw2 = ucell.atoms[it2].nw;
                             for (int iw1 = 0;iw1 < nw1;++iw1)
@@ -55,12 +57,15 @@ namespace LR
     }
 
     template<>
-    void OperatorLREXX<std::complex<double>>::cal_DM_onebase(const int io, const int iv, const int ik) const
+    void OperatorLREXX<std::complex<double>>::cal_DM_onebase(const int io, const int iv, const int ik, TLRI<std::complex<double>>& Ds_onebase) const
     {
         ModuleBase::TITLE("OperatorLREXX", "cal_DM_onebase");
         // NOTICE: DM_onebase will be passed into `cal_energy` interface and conjugated by "zdotc". 
         // So the formula should be the same as RHS. instead of LHS of the A-matrix, 
         // i.e. c1v · conj(c2o) ·  e^{-ik(R2-R1)}
+#ifdef _OPENMP
+#pragma omp parallel for schedule(dynamic) //thread parallel for cells
+#endif
         for (auto cell : this->BvK_cells)
         {
             std::complex<double> frac = RI::Global_Func::convert<std::complex<double>>(std::exp(
@@ -72,7 +77,7 @@ namespace LR
                         {
                             int iat1 = ucell.itia2iat(it1, ia1);
                             int iat2 = ucell.itia2iat(it2, ia2);
-                            auto& D2d = this->Ds_onebase[iat1][std::make_pair(iat2, cell)];
+                            auto& D2d = Ds_onebase[iat1][std::make_pair(iat2, cell)];
                             const int nw1 = ucell.atoms[it1].nw;
                             const int nw2 = ucell.atoms[it2].nw;
                             for (int iw1 = 0;iw1 < nw1;++iw1)
@@ -98,8 +103,6 @@ namespace LR
     {
         ModuleBase::TITLE("OperatorLREXX", "act");
         ModuleBase::timer::tick("OperatorLREXX", "act");
-        
-        if(true){ //FISH_NOTE: for debug
         std::cout<<"in OperatorLREXX act"<<std::endl;
 
         // convert parallel info to LibRI interfaces
@@ -122,6 +125,7 @@ namespace LR
         // LR_Util::print_CV(Ds_trans[0], "Ds_trans in OperatorLREXX", 1e-10);
         
         // 2. cal_Hs
+        ModuleBase::timer::tick("OperatorLREXX", "cal_Hs");
         auto lri = this->exx_lri.lock();
         lri->exx_lri.set_Ds(std::move(Ds_trans[0]), lri->info.dm_threshold);
         lri->exx_lri.cal_Hs();
@@ -129,32 +133,53 @@ namespace LR
             lri->mpi_comm, std::move(lri->exx_lri.Hs), std::get<0>(judge[0]), std::get<1>(judge[0]));
         lri->post_process_Hexx(lri->Hexxs[0]);
         // LR_Util::print_CV(lri->Hexxs[0], "Hexxs in OperatorLREXX", 1e-10);
+        ModuleBase::timer::tick("OperatorLREXX", "cal_Hs");
 
         // 3. set [AX]_iak = DM_onbase * Hexxs for each occ-virt pair and each k-point
         // caution: parrallel
-
+        ModuleBase::timer::tick("OperatorLREXX", "cal_energy");
+        static TLRI<T> Ds_onebase;
+#ifdef _OPENMP
+#pragma omp threadprivate(Ds_onebase)
+#pragma omp parallel for collapse(3) schedule(static) //thread parallel for (io, iv, ik)
+#endif
         for (int io = 0;io < this->nocc;++io)
         {
             for (int iv = 0;iv < this->nvirt;++iv)
             {
                 for (int ik = 0;ik < nk;++ik)
                 {
+                    if (Ds_onebase.empty())
+                    {
+                        Ds_onebase = this->allocate_Ds_onebase();
+                        //for debug
+                        // #pragma omp critical
+                        // {
+                        //     std::cout << "Thread: " << omp_get_thread_num() << " allocated Ds_onebase" << std::endl;
+                        // }
+                    }
+                    this->cal_DM_onebase(io, iv, ik, Ds_onebase);
                     const int xstart_bk = ik * pX.get_local_size();
-                    this->cal_DM_onebase(io, iv, ik);       //set Ds_onebase for all e-h pairs (not only on this processor)
                     // LR_Util::print_CV(Ds_onebase, "Ds_onebase of occ " + std::to_string(io) + ", virtual " + std::to_string(iv) + " in OperatorLREXX", 1e-10);
                     const T& ene = 2 * alpha * //minus for exchange(but here plus is right, why?), 2 for Hartree to Ry
-                        lri->exx_lri.post_2D.cal_energy(this->Ds_onebase, lri->Hexxs[0]);
+                        lri->exx_lri.post_2D.cal_energy(Ds_onebase, lri->Hexxs[0]);
                     if (this->pX.in_this_processor(iv, io))
                     {
                         hpsi[xstart_bk + this->pX.global2local_col(io) * this->pX.get_row_size() + this->pX.global2local_row(iv)] += ene;
                     }
-                    //FISH_NOTE: for debug
-                    std::cout<<"W(direct) term: ik:"<<ik<<"\t io:"<<io<<"\t iv:"<<iv<<"\t ene:"<<ene<<std::endl;
+                    //for debug
+                    // std::ostringstream oss;
+                    // oss << "Thread: " << omp_get_thread_num() << "\t Direct term: io="<<io<<"\t iv="<<iv<<"\t ik="<<ik<<"\t ene="<<ene<<std::endl;
+                    // #pragma omp critical
+                    // {
+                    //     std::cout << oss.str();
+                    // }
                 }
             }
         }
+        ModuleBase::timer::tick("OperatorLREXX", "cal_energy");
         ModuleBase::timer::tick("OperatorLREXX", "act");
-    }}
+    }
     template class OperatorLREXX<double>;
     template class OperatorLREXX<std::complex<double>>;
 }

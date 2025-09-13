@@ -34,9 +34,10 @@ namespace BSE{
         for (int ik = 0;ik < nk;++ik)
         {
             ifs >> klist->kvec_c[ik].x >> klist->kvec_c[ik].y >> klist->kvec_c[ik].z;
-            klist->kvec_d[ik] = klist->kvec_c[ik] * ucell.latvec / ModuleBase::TWO_PI;
+            klist->kvec_c[ik] /= ModuleBase::TWO_PI * ModuleBase::BOHR_TO_A; // in unit of 2pi/angstrom
+            klist->kvec_d[ik] = klist->kvec_c[ik] * ucell.latvec;
         }
-        std::cout << "FISH_output: klist:" << std::endl;
+        std::cout << "FISH_output: klist(Cartesian|Direct)" << std::endl;
         for (int ik = 0;ik < nk;++ik)
         {
             std::cout << "ik=" << ik <<": " << klist->kvec_c[ik].x << " " << klist->kvec_c[ik].y << " " << klist->kvec_c[ik].z 
@@ -109,7 +110,6 @@ namespace BSE{
         std::map<TA,std::map<TAC,RI::Tensor<Tdata>>> Ws;
         
         const int nat = Vs.size();
-        std::ifstream infileW;
         std::string temp;
         int nk, istart, iend, jstart, jend, ik;
         size_t nabfmu, nabfnu, non_zero, mu, nu; //I.nab, J.nab
@@ -120,10 +120,11 @@ namespace BSE{
             {
                 for(int iR = 0; iR < nR; ++iR)
                 {
+                    std::ifstream infileW;
                     std::string filename = "Wc_Mu_"+std::to_string(iat)+"_Nu_"+std::to_string(jat)+"_iR_"+std::to_string(iR)+"_ifreq_0.mtx";
                     infileW.open("librpa.d/" + filename);
                     if(!infileW) throw std::runtime_error( filename + " not found!");
-
+                    else std::cout << "reading Wc file: " << filename << std::endl;
                     int nabf1 = Vs.at(iat).at({jat,{0,0,0}}).shape[0];
                     int nabf2 = Vs.at(iat).at({jat,{0,0,0}}).shape[1];
                     while(infileW.peek() == '%') infileW.ignore(2048, '\n');	//skip comments
@@ -132,20 +133,20 @@ namespace BSE{
                     assert(nabfmu == nabf1);
                     assert(nabfnu == nabf2);
                     RI::Tensor<Tdata> tensor_W({ nabfmu, nabfnu });
-                    std::vector<Tdata> WcIJ(nabfmu * nabfnu, 0.0);
                     for (int index = 0; index < non_zero; ++index)
                     {
                         infileW >> mu >> nu ;
-                        BSE::read_one_data(infileW, WcIJ[mu * nabfnu + nu]);
+                        BSE::read_one_data(infileW, tensor_W(mu-1, nu-1));
                     }
                     infileW.close();
                     for(int i = 0; i != nabf1; ++i)
                         for(int j = 0; j != nabf2; ++j)
                         {
-                            tensor_W(i, j) = Vs.at(iat).at({jat, Rlist[iR]})(i,j) + WcIJ[i * nabf2 + j];
+                            tensor_W(i, j) += Vs.at(iat).at({jat, Rlist[iR]})(i,j);
                             //std::cout << "FISH_OUTPUT: Wxc: " << i << " " << j << " " << tensor_W(i,j) << std::endl; //check
                         }
                     Ws[iat][{jat, Rlist[iR]}] = tensor_W;
+                    std::cout << "FISH_OUTPUT: Finish read W for iat, jat, iR: " << iat << " " << jat << " " << iR << std::endl;
                 }
             }
         }

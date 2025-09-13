@@ -71,7 +71,7 @@ namespace LR
 #ifdef __EXX
                 if (spin_type == "singlet")
                 {
-                    if (ri_hartree_benchmark == "aims" | ri_hartree_benchmark == "aims-librpa") 
+                    if (ri_hartree_benchmark == "aims" || ri_hartree_benchmark == "aims-librpa") 
                     { 
                         BSE::RI_kRlist kRlist (dir + "stru_out", ucell_in);
                         // though C and V are real, here still use <T> to multiply with psi
@@ -83,11 +83,11 @@ namespace LR
                         Cs_read = LRI_CV_Tools::read_Cs_ao<T>(dir + "Cs");
                         Vs_read = LRI_CV_Tools::read_Vs_abf<T>(dir + "Vs");
                     }
-                    else if (ri_hartree_benchmark == "abacus-librpa")
+                    else if (ri_hartree_benchmark == "abacus-librpa")// files in running directory
                     {
-                        BSE::RI_kRlist kRlist (dir + "stru_out", ucell_in);
-                        Cs_read = LRI_CV_Tools::read_Cs_ao<T>(dir + "Cs_data_0.txt");
-                        Vs_read = RI_Benchmark::read_coulomb_mat<T,T>(dir + "coulomb_mat_0.txt", Cs_read, kRlist);
+                        BSE::RI_kRlist kRlist ("stru_out", ucell_in);
+                        Cs_read = LRI_CV_Tools::read_Cs_ao<T>("Cs_data_0.txt");
+                        Vs_read = RI_Benchmark::read_coulomb_mat<T,T>("coulomb_mat_0.txt", Cs_read, kRlist);
                     }
                     if (!std::set<std::string>({ "rpa", "hf", "bse"}).count(xc_kernel)) {
                         throw std::runtime_error("ri_hartree_benchmark is only supported for xc_kernel = rpa, hf, bse"); 

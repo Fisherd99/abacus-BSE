@@ -16,6 +16,7 @@ namespace LR
             : pX(pX_in), nk(nk_in), nocc(nocc_in), nvirt(nvirt_in)
         {   // calculate the difference of eigenvalues
             ModuleBase::TITLE("OperatorLRDiag", "OperatorLRDiag");
+            std::cout << "Initializing OperatorLRDiag" << std::endl;
             const int nbands = nocc + nvirt;
             this->cal_type = hamilt::calculation_type::no;
             this->eig_ks_diff.create(nk, pX.get_local_size(), false);
@@ -45,8 +46,7 @@ namespace LR
             const int ngk_ik = 0,
             const bool is_first_node = false)const override
         {
-            if(true){ //FISH_NOTE: for debug
-                std::cout << "in OperatorLRDiag act" << std::endl;
+            std::cout << "in OperatorLRDiag act" << std::endl;
             ModuleBase::TITLE("OperatorLRDiag", "act");
             ModuleBase::timer::tick("OperatorLRDiag", "act");
             ModuleBase::vector_mul_vector_op<T, Device>()(nk * pX.get_local_size(),   // local size of particle-hole basis
@@ -54,7 +54,7 @@ namespace LR
                 psi_in,
                 this->eig_ks_diff.c);
             ModuleBase::timer::tick("OperatorLRDiag", "act");
-        }}
+        }
     private:
         const Parallel_2D& pX;
         ModuleBase::matrix eig_ks_diff;

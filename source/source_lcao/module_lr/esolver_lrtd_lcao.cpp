@@ -528,7 +528,10 @@ LR::ESolver_LR<T, TR>::ESolver_LR(const Input_para& inp, UnitCell& ucell) : inpu
             {"alpha", "1"},
             {"singularity_correction", "spencer"} }};
         this->exx_lri = std::make_shared<Exx_LRI<T>>(exx_info.info_ri);
-        this->exx_lri->init(MPI_COMM_WORLD, ucell, this->kv, orb);
+        // ======= exx_lri->init() without constructing abfs =======
+        this->exx_lri->mpi_comm = MPI_COMM_WORLD;
+        this->exx_lri->p_kv = &this->kv;
+        // ======= exx_lri->init() without constructing abfs =======
         std::cout << "check bse_ri_pca_threshold: " << this->exx_info.info_ri.pca_threshold << std::endl;
         std::cout << "check bse_ri_ccp_rmesh_times: " << this->exx_info.info_ri.ccp_rmesh_times << std::endl;
         std::cout << "prepare W matrix for BSE in ESolver_LR(from scratch)" << std::endl;
@@ -563,6 +566,7 @@ LR::ESolver_LR<T, TR>::ESolver_LR(const Input_para& inp, UnitCell& ucell) : inpu
 			Cs_in = LRI_CV_Tools::read_Cs_ao<T>("Cs_data_0.txt");
 		std::map<TA,std::map<TAC,RI::Tensor<TR>>>
 			Vs_in = RI_Benchmark::read_coulomb_mat<T,TR>("coulomb_mat_0.txt", Cs_in, kRlist);
+        //LRI_CV_Tools::write_Vs_abf(Vs_in, PARAM.globalv.global_out_dir + "Vs_test_" + std::to_string(GlobalV::MY_RANK));
 		std::map<TA,std::map<TAC,RI::Tensor<T>>>
 			Ws_in = BSE::read_Ws<T,TR>(Vs_in, kRlist.Rlist);
 		exx_lri->exx_lri.set_Vs(std::move(Ws_in), this->exx_lri->info.V_threshold);
