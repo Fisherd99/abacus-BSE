@@ -6,17 +6,15 @@
 #include "source_lcao/module_lr/utils/lr_util.h"
 namespace LR
 {
-    using TA = int;
-    static const size_t Ndim = 3;
-    using TC = std::array<int, Ndim>;
-    using TAC = std::pair<TA, TC>;
-    template<typename T>
-    using TLRI = std::map<TA, std::map<TAC, RI::Tensor<T>>>;
 
     /// @brief  Exx part of A operator
     template<typename T = double>
     class OperatorLREXX : public hamilt::Operator<T, base_device::DEVICE_CPU>
     {
+        using TA = int;
+        static const size_t Ndim = 3;
+        using TC = std::array<int, Ndim>;
+        using TAC = std::pair<TA, TC>;
 
     public:
         OperatorLREXX(const int& nspin,
@@ -55,6 +53,7 @@ namespace LR
             const TC period = RI_Util::get_Born_vonKarmen_period(kv_in);
             this->BvK_cells = RI_Util::get_Born_von_Karmen_cells(period);
 
+            this->allocate_Ds_onebase();
             this->exx_lri.lock()->Hexxs.resize(1);
         };
 
@@ -87,10 +86,11 @@ namespace LR
         /// transition density matrix 
         std::unique_ptr<elecstate::DensityMatrix<T, T>>& DM_trans;
 
-        /// @return TLRI density matrix of a certain (i, a, k), with full naos*naos size for each key
-        /// D^{iak}_{\mu\nu}(k): 1/N_k * c_{ik,\mu} c^*_{ak,\nu}
+        /// density matrix of a certain (i, a, k), with full naos*naos size for each key
+        /// D^{iak}_{\mu\nu}(k): 1/N_k * c_{ak,\mu} c^*_{ik,\nu}
         /// D^{iak}_{\mu\nu}(R): D^{iak}_{\mu\nu}(k)e^{-ikR}
-        TLRI<T> allocate_Ds_onebase() const;
+        // elecstate::DensityMatrix<T, double>* DM_onebase;
+        mutable std::map<TA, std::map<TAC, RI::Tensor<T>>> Ds_onebase;
 
         // cells in the Born von Karmen supercell (direct)
         std::vector<std::array<int, Ndim>> BvK_cells;
@@ -111,7 +111,10 @@ namespace LR
         const Parallel_2D& pX;
         const Parallel_Orbitals& pmat;
 
-        void cal_DM_onebase(const int io, const int iv, const int ik, TLRI<T>& Ds_onebase) const;
+        // allocate Ds_onebase
+        void allocate_Ds_onebase();
+
+        void cal_DM_onebase(const int io, const int iv, const int ik) const;
 
     };
 }
