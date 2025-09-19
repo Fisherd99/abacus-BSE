@@ -50,8 +50,8 @@ namespace LR
         ao_to_mo_blas(v_hxc_2d, psil_ks, nocc[sl], nvirt[sl], hpsi);
 #endif
         // for debug
-        //std::cout << "After Hxc, hpsi: [nvirt= " << nvirt[sl] << " nocc= " << nocc[sl] << " ]" << std::endl;
-        //LR_Util::print_value(hpsi, nvirt[sl], nocc[sl]);
+        //std::cout << "After Hxc, hpsi: [nvirt= " << nvirt[sl] << " nocc= " << nocc[sl] << " nk= " << nk << " ]" << std::endl;
+        //LR_Util::print_value(hpsi, nk, nocc[sl], nvirt[sl]);
 
         ModuleBase::timer::tick("OperatorLRHxc", "act");
     }

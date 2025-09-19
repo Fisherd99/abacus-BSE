@@ -143,37 +143,38 @@ namespace LR
 #pragma omp threadprivate(Ds_onebase)
 #pragma omp parallel for collapse(3) schedule(static) //thread parallel for (io, iv, ik)
 #endif
-        for (int io = 0;io < this->nocc;++io)
+        for (int ik = 0;ik < nk;++ik)
         {
-            for (int iv = 0;iv < this->nvirt;++iv)
+            for (int io = 0;io < this->pX.get_col_size();++io)
             {
-                for (int ik = 0;ik < nk;++ik)
+                for (int iv = 0;iv < this->pX.get_row_size();++iv)
                 {
                     if (Ds_onebase.empty())
                     {
                         Ds_onebase = this->allocate_Ds_onebase();
                         //for debug
-                        // #pragma omp critical
-                        // {
-                        //     std::cout << "Thread: " << omp_get_thread_num() << " allocated Ds_onebase" << std::endl;
-                        // }
+                        #pragma omp critical
+                        {
+                            GlobalV::ofs_running << "Thread: " << omp_get_thread_num() << " allocated Ds_onebase" << std::endl;
+                        }
                     }
-                    this->cal_DM_onebase(io, iv, ik, Ds_onebase);
+                    int global_io = this->pX.local2global_col(io);
+                    int global_iv = this->pX.local2global_row(iv);
+                    this->cal_DM_onebase(global_io, global_iv, ik, Ds_onebase);
                     const int xstart_bk = ik * pX.get_local_size();
                     // LR_Util::print_CV(Ds_onebase, "Ds_onebase of occ " + std::to_string(io) + ", virtual " + std::to_string(iv) + " in OperatorLREXX", 1e-10);
                     const T& ene = 2 * alpha * //minus for exchange(but here plus is right, why?), 2 for Hartree to Ry
                         lri->exx_lri.post_2D.cal_energy(Ds_onebase, lri->Hexxs[0]);
-                    if (this->pX.in_this_processor(iv, io))
-                    {
-                        hpsi[xstart_bk + this->pX.global2local_col(io) * this->pX.get_row_size() + this->pX.global2local_row(iv)] += ene;
-                    }
+
+                    hpsi[xstart_bk + io * this->pX.get_row_size() + iv] += ene;
+
                     //for debug
-                    // std::ostringstream oss;
-                    // oss << "Thread: " << omp_get_thread_num() << "\t Direct term: io="<<io<<"\t iv="<<iv<<"\t ik="<<ik<<"\t ene="<<ene<<std::endl;
-                    // #pragma omp critical
-                    // {
-                    //     std::cout << oss.str();
-                    // }
+                    std::ostringstream oss;
+                    oss << "Thread: " << omp_get_thread_num() << "\t Direct term: io="<<io<<"\t iv="<<iv<<"\t ik="<<ik<<"\t ene="<<ene<<std::endl;
+                    #pragma omp critical
+                    {
+                        GlobalV::ofs_running << oss.str();
+                    }
                 }
             }
         }
