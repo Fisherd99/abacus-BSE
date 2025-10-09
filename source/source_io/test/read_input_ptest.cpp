@@ -433,7 +433,10 @@ TEST_F(InputParaTest, ParaRead)
     EXPECT_EQ(param.inp.xc_kernel, "LDA");
     EXPECT_EQ(param.inp.lr_init_xc_kernel[0], "default");
     EXPECT_EQ(param.inp.lr_solver, "dav");
-    EXPECT_EQ(param.inp.lr_tda, "tda");
+    EXPECT_EQ(param.inp.bse_tda, "tda");
+    EXPECT_EQ(param.inp.bse_spin_types[0], "singlet");
+    EXPECT_EQ(param.inp.bse_spin_types[1], "triplet");
+
     EXPECT_DOUBLE_EQ(param.inp.lr_thr, 1e-2);
     EXPECT_FALSE(param.inp.lr_unrestricted);
     EXPECT_FALSE(param.inp.out_wfc_lr);

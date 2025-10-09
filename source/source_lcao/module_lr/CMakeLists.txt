@@ -22,6 +22,10 @@ if(ENABLE_LCAO)
     hamilt_casida.cpp
     esolver_lrtd_lcao.cpp
     potentials/xc_kernel.cpp
+    bse/esolver_bse_lcao.cpp
+    bse/hamilt_bse.cpp
+    bse/hamilt_bse_solver.cpp
+    bse/bse_util.cpp
     bse/bse_io.cpp)
 
 add_library(

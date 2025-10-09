@@ -17,7 +17,6 @@
 #include "source_io/module_parameter/parameter.h"
 #include "source_lcao/module_lr/ri_benchmark/ri_benchmark.h"
 #include "source_lcao/module_lr/operator_casida/operator_lr_diag.h" // for precondition
-#include "source_lcao/module_lr/bse/bse.h"
 
 #ifdef __EXX
 template<>
@@ -48,7 +47,8 @@ void LR::ESolver_LR<double>::move_exx_lri(std::shared_ptr<Exx_LRI<std::complex<d
 template<>void LR::ESolver_LR<double>::set_gint() { this->gint_ = &this->gint_g_;this->gint_g_.gridt = &this->gt_; }
 template<>void LR::ESolver_LR<std::complex<double>>::set_gint() { this->gint_ = &this->gint_k_; this->gint_k_.gridt = &this->gt_; }
 
-inline int cal_nupdown_form_occ(const ModuleBase::matrix& wg)
+template<typename T, typename TR>
+int LR::ESolver_LR<T, TR>::cal_nupdown_form_occ(const ModuleBase::matrix& wg)
 {   // only for nspin=2
     const int& nk = wg.nr / 2;
     auto occ_sum_k = [&](const int& is, const int& ib)->double { double o = 0.0; for (int ik = 0;ik < nk;++ik) { o += wg(is * nk + ik, ib); } return o;};
@@ -62,8 +62,8 @@ inline int cal_nupdown_form_occ(const ModuleBase::matrix& wg)
     }
     return nupdown;
 }
-
-inline void setup_2center_table(TwoCenterBundle& two_center_bundle, LCAO_Orbitals& orb, UnitCell& ucell)
+template<typename T, typename TR>
+void LR::ESolver_LR<T, TR>::setup_2center_table(TwoCenterBundle& two_center_bundle, LCAO_Orbitals& orb, UnitCell& ucell)
 {
     // set up 2-center table
 #ifdef USE_NEW_TWO_CENTER
@@ -91,7 +91,7 @@ void LR::ESolver_LR<T, TR>::parameter_check()const
     if (xc_kernels.find(this->xc_kernel) == xc_kernels.end()) {
         throw std::invalid_argument("ESolver_LR: unknown type of xc_kernel");
     }
-    if (abs_gauge.find(input.abs_gauge) == abs_gauge.end()) {
+    if (abs_gauge.find(this->input.abs_gauge) == abs_gauge.end()) {
         throw std::invalid_argument("ESolver_LR: unknown type of abs_gauge");
     }
     if (this->nspin != 1 && this->nspin != 2) {
@@ -119,6 +119,10 @@ void LR::ESolver_LR<T, TR>::set_dimension()
     this->nk = PARAM.inp.nspin == 2 ? this->kv.get_nks() / 2 : this->kv.get_nks();
     this->nocc.resize(nspin, nocc_in);
     this->nvirt.resize(nspin, nvirt_in);
+    if (this->nstates <= 0) { 
+        this->nstates = nk * nocc_in * nvirt_in;
+        GlobalV::ofs_running << "ESolver_LR: lr_nstates <= 0, set nstates = nk * nocc * nvirt = " << this->nstates << std::endl;
+    }
     for (int is = 0;is < nspin;++is) { this->npairs.push_back(nocc[is] * nvirt[is]); }
     GlobalV::ofs_running << "Setting LR-TDDFT parameters: " << std::endl;
     GlobalV::ofs_running << "number of occupied bands: " << nocc_in << std::endl;
@@ -518,64 +522,6 @@ LR::ESolver_LR<T, TR>::ESolver_LR(const Input_para& inp, UnitCell& ucell) : inpu
         this->exx_lri->init(MPI_COMM_WORLD, ucell,this->kv, orb);
         this->exx_lri->cal_exx_ions(ucell,input.out_ri_cv);
     }
-    else if (xc_kernel == "bse")
-    {
-        exx_info.info_global.ccp_type = Conv_Coulomb_Pot_K::Ccp_Type::Hf;
-        exx_info.info_global.hybrid_alpha = 1;
-        exx_info.info_ri.ccp_rmesh_times = 10;
-        exx_info.info_global.coulomb_param[Conv_Coulomb_Pot_K::Coulomb_Type::Fock].resize(1);
-        exx_info.info_global.coulomb_param[Conv_Coulomb_Pot_K::Coulomb_Type::Fock] = {{
-            {"alpha", "1"},
-            {"singularity_correction", "spencer"} }};
-        this->exx_lri = std::make_shared<Exx_LRI<T>>(exx_info.info_ri);
-        // ======= exx_lri->init() without constructing abfs =======
-        this->exx_lri->mpi_comm = MPI_COMM_WORLD;
-        this->exx_lri->p_kv = &this->kv;
-        // ======= exx_lri->init() without constructing abfs =======
-        std::cout << "check bse_ri_pca_threshold: " << this->exx_info.info_ri.pca_threshold << std::endl;
-        std::cout << "check bse_ri_ccp_rmesh_times: " << this->exx_info.info_ri.ccp_rmesh_times << std::endl;
-        std::cout << "prepare W matrix for BSE in ESolver_LR(from scratch)" << std::endl;
-
-        // do things similar to `cal_exx_ions` but read Ws and Cs from file
-        using TA = int;
-        using Tcell = int;
-        static constexpr std::size_t Ndim = 3;
-        using TC = std::array<Tcell,Ndim>;
-        using TAC = std::pair<TA,TC>;
-        using TatomR = std::array<double,Ndim>;
-
-        std::vector<TA> atoms(ucell.nat);
-        for(int iat=0; iat<ucell.nat; ++iat)
-            { atoms[iat] = iat; }
-        std::map<TA,TatomR> atoms_pos;
-        for(int iat=0; iat<ucell.nat; ++iat)
-            { atoms_pos[iat] = RI_Util::Vector3_to_array3( ucell.atoms[ ucell.iat2it[iat] ].tau[ ucell.iat2ia[iat] ] ); }
-        const std::array<TatomR,Ndim> latvec
-            = {RI_Util::Vector3_to_array3(ucell.a1),
-               RI_Util::Vector3_to_array3(ucell.a2),
-               RI_Util::Vector3_to_array3(ucell.a3)};
-        const std::array<Tcell,Ndim> period = {this->kv.nmp[0], this->kv.nmp[1], this->kv.nmp[2]};    
-        exx_lri->exx_lri.set_parallel(MPI_COMM_WORLD, atoms_pos, latvec, period);
-        //const std::array<Tcell,Ndim> period_Vs = LRI_CV_Tools::cal_latvec_range<Tcell>(1+this->info.ccp_rmesh_times, ucell, orb_cutoff_);	
-        //const std::pair<std::vector<TA>, std::vector<std::vector<std::pair<TA,std::array<Tcell,Ndim>>>>>
-        //    list_As_Vs = RI::Distribute_Equally::distribute_atoms_periods(this->mpi_comm, atoms, period_Vs, 2, false);
-
-        // start read Ws and Cs
-        BSE::RI_kRlist kRlist ("stru_out", ucell);
-		std::map<TA,std::map<TAC,RI::Tensor<T>>>
-			Cs_in = LRI_CV_Tools::read_Cs_ao<T>("Cs_data_0.txt");
-		std::map<TA,std::map<TAC,RI::Tensor<TR>>>
-			Vs_in = RI_Benchmark::read_coulomb_mat<T,TR>("coulomb_mat_0.txt", Cs_in, kRlist);
-        //LRI_CV_Tools::write_Vs_abf(Vs_in, PARAM.globalv.global_out_dir + "Vs_test_" + std::to_string(GlobalV::MY_RANK));
-		std::map<TA,std::map<TAC,RI::Tensor<T>>>
-			Ws_in = BSE::read_Ws<T,TR>(Vs_in, kRlist.Rlist);
-		exx_lri->exx_lri.set_Vs(std::move(Ws_in), this->exx_lri->info.V_threshold);
-        exx_lri->exx_lri.set_Cs(std::move(Cs_in), this->exx_lri->info.C_threshold);
-        if(input.out_ri_cv){
-            LRI_CV_Tools::write_Vs_abf(Ws_in, PARAM.globalv.global_out_dir + "Ws_test_" + std::to_string(GlobalV::MY_RANK));
-            LRI_CV_Tools::write_Cs_ao(Cs_in, PARAM.globalv.global_out_dir + "Cs_test_" + std::to_string(GlobalV::MY_RANK));            
-        }
-    }
 #endif
         // ModuleBase::Ylm::set_coefficients() is deprecated
 }
@@ -596,9 +542,7 @@ void LR::ESolver_LR<T, TR>::runner(UnitCell& ucell, const int istep)
 
     if (this->input.lr_solver == "elpa")
     {
-        std::cout << "Calculating Casida/BSE matrix directly." << std::endl;
-       // BSE::BSE_Matrix<T> bse_matrix();
-       // bse_matrix.solve();
+        ModuleBase::WARNING_QUIT("ESolver_LR", "ESolver_LR doesn't support elpa now.");
 
     }
     else if (this->input.lr_solver != "spectrum")
@@ -608,15 +552,15 @@ void LR::ESolver_LR<T, TR>::runner(UnitCell& ucell, const int istep)
                 if (GlobalV::MY_RANK == 0) { assert(nst == LR_Util::write_value(efile_out(label), prec, e, nst)); }
                 assert(nst * dim == LR_Util::write_value(vfile_out(label), prec, v, nst, dim));
             };
-        std::vector<double> precondition(this->input.lr_solver == "lapack" ? 0 : nloc_per_band, 1.0);
+        std::vector<double> precondition(this->input.lr_solver == "lapack" ? 0 : nloc_per_state, 1.0);
         // allocate and initialize A matrix and density matrix
         if (openshell)
         {
             for (int is : {0, 1})
             {
                 if (input.lr_solver != "lapack") {
-                const int offset_is = is * this->paraX_[0].get_local_size();
-                OperatorLRDiag<double> pre_op(this->eig_ks.c + is * nk * (nocc[0] + nvirt[0]), this->paraX_[is], this->nk, this->nocc[is], this->nvirt[is]);
+                    const int offset_is = is * this->paraX_[0].get_local_size();
+                    OperatorLRDiag<double> pre_op(this->eig_ks.c + is * nk * (nocc[0] + nvirt[0]), this->paraX_[is], this->nk, this->nocc[is], this->nvirt[is]);
                     pre_op.act(1, offset_is, 1, precondition.data() + offset_is, precondition.data() + offset_is);
                 }
             }
@@ -641,14 +585,20 @@ void LR::ESolver_LR<T, TR>::runner(UnitCell& ucell, const int istep)
                               this->paraX_,
                               this->paraC_,
                               this->paraMat_);
-            LR::HSolver::solve(hulr, this->X[0].template data<T>(), nloc_per_band, nstates, this->pelec->ekb.c, this->input.lr_solver, this->input.lr_thr, precondition);
-            if (input.out_wfc_lr) { write_states("openshell", this->pelec->ekb.c, this->X[0].template data<T>(), nloc_per_band, nstates); }
+            LR::HSolver::solve(hulr, this->X[0].template data<T>(), nloc_per_state, nstates,
+                               this->nk, this->nocc, this->nvirt, this->paraX_,
+                               this->pelec->ekb.c,
+                               this->input.lr_solver,
+                               this->input.lr_thr,
+                               precondition);
+            if (input.out_wfc_lr) { write_states("openshell", this->pelec->ekb.c, this->X[0].template data<T>(), nloc_per_state, nstates); }
         }
         else
         {
             if (input.lr_solver != "lapack") {
-            OperatorLRDiag<double> pre_op(this->eig_ks.c, this->paraX_[0], this->nk, this->nocc[0], this->nvirt[0]);
-                pre_op.act(1, nloc_per_band, 1, precondition.data(), precondition.data()); }
+                OperatorLRDiag<double> pre_op(this->eig_ks.c, this->paraX_[0], this->nk, this->nocc[0], this->nvirt[0]);
+                pre_op.act(1, nloc_per_state, 1, precondition.data(), precondition.data()); 
+            }
             auto spin_types = std::vector<std::string>({ "singlet", "triplet" });
             for (int is = 0;is < nspin;++is)
             {
@@ -676,11 +626,13 @@ void LR::ESolver_LR<T, TR>::runner(UnitCell& ucell, const int istep)
                                 spin_types[is],
                                 input.ri_hartree_benchmark,
                                 (input.ri_hartree_benchmark == "aims" ? input.aims_nbasis : std::vector<int>({})));
-                // solve the Casida equation
-                LR::HSolver::solve(hlr, this->X[is].template data<T>(), nloc_per_band, nstates,
-                    this->pelec->ekb.c + is * nstates, this->input.lr_solver, this->input.lr_thr, precondition/*,
-                        !std::set<std::string>({ "hf", "hse" }).count(this->xc_kernel)*/);  //whether the kernel is Hermitian
-                if (input.out_wfc_lr) { write_states(spin_types[is], this->pelec->ekb.c + is * nstates, this->X[is].template data<T>(), nloc_per_band, nstates); }
+                LR::HSolver::solve(hlr, this->X[is].template data<T>(), nloc_per_state, nstates,
+                                   this->nk, this->nocc, this->nvirt, this->paraX_,
+                                   this->pelec->ekb.c + is * nstates,
+                                   this->input.lr_solver,
+                                   this->input.lr_thr,
+                                   precondition);
+                if (input.out_wfc_lr) { write_states(spin_types[is], this->pelec->ekb.c + is * nstates, this->X[is].template data<T>(), nloc_per_state, nstates); }
             }
         }
     }
@@ -694,7 +646,7 @@ void LR::ESolver_LR<T, TR>::runner(UnitCell& ucell, const int istep)
                 }
 #ifdef __MPI
 // in velocity gauge, the eigenvalues are used to calculate the transition dipole, so we'd better broadcast them
-                    MPI_Bcast(e, nst, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+                MPI_Bcast(e, nst, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 #endif
                 assert(nst * dim == LR_Util::read_value(vfile_in(label), v, nst, dim));
                 std::cout <<"Rank "<< GlobalV::MY_RANK << ": finish reading " << vfile_in(label) << std::endl;
@@ -702,12 +654,12 @@ void LR::ESolver_LR<T, TR>::runner(UnitCell& ucell, const int istep)
         std::cout << "reading the excitation states from file: \n";
         if (openshell)
         {
-            read_states("openshell", this->pelec->ekb.c, this->X[0].template data<T>(), nloc_per_band, nstates);
+            read_states("openshell", this->pelec->ekb.c, this->X[0].template data<T>(), nloc_per_state, nstates);
         }
         else
         {
             auto spin_types = std::vector<std::string>({ "singlet", "triplet" });
-            for (int is = 0;is < nspin;++is) { read_states(spin_types[is], this->pelec->ekb.c + is * nstates, this->X[is].template data<T>(), nloc_per_band, nstates); }
+            for (int is = 0;is < nspin;++is) { read_states(spin_types[is], this->pelec->ekb.c + is * nstates, this->X[is].template data<T>(), nloc_per_state, nstates); }
         }
     }
     ModuleBase::timer::tick("ESolver_LR", "runner");
@@ -782,9 +734,9 @@ void LR::ESolver_LR<T, TR>::setup_eigenvectors_X()
         );//nvirt - row, nocc - col 
         this->paraX_.emplace_back(std::move(px));
     }
-    this->nloc_per_band = nk * (openshell ? paraX_[0].get_local_size() + paraX_[1].get_local_size() : paraX_[0].get_local_size());
+    this->nloc_per_state = nk * (openshell ? paraX_[0].get_local_size() + paraX_[1].get_local_size() : paraX_[0].get_local_size());
 
-    this->X.resize(openshell ? 1 : nspin, LR_Util::newTensor<T>({ nstates, nloc_per_band }));
+    this->X.resize(openshell ? 1 : nspin, LR_Util::newTensor<T>({ nstates, nloc_per_state }));
     for (auto& x : X) { x.zero(); }
 
     auto spin_types = (nspin == 2 && !openshell) ? std::vector<std::string>({ "singlet", "triplet" }) : std::vector<std::string>({ "updown" });
@@ -829,7 +781,7 @@ void LR::ESolver_LR<T, TR>::set_X_initial_guess()
             const int occ_global = std::get<0>(ix2ioiv[ipair]);   // occ
             const int virt_global = std::get<1>(ix2ioiv[ipair]);   // virt
             const int ik = ib / np;
-            const int xstart_b = ib * nloc_per_band;    //start index of band ib
+            const int xstart_b = ib * nloc_per_state;    //start index of band ib
             const int xstart_bs = (openshell && is == 1) ? xstart_b + nk * paraX_[0].get_local_size() : xstart_b;  // start index of band ib, spin is
             const int is_in_x = openshell ? 0 : is;     // if openshell, spin-up and spin-down are put together
             if (px.in_this_processor(virt_global, occ_global))
@@ -882,26 +834,6 @@ void LR::ESolver_LR<T, TR>::read_ks_wfc()
 #else
         ModuleBase::WARNING_QUIT("ESolver_LR", "RI benchmark is only supported when compile with LibRI.");
 #endif
-    }
-    else if (this->xc_kernel == "bse")
-    {
-        int ncore = 0; // skip core bands
-        int nbands_file = 0;
-        int nk_file = 0;
-        int nspin_file = 0;
-        int nspin_tmp = PARAM.inp.nspin == 2 ? 2 : 1;
-        BSE::parse_band_out_file("band_out", nbands_file, nk_file, nspin_file);
-        if (nk_file != this->nk) {
-            ModuleBase::WARNING_QUIT("ESolver_LR", "The nk in band_out is not consistent with LR::nk.");
-        }
-        auto eig_gw_vec = BSE::read_energy_qp("energy_qp", nocc[0], nvirt[0], ncore, this->nk, nspin_tmp, nspin_file);
-        for (int iks = 0; iks < this->kv.get_nks(); ++iks) {
-            for (int ib = 0; ib < this->nbands; ++ib) {
-            this->pelec->ekb(iks, ib) = eig_gw_vec[iks][ib].second; 
-            this->pelec->wg(iks, ib) = eig_gw_vec[iks][ib].first;
-            }
-        }
-        RI_Benchmark::read_librpa_eigenvectors<T>(*this->psi_ks, "./", ncore, nbands_file, nspin_tmp, nspin_file, this->paraMat_);
     }
 	else if (!ModuleIO::read_wfc_nao(PARAM.globalv.global_readin_dir, this->paraMat_, *this->psi_ks, 
 				this->pelec,

@@ -85,10 +85,10 @@ namespace RI_Benchmark
 
     /// only for blocking by atom pairs (abacus type)
     template <typename TCs, typename TR>
-    TLRI<TR> read_coulomb_mat(const std::string& file, const TLRI<TCs>& Cs, const BSE::RI_kRlist& kRlist);
+    TLRI<TR> read_coulomb_mat(const std::string& file, const TLRI<TCs>& Cs, const BSE_IO::RI_kRlist& kRlist);
     /// for any way of blocking (aims type)
     template <typename TCs, typename TR>
-    TLRI<TR> read_coulomb_mat_general(const std::string& file, const TLRI<TCs>& Cs, const BSE::RI_kRlist& kRlist);
+    TLRI<TR> read_coulomb_mat_general(const std::string& file, const TLRI<TCs>& Cs, const BSE_IO::RI_kRlist& kRlist);
     template <typename TR>
     bool compare_Vs(const TLRI<TR>& Vs1, const TLRI<TR>& Vs2, const double thr = 1e-4);
     template <typename TR>

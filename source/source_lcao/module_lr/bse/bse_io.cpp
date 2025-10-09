@@ -1,6 +1,6 @@
 #include "bse_io.h"
 
-namespace BSE{
+namespace BSE_IO{
 
     RI_kRlist::RI_kRlist(const std::string& file, const UnitCell& ucell){
         this->klist = std::make_unique<K_Vectors>();
@@ -18,7 +18,7 @@ namespace BSE{
     {
         std::ifstream ifs;
         ifs.open(file);
-        if (!ifs) throw std::runtime_error(file + "not found");
+        if (!ifs) throw std::runtime_error(file + " not found");
         std::string tmp;
         for (int i = 0; i < 7; ++i) { std::getline(ifs, tmp); } // get the 7th line(number of atoms)
         std::cout << "FISH_output: nat:" << tmp << std::endl;
@@ -45,17 +45,17 @@ namespace BSE{
         }
     }
 
-    std::vector<std::vector<std::pair<double,double>>> read_energy_qp(const std::string& file,
+    std::vector<double> read_energy_qp(const std::string& file,
     const int nocc, const int nvirt, int& ncore, const int nk, const int nspin_tmp, const int nspin_file)
     {
         std::cout << "in read_energy_qp" << std::endl;
         std::cout << "FISH_OUTPUT: nbands(nocc+nvir): " << (nocc+nvirt) << std::endl;
-        std::vector<std::vector<std::pair<double, double>>> eig_gw(nk*nspin_tmp, std::vector<std::pair<double, double>>(nocc + nvirt));
+        std::vector<double> eig_info( 3 * nk * nspin_tmp * (nocc + nvirt)); // occ, eig_ks, eig_gw
         std::ifstream file_gw (file);
-        if (!file_gw) throw std::runtime_error(file + "not found");
+        if (!file_gw) throw std::runtime_error(file + " not found");
         std::string temp;
         int read_ik;
-        double occ, gw_temp;
+        double occ, eig_ks, eig_gw;
         // while(file_gw.peek() == '%') file_gw.ignore(2048, '\n');	//skip comments
 
         for (int is =0; is < nspin_file; ++is){
@@ -67,24 +67,31 @@ namespace BSE{
                 int ivirt = 0;
                 std::getline(file_gw, temp); // skip the interval line
                 std::getline(file_gw, temp); // skip the interval line
+                std::vector<double> ks_temps;
                 std::vector<double> gw_temps;
                 std::vector<double> occ_temps;
                 while (file_gw.peek() != '-')
                 {
                     std::getline(file_gw, temp);
                     std::istringstream iss(temp);
-                    iss >> temp >> occ >> temp >> gw_temp;
-                    gw_temps.push_back(gw_temp * 2); // Ha to Ry
+                    iss >> temp >> occ >> eig_ks >> eig_gw;
+                    ks_temps.push_back(eig_ks * 2); // Ha to Ry
+                    gw_temps.push_back(eig_gw * 2); // Ha to Ry
                     occ_temps.push_back(occ);
                     if (occ < 0.1) { ivirt++;}
                     if (ivirt == nvirt) { break; }
                 }
-                int ncore = gw_temps.size() - nocc - nvirt;
+                ncore = gw_temps.size() - nocc - nvirt;
                 for (int ib = 0;ib < nocc + nvirt;++ib)
-                {
-                    eig_gw[ik+is*nk][ib] = std::pair<double, double>(occ_temps[ncore + ib], gw_temps[ncore + ib]);
-                    std::cout <<"FISH_OUTPUT: ik=" << ik << "\t" << ib << "\t" << eig_gw[ik+is*nk][ib].first 
-                        << "\t" << eig_gw[ik+is*nk][ib].second << std::endl; //check
+                {   
+                    int ikstep = (ik + is * nk) * (nocc + nvirt);
+                    eig_info[(ikstep + ib)*3] = occ_temps[ncore + ib];
+                    eig_info[(ikstep + ib)*3 + 1] = ks_temps[ncore + ib];
+                    eig_info[(ikstep + ib)*3 + 2] = gw_temps[ncore + ib];
+                    std::cout <<"FISH_OUTPUT: ik=" << ik << "\t" << ib << "\t"
+                              << eig_info[ikstep + ib*3] << "\t" 
+                              << eig_info[ikstep + ib*3 + 1] << "\t" 
+                              << eig_info[ikstep + ib*3 +2] << std::endl; //check
                 }
                 while (file_gw.peek() != '-' && file_gw.peek() != EOF)
                 {
@@ -93,13 +100,14 @@ namespace BSE{
             }
         }
         if (nspin_file == 1 && nspin_tmp == 2) {
-            for (int ik = 0; ik < nk; ++ik) {
-                eig_gw[ik + nk] = eig_gw[ik];
-            }
+            std::cout << "duplicate the spin channel since the gw file only has one spin channel" << std::endl;
+            int spin_block = nk * (nocc + nvirt) * 3;
+            assert(eig_info.size() == 2 * spin_block);
+            std::copy_n(eig_info.data(), spin_block, eig_info.data() + spin_block);
         }        
         file_gw.close();
         std::cout << "FISH_OUTPUT: Finish read gw, ncore=" << ncore << std::endl;
-        return eig_gw;
+        return eig_info;
     }
 
     template<typename Tdata, typename TR>
@@ -136,7 +144,7 @@ namespace BSE{
                     for (int index = 0; index < non_zero; ++index)
                     {
                         infileW >> mu >> nu ;
-                        BSE::read_one_data(infileW, tensor_W(mu-1, nu-1));
+                        BSE_IO::read_one_data(infileW, tensor_W(mu-1, nu-1));
                     }
                     infileW.close();
                     for(int i = 0; i != nabf1; ++i)

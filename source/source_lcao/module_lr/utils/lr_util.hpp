@@ -71,28 +71,47 @@ namespace LR_Util
     {
         for (int i = 0; i < n; ++i) {
             out[i * n + i] = 0.5 * in[i * n + i] + 0.5 * get_conj(in[i * n + i]);
-}
+        }
         for (int i = 0;i < n;++i) {
             for (int j = i + 1;j < n;++j)
             {
                 out[i * n + j] = 0.5 * (in[i * n + j] + get_conj(in[j * n + i]));
                 out[j * n + i] = get_conj(out[i * n + j]);
             }
-}
+        }
     }
     template <typename T>
     void matsym(T* inout, const int n)
     {
         for (int i = 0; i < n; ++i) {
             inout[i * n + i] = 0.5 * (inout[i * n + i] + get_conj(inout[i * n + i]));
-}
+        }
         for (int i = 0;i < n;++i) {
             for (int j = i + 1;j < n;++j)
             {
                 inout[i * n + j] = 0.5 * (inout[i * n + j] + get_conj(inout[j * n + i]));
                 inout[j * n + i] = get_conj(inout[i * n + j]);
             }
-}
+        }
+    }
+    template<typename T>
+    bool is_hermitian(const T* mat, const int n, const double threshold){
+        for (int i = 0;i < n;++i) {
+            for (int j = i;j < n;++j) {
+                if (std::abs(mat[i * n + j] - get_conj(mat[j * n + i])) > threshold) return false;
+            }
+        }
+        return true;
+    }
+
+    template<typename T>
+    bool is_symmetric(const T* mat, const int n, const double threshold){
+        for (int i = 0;i < n;++i) {
+            for (int j = i;j < n;++j) {
+                if (std::abs(mat[i * n + j] - mat[j * n + i]) > threshold) return false;
+            }
+        }
+        return true;
     }
 
     /// get the Psi wrapper of the selected spin from the Psi object
@@ -185,7 +204,7 @@ namespace LR_Util
     }
 
     template <typename T>
-    void gather_2d_to_full(const Parallel_2D& pv, const T* submat, T* fullmat, bool col_first, int global_nrow, int global_ncol)
+    void gather_2d_to_full(const Parallel_2D& pv, const T* submat, T* fullmat, bool row_major, int global_nrow, int global_ncol)
     {
         ModuleBase::TITLE("LR_Util", "gather_2d_to_full");
         auto get_mpi_datatype = []() -> MPI_Datatype {
@@ -198,19 +217,20 @@ namespace LR_Util
             };
 
         // zeros
-        for (int i = 0;i < global_nrow * global_ncol;++i) { fullmat[i] = 0.0;
-}
-        //copy
-        for (int i = 0;i < pv.get_row_size();++i) {
-            for (int j = 0;j < pv.get_col_size();++j) {
-                if (col_first) {
+        for (int i = 0;i < global_nrow * global_ncol;++i) { fullmat[i] = 0.0; }
+        // copy
+#ifdef _OPENMP
+#pragma omp parallel for collapse(2)
+#endif
+        for (int j = 0;j < pv.get_col_size();++j) {
+            for (int i = 0;i < pv.get_row_size();++i) {
+                if (row_major) {
                     fullmat[pv.local2global_row(i) * global_ncol + pv.local2global_col(j)] = submat[i * pv.get_col_size() + j];
                 } else {
                     fullmat[pv.local2global_col(j) * global_nrow + pv.local2global_row(i)] = submat[j * pv.get_row_size() + i];
-}
-}
-}
-
+                }
+            }
+        }
         //reduce to root
         MPI_Allreduce(MPI_IN_PLACE, fullmat, global_nrow * global_ncol, get_mpi_datatype(), MPI_SUM, pv.comm());
     };

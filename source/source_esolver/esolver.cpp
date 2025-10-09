@@ -11,6 +11,7 @@
 #include "esolver_ks_lcao_tddft.h"
 #include "esolver_ks_lcaopw.h"
 #include "source_lcao/module_lr/esolver_lrtd_lcao.h"
+#include "source_lcao/module_lr/bse/esolver_bse_lcao.h"
 extern "C"
 {
 #include "source_base/module_external/blacs_connector.h"
@@ -254,13 +255,27 @@ ESolver* init_esolver(const Input_para& inp, UnitCell& ucell)
     else if (esolver_type == "lr_lcao")
     {
         // use constructor rather than Init function to initialize reference (instead of pointers) to ucell
-        if (PARAM.globalv.gamma_only_local)
+        if (PARAM.inp.xc_kernel != "bse")
         {
-            return new LR::ESolver_LR<double, double>(inp, ucell);
+            if (PARAM.globalv.gamma_only_local)
+            {
+                return new LR::ESolver_LR<double, double>(inp, ucell);
+            }
+            else
+            {
+                return new LR::ESolver_LR<std::complex<double>, double>(inp, ucell);
+            }
         }
         else
-        {
-            return new LR::ESolver_LR<std::complex<double>, double>(inp, ucell);
+        {        
+            if (PARAM.globalv.gamma_only_local)
+            {
+                return new BSE::ESolver_BSE<double, double>(inp, ucell);
+            }
+            else
+            {
+                return new BSE::ESolver_BSE<std::complex<double>, double>(inp, ucell);
+            }
         }
     }
     else if (esolver_type == "ksdft_lr_lcao")

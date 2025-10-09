@@ -401,9 +401,24 @@ void ReadInput::item_lr_tddft()
         this->add_item(item);
     }
     {
-        Input_Item item("lr_tda");
+        Input_Item item("bse_tda");
         item.annotation = "whether Tamm-Dancoff Approximation is used (can be 'tda', 'full' or 'both')";
-        read_sync_string(input.lr_tda);
+        read_sync_string(input.bse_tda);
+        this->add_item(item);
+    }
+    {
+        Input_Item item("bse_spin_types");
+        item.annotation = "which spin channel is calculated (can be 'singlet' and 'triplet')";
+
+        item.read_value = [](const Input_Item& item, Parameter& para) {
+            size_t count = item.get_size();
+            auto& ist = para.input.bse_spin_types;
+            for (int i = 0; i < count; i++) { ist.push_back(item.str_values[i]); }
+            };
+        item.reset_value = [](const Input_Item& item, Parameter& para) {
+            if (para.input.bse_spin_types.empty()) { para.input.bse_spin_types.push_back("singlet"); }
+            };
+        sync_stringvec(input.bse_spin_types, para.input.bse_spin_types.size(), "singlet");
         this->add_item(item);
     }
 }

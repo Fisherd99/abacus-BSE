@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 
-namespace BSE
+namespace BSE_IO
 {
 using TA = int;
 using TC = std::array<int, 3>;
@@ -34,8 +34,9 @@ class RI_kRlist
 
 inline void parse_band_out_file(const std::string& file, int& nbands_file, int& nk_file, int& nspin_file)
 {
-    std::ifstream ifs;
-    ifs.open(file);
+    std::ifstream ifs(file);
+    if (!ifs) throw std::runtime_error(file + " not found");
+
     ifs >> nk_file >> nspin_file >> nbands_file;
 }
 inline void read_one_data(std::ifstream& ifs, double& data)
@@ -50,15 +51,15 @@ inline void read_one_data(std::ifstream& ifs, std::complex<double>& data)
     data = std::complex<double>(real, imag);
 }
 
-/// @brief pair:<occ, qs_energy>, vector as {ik, iband}
+/// @brief vector as {ik, iband, <occ, ks_ene, gw_ene>}
 /// @param ncore: as output, number of core orbitals parsed from file
-std::vector<std::vector<std::pair<double, double>>> read_energy_qp(const std::string& file,
-                                                                   const int nocc,
-                                                                   const int nvirt,
-                                                                   int& ncore,
-                                                                   const int nk,
-                                                                   const int nspin_tmp,
-                                                                   const int nspin_file);
+std::vector<double> read_energy_qp(const std::string& file,
+                                    const int nocc,
+                                    const int nvirt,
+                                    int& ncore,
+                                    const int nk,
+                                    const int nspin_tmp,
+                                    const int nspin_file);
 
 /// @brief read Wxc(R) = Wc(R) + Vx(R) from file
 template <typename Tdata, typename TR>

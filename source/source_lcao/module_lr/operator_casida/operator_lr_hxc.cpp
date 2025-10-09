@@ -134,7 +134,7 @@ namespace LR
 
                 LR_Util::_deallocate_2order_nested_ptr(rho_trans, 1);
 
-                // 4. V^{Hxc}_{\mu,\nu}=\int{dr} \phi_\mu(r) v_{Hxc}(r) \phi_\mu(r)
+                // 4. V^{Hxc}_{\mu,\nu}=\int{dr} \phi_\mu(r) v_{Hxc}(r) \phi_\nu(r)
                 HR_real_imag.set_zero();
 #ifdef __OLD_GINT
                 Gint_inout inout_vlocal(vr_hxc.c, 0, Gint_Tools::job_type::vlocal);

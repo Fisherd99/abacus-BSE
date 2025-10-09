@@ -73,7 +73,7 @@ namespace LR
                 {
                     if (ri_hartree_benchmark == "aims" || ri_hartree_benchmark == "aims-librpa") 
                     { 
-                        BSE::RI_kRlist kRlist (dir + "stru_out", ucell_in);
+                        BSE_IO::RI_kRlist kRlist (dir + "stru_out", ucell_in);
                         // though C and V are real, here still use <T> to multiply with psi
                         Cs_read = LRI_CV_Tools::read_Cs_ao<T>(dir + "Cs_data_0.txt");
                         Vs_read = RI_Benchmark::read_coulomb_mat_general<T,T>(dir + "coulomb_mat_0.txt", Cs_read, kRlist);
@@ -85,7 +85,7 @@ namespace LR
                     }
                     else if (ri_hartree_benchmark == "abacus-librpa")// files in running directory
                     {
-                        BSE::RI_kRlist kRlist ("stru_out", ucell_in);
+                        BSE_IO::RI_kRlist kRlist ("stru_out", ucell_in);
                         Cs_read = LRI_CV_Tools::read_Cs_ao<T>("Cs_data_0.txt");
                         Vs_read = RI_Benchmark::read_coulomb_mat<T,T>("coulomb_mat_0.txt", Cs_read, kRlist);
                     }
@@ -124,16 +124,6 @@ namespace LR
                     aims_nbasis);
                 this->ops->add(lr_exx);
             }
-            if (xc_kernel == "bse")
-            {
-                //FISH_TODO Change to RI_Benchmark::OperatorRIW<T>* ri_W_op
-                //hamit::Operator<T>* bse_W = new OperatorRIW<T>(...
-                hamilt::Operator<T>* bse_W = new OperatorLREXX<T>(nspin, naos, nocc[0], nvirt[0], ucell_in, psi_ks_in,
-                    this->DM_trans, exx_lri_in, kv_in, pX_in[0], pc_in, pmat_in,
-                    1.0, //alpha
-                    aims_nbasis);
-                this->ops->add(bse_W);
-            }
 #endif
 
             this->cal_dm_trans = [&, this](const int& is, const T* const X)->void
@@ -171,29 +161,29 @@ namespace LR
             }
         }
 
-        void global2local(T* lvec, const T* gvec, const int& nband) const
-        {
-            const int npairs = nocc[0] * nvirt[0];
-            for (int ib = 0;ib < nband;++ib)
-            {
-                const int loffset_b = ib * nk * pX[0].get_local_size();
-                const int goffset_b = ib * nk * npairs;
-                for (int ik = 0;ik < nk;++ik)
-                {
-                    const int loffset = loffset_b + ik * pX[0].get_local_size();
-                    const int goffset = goffset_b + ik * npairs;
-                    for (int lo = 0;lo < pX[0].get_col_size();++lo)
-                    {
-                        const int go = pX[0].local2global_col(lo);
-                        for (int lv = 0;lv < pX[0].get_row_size();++lv)
-                        {
-                            const int gv = pX[0].local2global_row(lv);
-                            lvec[loffset + lo * pX[0].get_row_size() + lv] = gvec[goffset + go * nvirt[0] + gv];
-                        }
-                    }
-                }
-            }
-        }
+        // void global2local(T* lvec, const T* gvec, const int& nband) const
+        // {
+        //     const int npairs = nocc[0] * nvirt[0];
+        //     for (int ib = 0;ib < nband;++ib)
+        //     {
+        //         const int loffset_b = ib * nk * pX[0].get_local_size();
+        //         const int goffset_b = ib * nk * npairs;
+        //         for (int ik = 0;ik < nk;++ik)
+        //         {
+        //             const int loffset = loffset_b + ik * pX[0].get_local_size();
+        //             const int goffset = goffset_b + ik * npairs;
+        //             for (int lo = 0;lo < pX[0].get_col_size();++lo)
+        //             {
+        //                 const int go = pX[0].local2global_col(lo);
+        //                 for (int lv = 0;lv < pX[0].get_row_size();++lv)
+        //                 {
+        //                     const int gv = pX[0].local2global_row(lv);
+        //                     lvec[loffset + lo * pX[0].get_row_size() + lv] = gvec[goffset + go * nvirt[0] + gv];
+        //                 }
+        //             }
+        //         }
+        //     }
+        // }
 
     private:
         const std::vector<int>& nocc;

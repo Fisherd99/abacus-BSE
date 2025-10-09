@@ -29,6 +29,10 @@ namespace LR
             T* psi,
             const int& dim, ///< local leading dimension (or nbasis)
             const int& nband,   ///< nstates in LR-TDDFT, not (nocc+nvirt)
+            const int& nk,
+            const std::vector<int>& nocc,
+            const std::vector<int>& nvirt,
+            const std::vector<Parallel_2D>& pX,
             double* eig,
             const std::string method,
             const Real<T>& diag_ethr, ///< threshold for diagonalization
@@ -62,8 +66,10 @@ namespace LR
                     print_eigs(eig_complex, "Right eigenvalues: of the non-Hermitian matrix: (Ry)");
                     for (int i = 0; i < gdim; i++) { eigenvalue[i] = eig_complex[i].real(); }
                 }
+                bool openshell = std::is_same<THamilt, HamiltULR<T>>::value;
                 // copy eigenvectors
-                hm.global2local(psi, Amat_full.data(), nband);
+                LR_Util::global2local_X(psi, Amat_full.data(), nband, nk, 
+                                        nocc, nvirt, pX, openshell);
             }
             else
             {

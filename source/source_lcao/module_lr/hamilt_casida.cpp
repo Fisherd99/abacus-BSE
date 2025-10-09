@@ -49,7 +49,9 @@ namespace LR
                         LR_Util::gather_2d_to_full(px, &A_aibj.get_pointer()[ik_ai * px.get_local_size()],
                             Amat_full.data() + kbj * this->nk * npairs /*col, bj*/ + ik_ai * npairs/*row, ai*/,
                             false, nv, no);
-}
+                    }
+#else
+                    std::memcpy(Amat_full.data() + kbj * this->nk * npairs, A_aibj.get_pointer(), this->nk * npairs * sizeof(T));
 #endif
                 }
 }

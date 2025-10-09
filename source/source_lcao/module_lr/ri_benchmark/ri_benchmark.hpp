@@ -309,7 +309,7 @@ namespace RI_Benchmark
         return bands_final;
     }
 
-    /// @brief  read the eigenvectors from librpa, only for spin degenerate
+    /// @brief  read the eigenvectors from librpa
     template <typename TK>
     void read_librpa_eigenvectors(psi::Psi<TK>& wfc_ks, const std::string& path, const int ncore, const int nbands_file,
         const int nspin_tmp, const int nspin_file, Parallel_Orbitals& pmat) {
@@ -384,7 +384,7 @@ namespace RI_Benchmark
             Parallel_2D pv_glb;
             pv_glb.set(nbasis, nbands, std::max(nbasis, nbands), pmat.blacs_ctxt);
             Cpxgemr2d(nbasis, nbands, wfc_ks_tot[iks].data(), 1, 1, pv_glb.desc,
-                        wfc_ks.get_pointer(), 1, 1, const_cast<int*>(pmat.desc_wfc),
+                        wfc_ks.get_pointer(), 1, 1, const_cast<int*>(pmat.desc_wfc)/*nbasis×nbands*/,
                         pv_glb.blacs_ctxt);
 #else
             BlasConnector::copy(nbands*nlocal, wfc_ks_tot[iks].data(), 1, wfc_ks.get_pointer(), 1);
@@ -438,7 +438,7 @@ namespace RI_Benchmark
     }
     
     template <typename TCs, typename TR> // only for blocking by atom pairs (abacus type)
-    TLRI<TR> read_coulomb_mat(const std::string& file, const TLRI<TCs>& Cs, const BSE::RI_kRlist& kRlist )
+    TLRI<TR> read_coulomb_mat(const std::string& file, const TLRI<TCs>& Cs, const BSE_IO::RI_kRlist& kRlist )
     {
         std::ifstream ifs;
         ifs.open(file);
@@ -508,7 +508,7 @@ namespace RI_Benchmark
     }
 
     template <typename TCs, typename TR> // any blocking (aims type)
-    TLRI<TR> read_coulomb_mat_general(const std::string& file, const TLRI<TCs>& Cs, const BSE::RI_kRlist& kRlist)
+    TLRI<TR> read_coulomb_mat_general(const std::string& file, const TLRI<TCs>& Cs, const BSE_IO::RI_kRlist& kRlist)
     {
         std::ifstream ifs;
         ifs.open(file);
