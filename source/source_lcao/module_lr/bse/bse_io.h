@@ -25,11 +25,12 @@ using TLRI = std::map<int, std::map<TAC, RI::Tensor<T>>>;
 class RI_kRlist
 {
   public:
-    std::unique_ptr<K_Vectors> klist;
+    K_Vectors* klist = nullptr;
     std::vector<TC> Rlist;
-    RI_kRlist(const std::string& file, const UnitCell& ucell);
+    RI_kRlist() = default;
+    RI_kRlist(const std::string& file, const UnitCell& ucell, K_Vectors* pkv);
     ~RI_kRlist() = default;
-    void read_kpts(const std::string& file, const UnitCell& ucell, std::unique_ptr<K_Vectors>& klist);
+    void read_kpts(const std::string& file, const UnitCell& ucell, K_Vectors* klist);
 };
 
 inline void parse_band_out_file(const std::string& file, int& nbands_file, int& nk_file, int& nspin_file)
@@ -60,6 +61,15 @@ std::vector<double> read_energy_qp(const std::string& file,
                                     const int nk,
                                     const int nspin_tmp,
                                     const int nspin_file);
+template <typename TK>
+void read_librpa_eigenvectors(psi::Psi<TK>& wfc_ks,
+                              psi::Psi<TK>& wfc_ks_global,
+                              const std::string& path,
+                              const int ncore,
+                              const int nbands_file,
+                              const int nspin_tmp,
+                              const int nspin_file,
+                              Parallel_Orbitals& pmat);
 
 /// @brief read Wxc(R) = Wc(R) + Vx(R) from file
 template <typename Tdata, typename TR>

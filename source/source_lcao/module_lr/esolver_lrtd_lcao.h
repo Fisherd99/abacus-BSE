@@ -36,7 +36,7 @@ namespace LR
         /// @brief a constructor with exx info (for inheritance)
         ESolver_LR(const Input_para& inp, UnitCell& ucell, Exx_Info& exx_info):
             input(inp), ucell(ucell), exx_info(exx_info) {}
-        ~ESolver_LR() {
+        virtual ~ESolver_LR() override {
             delete this->psi_ks;
         }
 

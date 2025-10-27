@@ -14,8 +14,8 @@ void solve_tda(const int& my_rank,
     ModuleBase::TITLE("BSE", "solver_tda");
     ModuleBase::timer::tick("BSE", "solver_tda");
 
-    assert(pA.get_row_size() == nA);
-    assert(pA.get_col_size() == nA);
+    assert(pA.get_global_row_size() == nA);
+    assert(pA.get_global_col_size() == nA);
     assert(A_part.size() == nA * nA);
 
     elpa_t elpaInstance;
@@ -71,6 +71,6 @@ void solve_tda(const int& my_rank,
     elpa_deallocate(elpaInstance, &status);
     elpa_uninit(&status);
 
-    ModuleBase::timer::tick("BSE", "solver_TDA");
+    ModuleBase::timer::tick("BSE", "solver_tda");
 }
 }

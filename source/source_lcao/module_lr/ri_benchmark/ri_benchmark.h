@@ -80,9 +80,6 @@ namespace RI_Benchmark
     template <typename TK>
     void read_aims_eigenvectors(psi::Psi<TK>& wfc_ks, const std::string& file, const int ncore, const int nbands, const int nbasis);
 
-    template <typename TK>
-    void read_librpa_eigenvectors(psi::Psi<TK>& wfc_ks, const std::string& file, const int ncore, const int nbands_file, Parallel_Orbitals& pmat);
-
     /// only for blocking by atom pairs (abacus type)
     template <typename TCs, typename TR>
     TLRI<TR> read_coulomb_mat(const std::string& file, const TLRI<TCs>& Cs, const BSE_IO::RI_kRlist& kRlist);

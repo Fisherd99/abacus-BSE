@@ -47,7 +47,8 @@ class HamiltBSE
               const UnitCell& ucell_in,
               const std::vector<double>& orb_cutoff_in,
               const Grid_Driver& gd_in,
-              const psi::Psi<T>& psi_ks_in,
+              const psi::Psi<T>& psi_in,
+              const psi::Psi<T>& psi_glb_in,
               const ModuleBase::matrix& eig_gw_in,
 #ifdef __EXX
               std::weak_ptr<Exx_LRI<T>> exx_lri_in,
@@ -66,6 +67,7 @@ class HamiltBSE
     void cal_W_for_A();
     void cal_V_for_B() {std::cout << "cal_V_for_B() is not implemented yet." << std::endl;};
     void cal_W_for_B() {std::cout << "cal_W_for_B() is not implemented yet." << std::endl;};
+    void init_bse_matrix(const bool is_full, const int& st_index);
     void tda_solver(const int& st_index, const int& nstates, double* ene_out, T* X_out);
     void full_solver(const int& st_index, const int& nstates, double* ene_out, T* X_out, T* Y_out);
     void grid_calculation(hamilt::HContainer<T>& VR) const;
@@ -78,6 +80,7 @@ class HamiltBSE
     const std::vector<double>& orb_cutoff;
     const Grid_Driver& gd;
     const psi::Psi<T>& psi_ks;
+    const psi::Psi<T>& psi_ks_glb;
     const ModuleBase::matrix& eig_gw;
 #ifdef __EXX
     std::weak_ptr<Exx_LRI<T>> exx_lri;

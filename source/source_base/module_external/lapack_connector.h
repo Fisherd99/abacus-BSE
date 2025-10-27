@@ -185,6 +185,10 @@ extern "C"
     // solve Ax = b 
     void dsysv_(const char* uplo, const int* n, const int* m, double * a, const int* lda,
                  int *ipiv, double * b, const int* ldb, double *work, const int* lwork ,int *info);
+
+    // calculate matrix norm
+    double dlange_(const char* norm, const int* m, const int* n, const double* A, const int* lda, double* work);
+    double zlange_(const char* norm, const int* m, const int* n, const std::complex<double>* A, const int* lda, double* work);
 }
 
 #ifdef GATHER_INFO
@@ -467,5 +471,18 @@ public:
         const char trans_changed = change_trans_NC(trans);
         cherk_(&uplo_changed, &trans_changed, &n, &k, &alpha, A, &lda, &beta, C, &ldc);
     }
+
+    static inline
+    double lange(const char& norm, const int& m, const int& n, const double* A, const int& lda, double* work)
+    {
+        return dlange_(&norm, &m, &n, A, &lda, work);
+    }
+
+    static inline
+    double lange(const char& norm, const int& m, const int& n, const std::complex<double>* A, const int& lda, double* work)
+    {
+        return zlange_(&norm, &m, &n, A, &lda, work);
+    }
+
 };
 #endif  // LAPACKCONNECTOR_HPP

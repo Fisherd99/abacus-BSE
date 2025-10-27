@@ -39,7 +39,7 @@ namespace RI_Benchmark
             {
                 Amat[i] = Amat1[i] + Amat2[i] + Amat3[i] + Amat4[i];
             }
-            std::cout << "Amat_full (Hartree term) from RI (Unit Hartree):" << std::endl;
+            std::cout << "Amat_full (Hartree term) from RI (Unit Ry):" << std::endl;// cal_Amat_full has converted unit
             for (int i = 0;i < npairs;++i)
             {
                 for (int j = 0;j < npairs;++j)

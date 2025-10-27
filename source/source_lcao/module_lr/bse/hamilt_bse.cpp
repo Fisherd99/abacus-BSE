@@ -3,6 +3,7 @@
 #include "source_lcao/module_lr/utils/lr_util_hcontainer.h"
 #include "source_lcao/module_gint/temp_gint/gint_interface.h"
 #include "hamilt_bse_solver.h"
+#include "molecular_WR.h"
 namespace BSE
 {
 template <typename T>
@@ -13,12 +14,12 @@ HamiltBSE<T>::HamiltBSE(const int& nspin,
                 const UnitCell& ucell_in,
                 const std::vector<double>& orb_cutoff_in,
                 const Grid_Driver& gd_in,
-                const psi::Psi<T>& psi_ks_in,
+                const psi::Psi<T>& psi_in,
+                const psi::Psi<T>& psi_glb_in,
                 const ModuleBase::matrix& eig_gw_in,
 #ifdef __EXX
                 std::weak_ptr<Exx_LRI<T>> exx_lri_in,
 #endif
-                //typename TGint<T>::type* gint_in,
                 std::weak_ptr<LR::PotHxcLR> pot_in,
                 const K_Vectors& kv_in,
                 const std::vector<Parallel_2D>& pX_in,// vector for spin, parallel as {nvirt, nocc}
@@ -28,7 +29,7 @@ HamiltBSE<T>::HamiltBSE(const int& nspin,
                 const std::string& tda, // can be: "tda", "full", "both"
                 const std::string& ri_hartree_benchmark_in)
     : nspin(nspin), naos(naos), nocc(nocc), nvirt(nvirt), ucell(ucell_in),
-    orb_cutoff(orb_cutoff_in), gd(gd_in), psi_ks(psi_ks_in), eig_gw(eig_gw_in),
+    orb_cutoff(orb_cutoff_in), gd(gd_in), psi_ks(psi_in), psi_ks_glb(psi_glb_in), eig_gw(eig_gw_in),
 #ifdef __EXX
     exx_lri(exx_lri_in),
 #endif
@@ -36,15 +37,16 @@ HamiltBSE<T>::HamiltBSE(const int& nspin,
     pX(pX_in), pc(pc_in), pmat(pmat_in),
     spin_types(spin_types_in), ri_hartree_benchmark(ri_hartree_benchmark_in)
 {
-    ModuleBase::TITLE("BSE", "BSE_Matrix");
+    ModuleBase::TITLE("BSE", "HamiltBSE");
     if (this->pX[0].get_local_size() == 0) {
         std::cerr<< "Warning: Parallel_2D in RANK "+std::to_string(GlobalV::MY_RANK) +" has no local size, please use less mpi." << std::endl;
         std::cerr<< " [File:"<<__FILE__<< ", Function: " << __FUNCTION__ << ", Line: " << __LINE__ << "]" << std::endl;
     }
-    assert(naos == pmat.get_row_size() && naos == pmat.get_col_size());
+    assert(naos == pmat.get_global_row_size() && naos == pmat.get_global_col_size());
     this->nk = this->nspin == 2 ? this->kv.get_nks() / 2 : this->kv.get_nks();
     this->ndim = nk * nocc[0] * nvirt[0];
     this->BSE_A_global.resize(ndim * ndim, 0.0);
+    if (tda == "both" || tda == "full") { this->BSE_B_global.resize(ndim * ndim, 0.0); }
 
     this->DM_trans = LR_Util::make_unique<elecstate::DensityMatrix<T, T>>(&pmat, 1/*nspin*/, kv_in.kvec_d, nk);
     this->DM_trans->set_DMK_zero();
@@ -55,14 +57,14 @@ HamiltBSE<T>::HamiltBSE(const int& nspin,
             // Hartree term V (exchange electron and hole)
             if (st == "singlet"){
                 this->cal_V_for_A();
-                if (tda == "both" || tda == "full") { this->cal_V_for_B();}
+                if (tda == "both" || tda == "full") { this->cal_V_for_B(); }
             }
             else if (st == "triplet") {
                 std::cout << "Hatree term is not needed for triplet." << std::endl;
             }
             // direct term W (electron-electron and hole-hole)
             this->cal_W_for_A();
-            if (tda == "both" || tda == "full") { this->cal_W_for_B();}
+            if (tda == "both" || tda == "full") { this->cal_W_for_B(); }
         }
         else {
             throw std::runtime_error("Only singlet and triplet are supported in BSE now.");
@@ -76,7 +78,7 @@ void HamiltBSE<T>::cal_V_for_A(){
     ModuleBase::timer::tick("HamiltBSE", "cal_V_for_A");
     std::cout<<"in cal_V_for_A"<<std::endl;
     if (! this->VA_global.empty()) {
-        std::cout<< "A has been calculated, skip." <<std::endl;
+        std::cout<< "V for A has been calculated, skip." <<std::endl;
         return;
     }
     this->VA_global.resize( this->ndim * this->ndim, 0.0);
@@ -88,8 +90,8 @@ void HamiltBSE<T>::cal_V_for_A(){
     }
     else if (this->ri_hartree_benchmark == "none") { // do things like OperatorLRHxc
         // 1. initialize HContainer VR
-        const int& s_index = 0; //spin index, only support 1 spin now
-        const auto psi_is = LR_Util::get_psi_spin(psi_ks, s_index, nk);
+        const int& is = 0; //spin index, only support 1 spin now
+        const auto psi_is = LR_Util::get_psi_spin(psi_ks, is, nk);
         std::unique_ptr<hamilt::HContainer<T>> VR = std::unique_ptr<hamilt::HContainer<T>>(new hamilt::HContainer<T>(&this->pmat));
         LR_Util::initialize_HR<T, T>(*VR, this->ucell, this->gd, this->orb_cutoff);
 
@@ -101,71 +103,97 @@ void HamiltBSE<T>::cal_V_for_A(){
                     // 2. calculate transition matrix jk2→bk2, D(k)=c_b(k)c^†_j(k)
         #ifdef __MPI
                     ct::Tensor dm_trans_2d = 
-                        BSE_Util::cal_dm_trans_onebase_pblas(psi_is, pc, ik2, naos, j, b, pmat, (T)1.0 / (T)nk);
+                        BSE_Util::cal_dm_trans_onebase_pblas(psi_is, pc, ik2, naos, j, b+nocc[0], pmat, (T)1.0 / (T)nk);
         #else
                     ct::Tensor dm_trans_2d = 
-                        BSE_Util::cal_dm_trans_onebase_blas(psi_is, pc, ik2, naos, j, b, (T)1.0 / (T)nk);
+                        BSE_Util::cal_dm_trans_onebase_blas(psi_is, pc, ik2, naos, j, b+nocc[0], (T)1.0 / (T)nk);
         #endif
+                    // LR_Util::print_tensor<T>(dm_trans_2d, "dm_trans_2d", &pmat);
                     this->DM_trans->set_DMK_pointer(ik2, dm_trans_2d.data<T>());
                     // 3. D(k)→D(R)
-                    this->DM_trans->cal_DMR();
+                    this->DM_trans->cal_DMR(ik2);
                     // LR_Util::print_DMR(*DM_trans, ucell.nat, "DMR");
 
                     // 4. D(R)→V(R)
-                    this->grid_calculation(*VR); // copy from OperatorLRHxc
+                    this->grid_calculation(*VR);
 
                     // 5. V(R)→V(k) 
                     std::vector<ct::Tensor> v_k_2d(nk, LR_Util::newTensor<T>({ pmat.get_col_size(), pmat.get_row_size() }));
                     for (auto& v : v_k_2d) v.zero();
                     int nrow = ModuleBase::GlobalFunc::IS_COLUMN_MAJOR_KS_SOLVER(PARAM.inp.ks_solver) ? 
                         this->pmat.get_row_size() : this->pmat.get_col_size();
-                    for (int ik = 0;ik < nk;++ik) {
-                        folding_HR(*VR, v_k_2d[ik].data<T>(), this->kv.kvec_d[ik], nrow, 1);
+                    for (int ik1 = 0;ik1 < nk;++ik1) {
+                        folding_HR(*VR, v_k_2d[ik1].data<T>(), this->kv.kvec_d[ik1], nrow, 1);
                     }
+                    // for (int ik1 = 0;ik1 < nk;++ik1)
+                    //     LR_Util::print_tensor<T>(v_k_2d[ik1], "V(k)[ik=" + std::to_string(ik1) + "]", &this->pmat);
         #ifdef __MPI
-                    std::vector<T> V_col_local( this->nk * this->pX[s_index].get_local_size(), 0.0); // V_col(bjk2)
+                    std::vector<T> V_col_local( this->nk * this->pX[is].get_local_size(), 0.0); // V_col(bjk2)
                     LR::ao_to_mo_pblas(v_k_2d, this->pmat, psi_is, this->pc, this->naos,
-                                    nocc[s_index], nvirt[s_index], this->pX[s_index], V_col_local.data());
-                    
-                    for (int ik_ai = 0; ik_ai < this->nk; ++ik_ai) {
-                        LR_Util::gather_2d_to_full(this->pX[s_index],
-                            V_col_local.data() + ik_ai * this->pX[s_index].get_local_size(),
-                            VA_global.data() + bjk * this->ndim /*col*/ + ik_ai * nocc[0] * nvirt[0]/*row*/,
-                            false, nvirt[s_index], nocc[s_index]);
+                                    nocc[is], nvirt[is], this->pX[is], V_col_local.data());
+
+                    for (int ik1 = 0; ik1 < this->nk; ++ik1) {
+                        LR_Util::gather_2d_to_full(this->pX[is],
+                            V_col_local.data() + ik1 * this->pX[is].get_local_size(),
+                            &this->VA_global[bjk * this->ndim /*col*/ + ik1 * nocc[is] * nvirt[is]/*row*/],
+                            false, nvirt[is], nocc[is]);
                     }
         #else
-                    LR::ao_to_mo_blas(v_k_2d, psi_is, nocc[s_index], nvirt[s_index], this->VA_global.data()+bjk * this->ndim);
+                    LR::ao_to_mo_blas(v_k_2d, psi_is, nocc[is], nvirt[is], this->VA_global.data()+bjk * this->ndim);
         #endif
-                    ModuleBase::timer::tick("HamiltBSE", "cal_V_column");            
+                    ModuleBase::timer::tick("HamiltBSE", "cal_V_column");
                 }
             }
         }
         if (GlobalV::MY_RANK == 0){
-            std::cout<<"VA_global="<<std::endl;
+            std::cout<<"VA_global(Ry, transpose)="<<std::endl;
             LR_Util::print_value(this->VA_global.data(), this->ndim, this->ndim);
         }
     }
-    ModuleBase::timer::tick("HamiltBSE", "cal_V");
+    ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "cal_V_for_A");
+    ModuleBase::timer::tick("HamiltBSE", "cal_V_for_A");
 }
 
 template <typename T>
 void HamiltBSE<T>::cal_W_for_A(){
-        // new OperatorLREXX<T>(nspin, naos, nocc[0], nvirt[0], ucell_in, psi_ks_in,
-        //      this->DM_trans, exx_lri_in, kv_in, pX_in[0], pc_in, pmat_in,
-        //      1.0, //alpha
-        //      aims_nbasis);
+    ModuleBase::TITLE("HamiltBSE", "cal_W_for_A");
+    ModuleBase::timer::tick("HamiltBSE", "cal_W_for_A");
+    std::cout<<"in cal_W_for_A"<<std::endl;
+    if (! this->WA_global.empty()) {
+        std::cout<< "W for A has been calculated, skip." <<std::endl;
+        return;
+    }
+    this->WA_global.resize( this->ndim * this->ndim, 0.0);
+    
+    BSE::MolecularWR<T> WR(this->ucell, this->naos, this->nk, this->kv, this->nocc[0], this->nvirt[0],
+                    this->psi_ks_glb, this->exx_lri);
+    WR.cal_W_global(this->WA_global);
 
+    if (GlobalV::MY_RANK == 0){
+        std::cout<<"WA_global(Ry, transpose)="<<std::endl;
+        LR_Util::print_value(this->WA_global.data(), this->ndim, this->ndim);
+    }
+
+    ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "cal_W_for_A");
+    ModuleBase::timer::tick("HamiltBSE", "cal_W_for_A");
 }
 
-template <typename T>
-void HamiltBSE<T>::tda_solver(const int & st_index, const int& nstates, double* ene_out, T* X_out){
-    ModuleBase::TITLE("HamiltBSE", "tda_solver");
-    ModuleBase::timer::tick("HamiltBSE", "tda_solver");
 
-    T alpha = (this->spin_types[st_index] == "singlet") ? 2.0 : 0.0;
-    std::cout<<"solve tda for spin type: "<<this->spin_types[st_index]<<std::endl;
-    std::vector<T> global_X_tda(this->ndim * this->ndim, 0.0);
-    std::vector<double> ev(this->ndim, 0.0);
+template <typename T>
+void HamiltBSE<T>::init_bse_matrix(const bool is_full, const int & st_index){
+    ModuleBase::TITLE("HamiltBSE", "init_bse_matrix");
+    
+    std::fill(this->BSE_A_global.begin(), this->BSE_A_global.end(), 0.0);
+    if (this->VA_global.empty()){
+        assert(this->spin_types[st_index] == "triplet");
+        this->VA_global.resize( this->ndim * this->ndim, 0.0);
+    } 
+    if (is_full) {
+        std::fill(this->BSE_B_global.begin(), this->BSE_B_global.end(), 0.0);
+    }
+    T alpha = (this->spin_types[st_index] == "singlet") ? static_cast<T>(2.0) : static_cast<T>(0.0);;
+    std::string tda_type = is_full ? "full" : "TDA";
+    std::cout<<"| init "<< tda_type << " BSE for spin type: "<<this->spin_types[st_index]<<std::endl;
 #ifdef _OPENMP
 #pragma omp parallel for collapse(3)
 #endif
@@ -176,30 +204,62 @@ void HamiltBSE<T>::tda_solver(const int & st_index, const int& nstates, double* 
             for(int a = 0;a < nvirt[0];++a)
             {
                 int index = ik * nocc[0] * nvirt[0] + i * nvirt[0] + a;
-                this->BSE_A_global[index * ndim + index] = this->eig_gw(ik, i) - this->eig_gw(ik, nocc[0] + a);
+                this->BSE_A_global[index * ndim + index] = this->eig_gw(ik, nocc[0] + a) - this->eig_gw(ik, i);
             }
         }
     }
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
+    for (size_t i = 0; i < this->BSE_A_global.size(); ++i) {
+        this->BSE_A_global[i] +=(alpha * this->VA_global[i] - this->WA_global[i]);
+        if (is_full) { this->BSE_B_global[i] +=(alpha * this->VB_global[i] - this->WB_global[i]); }
+    }
+
+    if (LR_Util::is_hermitian(this->BSE_A_global.data(), this->ndim, 1.0e-8)) {
+        if (GlobalV::MY_RANK == 0) {
+            std::cout << "| CHECK PASS: Matrix A is hermitian." << std::endl;
+            std::cout << "A_global(Ry, transpose)=" << std::endl;
+            LR_Util::print_value(this->BSE_A_global.data(), this->ndim, this->ndim);
+        }
+    }
+    else {
+        std::cout << "Matrix A is not hermitian!" << std::endl;
+    }
+    if (is_full) {
+        if (LR_Util::is_symmetric(this->BSE_B_global.data(), this->ndim, 1.0e-8)) {
+            if (GlobalV::MY_RANK == 0) {
+                std::cout << "| CHECK PASS: Matrix B is symmetric." << std::endl;
+                std::cout << "B_global(Ry, transpose)=" << std::endl;
+                LR_Util::print_value(this->BSE_B_global.data(), this->ndim, this->ndim);
+            }
+        }
+        else { std::cout << "Matrix B is not symmetric!" << std::endl; }
+    }
+
+    ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "init_bse_matrix");
+}
+
+template <typename T>
+void HamiltBSE<T>::tda_solver(const int & st_index, const int& nstates, double* ene_out, T* X_out){
+    ModuleBase::TITLE("HamiltBSE", "tda_solver");
+    ModuleBase::timer::tick("HamiltBSE", "tda_solver");
+
+    std::fill(this->BSE_A_global.begin(), this->BSE_A_global.end(), 0.0);
+
+    std::cout<<"solve tda for spin type: "<<this->spin_types[st_index]<<std::endl;
+    std::vector<T> global_X_tda(this->ndim * this->ndim, 0.0);
+    std::vector<double> ev(this->ndim, 0.0);
+
+    this->init_bse_matrix(false, st_index);
+
     // this->pA.init(ndim, ndim, 1/*nb*/, MPI_COMM_WORLD, false/*dim0<dim1*/);
     LR_Util::setup_2d_division(this->pA, 1/*nb*/, ndim, ndim
         #ifdef __MPI
                 , this->pX[0].blacs_ctxt
         #endif
             );
-#ifdef _OPENMP
-#pragma omp parallel for schedule(static)
-#endif
-    for (size_t i = 0; i < this->BSE_A_global.size(); ++i) {
-        this->BSE_A_global[i] +=(alpha * this->VA_global[i] - this->WA_global[i]);
-    }
-    if (LR_Util::is_hermitian(this->BSE_A_global.data(), this->ndim, 1.0e-8)) {
-        if (GlobalV::MY_RANK == 0) {
-            std::cout << "CHECK PASS: BSE_A is hermitian." << std::endl;
-        }
-    }
-    else {
-        std::cout << "BSE_A is not hermitian!" << std::endl;
-    }
+
     BSE::solve_tda(GlobalV::MY_RANK,
                     this->BSE_A_global,
                     this->pA,
@@ -211,7 +271,7 @@ void HamiltBSE<T>::tda_solver(const int & st_index, const int& nstates, double* 
     LR_Util::global2local_X(X_out, global_X_tda.data(), nstates, this->nk,
                             this->nocc, this->nvirt, this->pX, false/*openshell*/);
     
-    ModuleBase::timer::tick("HamiltBSE", "solve_tda");
+    ModuleBase::timer::tick("HamiltBSE", "tda_solver");
 }
 
 template <>
@@ -221,18 +281,8 @@ void HamiltBSE<double>::full_solver(const int& st_index, const int& nstates,
                                     double* Y_out){
     ModuleBase::TITLE("HamiltBSE", "full_solver(double)");
     ModuleBase::timer::tick("HamiltBSE", "full_solver(double)");
-    if (LR_Util::is_symmetric(this->BSE_A_global.data(), this->ndim, 1.0e-8)) {
-        if (GlobalV::MY_RANK == 0) {
-            std::cout << "CHECK PASS: BSE_A is hermitian in HamiltBSE::full_solver(double)." << std::endl;
-        }
-    }
-    else { std::cout << "BSE_A is not hermitian in HamiltBSE::full_solver(double)!" << std::endl; }
-    if (LR_Util::is_symmetric(this->BSE_B_global.data(), this->ndim, 1.0e-8)) {
-        if (GlobalV::MY_RANK == 0) {
-            std::cout << "CHECK PASS: BSE_B is hermitian in HamiltBSE::full_solver(double)." << std::endl;
-        }
-    }
-    else { std::cout << "BSE_B is not hermitian in HamiltBSE::full_solver(double)!" << std::endl; }
+
+    this->init_bse_matrix(true, st_index);
 
     // convert to complex
     std::vector<std::complex<double>> BSE_A_global_complex = BSE_Util::to_complex(this->BSE_A_global);
@@ -274,20 +324,10 @@ void HamiltBSE<std::complex<double>>::full_solver(const int& st_index, const int
                                                     double* ene_out,
                                                     std::complex<double>* X_out,
                                                     std::complex<double>* Y_out){
-    ModuleBase::TITLE("HamiltBSE", "full_solver");
-    ModuleBase::timer::tick("HamiltBSE", "full_solver");
-    if (LR_Util::is_hermitian(this->BSE_A_global.data(), this->ndim, 1.0e-8)) {
-        if (GlobalV::MY_RANK == 0) {
-            std::cout << "CHECK PASS: BSE_A is hermitian in HamiltBSE::full_solver(complex)." << std::endl;
-        }
-    }
-    else { std::cout << "BSE_A is not hermitian in HamiltBSE::full_solver(complex)!" << std::endl; }
-    if (LR_Util::is_symmetric(this->BSE_B_global.data(), this->ndim, 1.0e-8)) {
-        if (GlobalV::MY_RANK == 0) {
-            std::cout << "CHECK PASS: BSE_B is symmetric in HamiltBSE::full_solver(complex)." << std::endl;
-        }
-    }
-    else { std::cout << "BSE_B is not symmetric in HamiltBSE::full_solver(complex)!" << std::endl; }
+    ModuleBase::TITLE("HamiltBSE", "full_solver(complex)");
+    ModuleBase::timer::tick("HamiltBSE", "full_solver(complex)");
+
+    this->init_bse_matrix(true, st_index);
 
     std::vector<std::complex<double>> global_v_full(4 * this->ndim * this->ndim, 0.0);
     std::vector<double> ev(2 * this->ndim, 0.0);
@@ -336,7 +376,7 @@ void HamiltBSE<double>::grid_calculation(hamilt::HContainer<double>& VR) const
     // 4.2. v_hxc = f_hxc * rho_trans
     ModuleBase::matrix vr_hxc(1, nrxx);   //grid
     std::vector<int> ispin_ks = { 0 }; //for close-shell dft-xc kerenl, actually placeholder for bse 
-    this->pot.lock()->cal_v_eff(rho_trans, ucell, vr_hxc, ispin_ks);
+    this->pot.lock()->cal_v_eff(rho_trans, ucell, vr_hxc, ispin_ks);// in this function, unit changes from Ha to Ry
     LR_Util::_deallocate_2order_nested_ptr(rho_trans, 1);
 
     // 4.3 V^{Hxc}_{\mu,\nu}=\int{dr} \phi_\mu(r) v_{Hxc}(r) \phi_\nu(r)
@@ -353,7 +393,7 @@ void HamiltBSE<std::complex<double>>::grid_calculation(hamilt::HContainer<std::c
     ModuleBase::TITLE("HamiltBSE", "grid_calculation(complex)");
     ModuleBase::timer::tick("HamiltBSE", "grid_calculation(complex)");
 
-    elecstate::DensityMatrix<std::complex<double>, double> DM_trans_real_imag(&this->pmat, 1, kv.kvec_d, this->nk);
+    elecstate::DensityMatrix<std::complex<double>, double> DM_trans_real_imag(&this->pmat, 1, this->kv.kvec_d, this->nk);
     DM_trans_real_imag.init_DMR(VR);
     hamilt::HContainer<double> HR_real_imag(ucell, &this->pmat);
     LR_Util::initialize_HR<std::complex<double>, double>(HR_real_imag, ucell, gd, orb_cutoff);
@@ -374,7 +414,7 @@ void HamiltBSE<std::complex<double>>::grid_calculation(hamilt::HContainer<std::c
             // 4.2. v_hxc = f_hxc * rho_trans
             ModuleBase::matrix vr_hxc(1, nrxx);   //grid
             std::vector<int> ispin_ks = { 0 }; //for close-shell dft-xc kerenl, actually placeholder for bse 
-            this->pot.lock()->cal_v_eff(rho_trans, ucell, vr_hxc, ispin_ks);
+            this->pot.lock()->cal_v_eff(rho_trans, ucell, vr_hxc, ispin_ks);// in this function, unit changes from Ha to Ry
             LR_Util::_deallocate_2order_nested_ptr(rho_trans, 1);
 
             // 4.3 V^{Hxc}_{\mu,\nu}=\int{dr} \phi_\mu(r) v_{Hxc}(r) \phi_\nu(r)

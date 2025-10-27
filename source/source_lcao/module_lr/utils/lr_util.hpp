@@ -5,6 +5,7 @@
 #include "source_cell/unitcell.h"
 #include "source_base/constants.h"
 #include "source_hamilt/module_xc/xc_functional.h"
+#include "source_base/module_external/lapack_connector.h"
 namespace LR_Util
 {
     /// =================PHYSICS====================
@@ -96,21 +97,43 @@ namespace LR_Util
     }
     template<typename T>
     bool is_hermitian(const T* mat, const int n, const double threshold){
+        std::vector<T> minus_mat(n*n);
+        std::vector<T> sum_mat(n*n);
         for (int i = 0;i < n;++i) {
             for (int j = i;j < n;++j) {
-                if (std::abs(mat[i * n + j] - get_conj(mat[j * n + i])) > threshold) return false;
+                minus_mat[i * n + j] = mat[i * n + j] - get_conj(mat[j * n + i]);
+                minus_mat[j * n + i] = -get_conj(minus_mat[i * n + j]);
+                if (std::abs(minus_mat[i * n + j]) > threshold) return false;
+                sum_mat[i * n + j] = mat[i * n + j] + get_conj(mat[j * n + i]);
+                sum_mat[j * n + i] = get_conj(sum_mat[i * n + j]);
             }
         }
+        const char norm_type = 'F';
+        double norm1 = LapackConnector::lange(norm_type, n, n, minus_mat.data(), n, nullptr);
+        double norm2 = LapackConnector::lange(norm_type, n, n, sum_mat.data(), n, nullptr);
+        std::cout << " Hermitian check: ||A - A^+||_F = " << norm1 << ", ||A + A^+||_F = " << norm2 << std::endl;
+        std::cout << " ||A - A^+||_F / ||A + A^+||_F = " << norm1 / norm2 << std::endl;
         return true;
     }
 
     template<typename T>
     bool is_symmetric(const T* mat, const int n, const double threshold){
+        std::vector<T> minus_mat(n*n);
+        std::vector<T> sum_mat(n*n);
         for (int i = 0;i < n;++i) {
             for (int j = i;j < n;++j) {
-                if (std::abs(mat[i * n + j] - mat[j * n + i]) > threshold) return false;
+                minus_mat[i * n + j] = mat[i * n + j] - mat[j * n + i];
+                minus_mat[j * n + i] = -minus_mat[i * n + j];
+                if (std::abs(minus_mat[i * n + j]) > threshold) return false;
+                sum_mat[i * n + j] = mat[i * n + j] + mat[j * n + i];
+                sum_mat[j * n + i] = sum_mat[i * n + j];
             }
         }
+        const char norm_type = 'F';
+        double norm1 = LapackConnector::lange(norm_type, n, n, minus_mat.data(), n, nullptr);
+        double norm2 = LapackConnector::lange(norm_type, n, n, sum_mat.data(), n, nullptr);
+        std::cout << "Symmetric check: ||A - A^T||_F = " << norm1 << ", ||A + A^T||_F = " << norm2 << std::endl;
+        std::cout << "||A - A^T||_F / ||A + A^T||_F = " << norm1 / norm2 << std::endl;
         return true;
     }
 
@@ -207,6 +230,8 @@ namespace LR_Util
     void gather_2d_to_full(const Parallel_2D& pv, const T* submat, T* fullmat, bool row_major, int global_nrow, int global_ncol)
     {
         ModuleBase::TITLE("LR_Util", "gather_2d_to_full");
+        assert(pv.get_global_row_size() == global_nrow);
+        assert(pv.get_global_col_size() == global_ncol);
         auto get_mpi_datatype = []() -> MPI_Datatype {
             if (std::is_same<T, int>::value) { return MPI_INT; }
             if (std::is_same<T, float>::value) { return MPI_FLOAT; }

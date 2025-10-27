@@ -118,9 +118,12 @@ void Exx_LRI<Tdata>::cal_exx_ions(const UnitCell& ucell,
 			dVs = dVs.empty() ? dVs_temp : LRI_CV_Tools::add(dVs, dVs_temp);
 		}
 	}
-	if (write_cv && GlobalV::MY_RANK == 0)
-		{ LRI_CV_Tools::write_Vs_abf(Vs, PARAM.globalv.global_out_dir + "Vs"); }
 	this->exx_lri.set_Vs(std::move(Vs), this->info.V_threshold);
+	if (write_cv)
+	{
+		std::map<TA,std::map<TAC,RI::Tensor<Tdata>>>& Vs_exx = this->exx_lri.lri.data_pool.at("Vs_").Ds_ab;
+		LRI_CV_Tools::write_Vs_abf(Vs_exx, PARAM.globalv.global_out_dir + "Vs_lri_" + std::to_string(GlobalV::MY_RANK));
+	}
 
 	if(PARAM.inp.cal_force || PARAM.inp.cal_stress)
 	{
@@ -163,10 +166,13 @@ void Exx_LRI<Tdata>::cal_exx_ions(const UnitCell& ucell,
 			}
 		}
 	}
-	if (write_cv && GlobalV::MY_RANK == 0)
-		{ LRI_CV_Tools::write_Cs_ao(Cs, PARAM.globalv.global_out_dir + "Cs"); }
 	this->exx_lri.set_Cs(std::move(Cs), this->info.C_threshold);
-
+	if (write_cv)
+	{ 
+		std::map<TA,std::map<TAC,RI::Tensor<Tdata>>>& Cs_exx = this->exx_lri.lri.data_pool.at("Cs_").Ds_ab;
+		LRI_CV_Tools::write_Cs_ao(Cs_exx, PARAM.globalv.global_out_dir + "Cs_lri_" + std::to_string(GlobalV::MY_RANK));
+	}
+	
 	if(PARAM.inp.cal_force || PARAM.inp.cal_stress)
 	{
 		std::array<std::map<TA, std::map<TAC, RI::Tensor<Tdata>>>, Ndim>

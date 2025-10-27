@@ -39,6 +39,9 @@
 	namespace BSE {
 		template<typename T, typename TR>
 		class ESolver_BSE;
+		
+		template<typename T>
+		class MolecularWR;
 	}
 template<typename Tdata>
 class Exx_Obj
@@ -120,6 +123,7 @@ private:
 	friend class LR::OperatorLREXX<std::complex<double>>;
 	friend class BSE::ESolver_BSE<double, double>;
 	friend class BSE::ESolver_BSE<std::complex<double>, double>;
+	friend class BSE::MolecularWR<Tdata>;
 };
 
 #include "Exx_LRI.hpp"

@@ -28,6 +28,7 @@ std::vector<std::complex<double>> cal_velocity_mo(const UnitCell& ucell,
                                                 const std::vector<int> nvirt)
 {
     ModuleBase::TITLE("LR::LR_Util", "cal_velocity_mo");
+    ModuleBase::timer::tick("LR::LR_Util", "cal_velocity_mo");
     std::cout<<"Calculating velocity matrix in KS presentation..."<<std::endl;
     // get_velocity_matrix_R(ucell, gd_, pmat, two_center_bundle_);
     LCAO_Orbitals orb;
@@ -50,16 +51,12 @@ std::vector<std::complex<double>> cal_velocity_mo(const UnitCell& ucell,
 #endif
         );
 
-    //1. psi_ks<T> to c_psi_ks<complex<double>>
+    //1. psi_ks<T> to c_psi_ks<complex<double>>, ensure complex<double> for dipole calculation
     psi::Psi<std::complex<double>> c_psi_ks(nks,
                                             pc.get_col_size(), 
                                             pc.get_row_size(), 
                                             kv.ngk, 
                                             true);
-    GlobalV::ofs_running << "new c_psi_ks" << std::endl;
-    GlobalV::ofs_running << "psi_ks.get_nk(): " << psi_ks.get_nk() << " psi_ks.get_nbands(): " << psi_ks.get_nbands() << " psi_ks.get_nbasis(): " << psi_ks.get_nbasis() << std::endl;
-    MPI_Barrier(MPI_COMM_WORLD);
-    
     for(int iks = 0; iks < nks; ++iks)
     {
         for(int ic = 0; ic < pc.get_col_size(); ++ic)//band
@@ -70,7 +67,6 @@ std::vector<std::complex<double>> cal_velocity_mo(const UnitCell& ucell,
             }
         }
     }
-    GlobalV::ofs_running<< "end c_psi_ks" << std::endl;
     
     //2. calculate v_mo = c^\dagger v c
     std::vector<ct::Tensor> vk(nks, LR_Util::newTensor<std::complex<double>>({ pmat.get_col_size(), pmat.get_row_size() }));
@@ -114,7 +110,8 @@ std::vector<std::complex<double>> cal_velocity_mo(const UnitCell& ucell,
             }
         }
     }//id
-    std::cout<<"Finish velocity matrix in KS presentation."<<std::endl;
+    ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "Finish velocity matrix in KS presentation.");
+    ModuleBase::timer::tick("LR::LR_Util", "cal_velocity_mo");
     return velocity_mo;
 }
 
@@ -131,6 +128,7 @@ std::vector<std::complex<double>> cal_dipole_r_mo(const UnitCell& ucell,
                                                 const std::vector<int> nvirt)
 {
     ModuleBase::TITLE("LR::LR_Util", "cal_dipole_r_mo");
+    ModuleBase::timer::tick("LR::LR_Util", "cal_dipole_r_mo");
     std::cout<<"Calculating r-dipole matrix in KS presentation..."<<std::endl;
     LR_Util::rRFileReader rRReader (PARAM.globalv.global_readin_dir + "rr.csr",
         PARAM.globalv.global_readin_dir + "srs1_nao.csr", pmat, ucell, kv);
@@ -148,16 +146,12 @@ std::vector<std::complex<double>> cal_dipole_r_mo(const UnitCell& ucell,
 #endif
         );
 
-    //1. psi_ks<T> to c_psi_ks<complex<double>>
+    //1. psi_ks<T> to c_psi_ks<complex<double>>, ensure complex<double> for dipole calculation
     psi::Psi<std::complex<double>> c_psi_ks(nks,
                                             pc.get_col_size(), 
                                             pc.get_row_size(), 
                                             kv.ngk, 
                                             true);
-    GlobalV::ofs_running << "new c_psi_ks" << std::endl;
-    GlobalV::ofs_running << "psi_ks.get_nk(): " << psi_ks.get_nk() << " psi_ks.get_nbands(): " << psi_ks.get_nbands() << " psi_ks.get_nbasis(): " << psi_ks.get_nbasis() << std::endl;
-    MPI_Barrier(MPI_COMM_WORLD);
-    
     for(int iks = 0; iks < nks; ++iks)
     {
         for(int ic = 0; ic < pc.get_col_size(); ++ic)//band
@@ -168,7 +162,6 @@ std::vector<std::complex<double>> cal_dipole_r_mo(const UnitCell& ucell,
             }
         }
     }
-    GlobalV::ofs_running<< "end c_psi_ks" << std::endl;
     
     //2. calculate r_mo = c^\dagger r c
     std::vector<ct::Tensor> rk(nks, LR_Util::newTensor<std::complex<double>>({ pmat.get_col_size(), pmat.get_row_size() }));
@@ -213,10 +206,11 @@ std::vector<std::complex<double>> cal_dipole_r_mo(const UnitCell& ucell,
         }
     }//id
     std::cout<<"Finish r-dipole matrix in KS presentation."<<std::endl;
+    ModuleBase::timer::tick("LR::LR_Util", "cal_dipole_r_mo");
     return dipole_mo;
 }
 
-/// @brief output the velocity matrix in KS presentation in dipole format
+/// @brief output the velocity matrix in KS presentation in human-read friendly format
 inline void output_spectrum_mo(const std::vector<std::complex<double>>& out_spectrum_mo,
                         const std::string& filename,
                         const double* const eig_ks,

@@ -41,7 +41,6 @@ namespace LRI_CV_Tools
             for (std::size_t i = 0; i != nw1; i++) {
                 for (std::size_t j = 0; j != nw2; j++) {
                     for (std::size_t mu = 0; mu != nabf; mu++) {
-            // Note: in <complex>, operator >> can apply to both "(r,i)" format and "r" for only real part
                         infile >> tensor_cs(mu, i, j); 
                     }
                 }

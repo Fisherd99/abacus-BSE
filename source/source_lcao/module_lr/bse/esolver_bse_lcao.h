@@ -15,6 +15,8 @@ namespace BSE
     template<typename T, typename TR = double>
     class ESolver_BSE : public LR::ESolver_LR<T, TR> {
     public:
+        BSE_IO::RI_kRlist kRlist;
+        psi::Psi<T>* psi_ks_global; ///< global version of psi_ks
         ModuleBase::matrix eig_gw; ///< GW energy
         std::vector<double> tda_ene, full_ene; // in Rydberg
 
@@ -24,16 +26,12 @@ namespace BSE
         /// @brief a from-scratch constructor
         ESolver_BSE(const Input_para& inp, UnitCell& ucell);
 
-        void exx_init();
+        ~ESolver_BSE() override {
+            //delete this->psi_ks; // already deleted in ESolver_LR
+            delete this->psi_ks_global;
+        }
 
-        inline void add_c(double& target, const double& value, const std::complex<double>& phase)
-        {
-            target += value;
-        };
-        inline void add_c(std::complex<double>& target, const std::complex<double>& value, const std::complex<double>& phase)
-        {
-            target += value * phase;
-        };
+        void exx_init();
 
         virtual void runner(UnitCell& ucell, int istep) override;
         virtual void after_all_runners(UnitCell& ucell) override;

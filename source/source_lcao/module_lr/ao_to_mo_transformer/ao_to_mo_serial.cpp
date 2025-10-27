@@ -13,7 +13,7 @@ namespace LR
         double* mat_mo,
         const MO_TYPE type)
     {
-        ModuleBase::TITLE("hamilt_lrtd", "ao_to_mo_forloop_serial");
+        ModuleBase::TITLE("LR", "ao_to_mo_forloop_serial");
         const int nks = mat_ao.size();
         const int naos = coeff.get_nbasis();
         const int nmo1 = type == MO_TYPE::VV ? nvirt : nocc;
@@ -51,7 +51,7 @@ namespace LR
         std::complex<double>* const mat_mo,
         const MO_TYPE type)
     {
-        ModuleBase::TITLE("hamilt_lrtd", "ao_to_mo_forloop_serial");
+        ModuleBase::TITLE("LR", "ao_to_mo_forloop_serial");
         const int nks = mat_ao.size();
         const int naos = coeff.get_nbasis();
         const int nmo1 = type == MO_TYPE::VV ? nvirt : nocc;
@@ -90,7 +90,7 @@ namespace LR
         const bool add_on,
         const MO_TYPE type)
     {
-        ModuleBase::TITLE("hamilt_lrtd", "ao_to_mo_blas");
+        ModuleBase::TITLE("LR", "ao_to_mo_blas");
         const int nks = mat_ao.size();
         const int naos = coeff.get_nbasis();        
         int nmo1_set, nmo2_set, imo1_set, imo2_set;
@@ -133,7 +133,7 @@ namespace LR
         const bool add_on,
         const MO_TYPE type)
     {
-        ModuleBase::TITLE("hamilt_lrtd", "ao_to_mo_blas");
+        ModuleBase::TITLE("LR", "ao_to_mo_blas");
         const int nks = mat_ao.size();
         const int naos = coeff.get_nbasis();
         int nmo1_set, nmo2_set, imo1_set, imo2_set;

@@ -22,19 +22,25 @@ imo2    0    nocc  nocc  0
     inline void set_dim(const MO_TYPE type, const int& nocc, const int& nvirt,
         int& nmo1, int& nmo2, int& imo1, int& imo2)
     {
-        if (type == MO_TYPE::ALL)
+        switch(type)
         {
+        case MO_TYPE::OO:
+            nmo1 = nocc; nmo2 = nocc; imo1 = 0; imo2 = 0;
+            break;
+        case MO_TYPE::VO:
+            nmo1 = nocc; nmo2 = nvirt; imo1 = 0; imo2 = nocc;
+            break;
+        case MO_TYPE::VV:
+            nmo1 = nvirt; nmo2 = nvirt; imo1 = nocc; imo2 = nocc;
+            break;
+        case MO_TYPE::ALL:
             nmo1 = nocc + nvirt;
             nmo2 = nocc + nvirt;
             imo1 = 0;
             imo2 = 0;
-        }
-        else{
-            assert(type == MO_TYPE::OO || type == MO_TYPE::VO || type == MO_TYPE::VV);
-            nmo1 = type == MO_TYPE::VV ? nvirt : nocc;
-            nmo2 = type == MO_TYPE::OO ? nocc : nvirt;
-            imo1 = type == MO_TYPE::VV ? nocc : 0;
-            imo2 = type == MO_TYPE::OO ? 0 : nocc;
+            break;
+        default:
+            throw std::runtime_error("Error in LR::set_dim: unknown MO_TYPE");
         }
     }
     template<typename T>

@@ -317,6 +317,7 @@ void RPA_LRI<T, Tdata>::out_Cs(const UnitCell& ucell)
     ss << "Cs_data_" << GlobalV::MY_RANK << ".txt";
     std::ofstream ofs;
     ofs.open(ss.str().c_str(), std::ios::out);
+    ofs << std::fixed << std::scientific << std::setprecision(12);
     ofs << ucell.nat << "    " << 0 << std::endl;
     for (auto& Ip: this->Cs_period)
     {
@@ -338,7 +339,7 @@ void RPA_LRI<T, Tdata>::out_Cs(const UnitCell& ucell)
                 {
                     for (int mu = 0; mu != tmp_Cs.shape[0]; mu++)
                     {
-                        ofs << std::setw(15) << std::fixed << std::setprecision(9) << tmp_Cs(mu, i, j) << std::endl;
+                        ofs << tmp_Cs(mu, i, j) << std::endl;
                     }
                 }
             }

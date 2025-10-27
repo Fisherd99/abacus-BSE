@@ -133,23 +133,23 @@ namespace LR
         // 3. set [AX]_iak = DM_onbase * Hexxs for each occ-virt pair and each k-point
         // caution: parrallel
         ModuleBase::timer::tick("OperatorLREXX", "cal_energy");
-        for (int io = 0;io < this->nocc;++io)
+        for (int ik = 0;ik < nk;++ik)
         {
-            for (int iv = 0;iv < this->nvirt;++iv)
+            for (int io = 0;io < this->nocc;++io)
             {
-                for (int ik = 0;ik < nk;++ik)
+                for (int iv = 0;iv < this->nvirt;++iv)
                 {
                     const int xstart_bk = ik * pX.get_local_size();
                     this->cal_DM_onebase(io, iv, ik);       //set Ds_onebase for all e-h pairs (not only on this processor)
                     // LR_Util::print_CV(Ds_onebase, "Ds_onebase of occ " + std::to_string(io) + ", virtual " + std::to_string(iv) + " in OperatorLREXX", 1e-10);
-                    const T& ene = 2 * alpha * //minus for exchange(but here plus is right, why?), 2 for Hartree to Ry
+                    const T& ene = 2 * alpha * //minus for exchange(but here plus, since `post_process_Hexx` has taken minus), 2 for Hartree to Ry
                         lri->exx_lri.post_2D.cal_energy(this->Ds_onebase, lri->Hexxs[0]);
                     if (this->pX.in_this_processor(iv, io))
                     {
                         hpsi[xstart_bk + this->pX.global2local_col(io) * this->pX.get_row_size() + this->pX.global2local_row(iv)] += ene;
                     }
                     //for debug
-                    GlobalV::ofs_running << "Direct term: io="<<io<<"\t iv="<<iv<<"\t ik="<<ik<<"\t ene="<<ene<<std::endl;
+                    GlobalV::ofs_running << "Direct term: ik="<<ik<<"\t io="<<io<<"\t iv="<<iv<<"\t ene="<<ene<<std::endl;
                 }
             }
         }

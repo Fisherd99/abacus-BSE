@@ -122,7 +122,6 @@ namespace RI_Benchmark
         auto& Cs_shape = Cs_a.at(0).begin()->second.shape;
         auto& Vs_shape = Vs.at(0).begin()->second.shape;
         assert(Cs_shape.size() == 3); // abf, nocc, nvirt
-        assert(Cs_shape.size() == 3); // abf, nocc, nvirt
         assert(Vs_shape.size() == 2); // abf, abf
 
         const int& npairs = Cs_shape[1] * Cs_shape[2];
@@ -309,89 +308,6 @@ namespace RI_Benchmark
         return bands_final;
     }
 
-    /// @brief  read the eigenvectors from librpa
-    template <typename TK>
-    void read_librpa_eigenvectors(psi::Psi<TK>& wfc_ks, const std::string& path, const int ncore, const int nbands_file,
-        const int nspin_tmp, const int nspin_file, Parallel_Orbitals& pmat) {
-        int nbands = pmat.get_wfc_global_nbands();// nbands = nocc + nvirt
-        int nbasis = pmat.get_wfc_global_nbasis();
-        const size_t nk = PARAM.inp.nspin == 2 ? wfc_ks.get_nk() / 2 : wfc_ks.get_nk();
-        std::vector<std::vector<TK>> wfc_ks_tot(
-            wfc_ks.get_nk(),
-            std::vector<TK>(((GlobalV::MY_RANK == 0) ? nbands * nbasis : 0), 0.0)); // glboal wfc
-            if (GlobalV::MY_RANK == 0) {
-            struct dirent *ptr;
-            DIR *dir;
-            dir = opendir(path.c_str());
-            std::vector<bool> readen_k(nk, false);
-
-            while ((ptr = readdir(dir)) != NULL){// read all the files in the directory
-                std::string fm(ptr->d_name);
-                if (fm.find("KS_eigenvector") == 0)// find file KS_eigenvectorXXX
-                {
-                    std::cout << "found librpa_eigenvector file:" << fm << std::endl;
-                    std::ifstream file_librpa_ks(path + fm);
-                    std::string tmp;
-                    while (file_librpa_ks.peek() != EOF)
-                    {
-                        int ik;
-                        file_librpa_ks >> ik;
-                        ik = ik - 1;
-                        assert(readen_k[ik] == false);
-                        for (int iw = 0; iw < nbasis; ++iw) {
-                            for (int ib = 0; ib < nbands_file; ++ib) {
-                                for (int is = 0; is < nspin_file; ++is) {
-                                    if (ib >= ncore && ib< (ncore+nbands)) {
-                                        RI_Benchmark::read_one_data(file_librpa_ks, wfc_ks_tot[ik+is*nk][(ib-ncore)*nbasis + iw]);
-                                        file_librpa_ks >> std::ws; // skip the blank if there is
-                                    }
-                                    else {
-                                        std::getline(file_librpa_ks, tmp); //skip the useless bands
-                                    }
-                                }
-                            }
-                        }
-                        if (nspin_tmp == 2 && nspin_file == 1) {
-                            wfc_ks_tot[ik + nk] = wfc_ks_tot[ik];
-                        }
-                        readen_k[ik] = true;
-                    }
-                }
-            }
-            closedir(dir);
-            for(int ik = 0; ik < nk; ++ik) {
-                if (!readen_k[ik])
-                    throw std::runtime_error("librpa_eigenvector file not found for k-point " + std::to_string(ik+1));
-            }
-            
-        }// end of if (GlobalV::MY_RANK == 0) ;
-        for (int iks = 0; iks < wfc_ks.get_nk(); ++iks){
-            // test: output wfc
-            if (GlobalV::MY_RANK == 0) {
-                std::cout << "wfc_gs_read_from_librpa for iks:" << iks << std::endl;
-                for (int ib = 0;ib < nbands;++ib)
-                {
-                    for (int iw = 0;iw < nbasis;++iw)
-                    {
-                        std::cout << wfc_ks_tot[iks][ib * nbasis + iw] << "  ";
-                    }
-                    std::cout << std::endl;
-                }
-            }
-            // test: output wfc
-            wfc_ks.fix_k(iks);
-#ifdef __MPI
-            Parallel_2D pv_glb;
-            pv_glb.set(nbasis, nbands, std::max(nbasis, nbands), pmat.blacs_ctxt);
-            Cpxgemr2d(nbasis, nbands, wfc_ks_tot[iks].data(), 1, 1, pv_glb.desc,
-                        wfc_ks.get_pointer(), 1, 1, const_cast<int*>(pmat.desc_wfc)/*nbasis×nbands*/,
-                        pv_glb.blacs_ctxt);
-#else
-            BlasConnector::copy(nbands*nlocal, wfc_ks_tot[iks].data(), 1, wfc_ks.get_pointer(), 1);
-#endif
-        }
-    }
-
     /// @brief  read the eigenvectors from FHI-aims, only for gamma_only and spin degenerate
     template <typename TK>
     void read_aims_eigenvectors(psi::Psi<TK>& wfc_ks, const std::string& file, const int ncore, const int nbands, const int nbasis)
@@ -444,7 +360,7 @@ namespace RI_Benchmark
         ifs.open(file);
         size_t nk = 0, nabf = 0, istart = 0, jstart = 0, iend = 0, jend = 0;
         std::string tmp;
-        const std::unique_ptr<K_Vectors>& klist = kRlist.klist;
+        K_Vectors* const klist = kRlist.klist;
         ifs >> nk;//   nkstot(actually nk)
         assert(nk == klist->get_nks());
         int ik_readin = -1;
@@ -481,15 +397,10 @@ namespace RI_Benchmark
             }
         }
 
-        auto array3_to_Vector3_double = [](const std::array<int, 3>& v) -> ModuleBase::Vector3<double> {
-            return ModuleBase::Vector3<double>{static_cast<double>(v[0]), 
-                                            static_cast<double>(v[1]), 
-                                            static_cast<double>(v[2])};
-        };
         for ( const TC& iR : kRlist.Rlist )
         {
-            std::cout<<"FISH_OUTPUT: in read V: iR="<<iR[0]<<" "<<iR[1]<<" "<<iR[2]<<std::endl;
-            
+            std::cout<<"read V: iR="<<iR[0]<<" "<<iR[1]<<" "<<iR[2]<<std::endl;
+            ModuleBase::Vector3<double> R(iR[0], iR[1], iR[2]);
             for (int iat1 = 0;iat1 < nat;++iat1)
             {
                 for (int iat2 = 0;iat2 < nat;++iat2)
@@ -497,7 +408,7 @@ namespace RI_Benchmark
                     Vs[iat1][{iat2, iR}] = RI::Tensor<TR>({ Vq[iat1][{iat2, 0}].shape[0], Vq[iat1][{iat2, 0}].shape[1] });
                     for (int ik = 0;ik < nk;++ik)
                     {
-                    const double arg = -1.0 * ModuleBase::TWO_PI * (klist->kvec_d[ik] * array3_to_Vector3_double(iR));
+                    const double arg = -1.0 * ModuleBase::TWO_PI * (klist->kvec_d[ik] * R);
                     const std::complex<double> kphase (cos(arg), sin(arg));
                     Vs[iat1][{iat2, iR}] += RI::Global_Func::convert<TR> (Vq[iat1][{iat2, ik}] * kphase) * RI::Global_Func::convert<TR>(klist->wk[ik]);
                     }
@@ -514,7 +425,7 @@ namespace RI_Benchmark
         ifs.open(file);
         size_t nk = 0, nabf = 0, istart = 0, jstart = 0, iend = 0, jend = 0;
         std::string tmp;
-        const std::unique_ptr<K_Vectors>& klist = kRlist.klist;
+        K_Vectors* const klist = kRlist.klist;
         ifs >> nk;//   nkstot(actually nk)
         assert(nk == klist->get_nks());
         int ik_readin = -1;
@@ -569,14 +480,10 @@ namespace RI_Benchmark
         }
         assert(istart == nabf);
 
-        auto array3_to_Vector3_double = [](const std::array<int, 3>& v) -> ModuleBase::Vector3<double> {
-            return ModuleBase::Vector3<double>{static_cast<double>(v[0]), 
-                                            static_cast<double>(v[1]), 
-                                            static_cast<double>(v[2])};
-        };
         for ( const TC& iR : kRlist.Rlist )
         {
-            std::cout<<"FISH_OUTPUT: in read V: iR="<<iR[0]<<" "<<iR[1]<<" "<<iR[2]<<std::endl;
+            std::cout<<"read V: iR="<<iR[0]<<" "<<iR[1]<<" "<<iR[2]<<std::endl;
+            ModuleBase::Vector3<double> R(iR[0], iR[1], iR[2]);
             for (int iat1 = 0;iat1 < nat;++iat1)
             {
                 for (int iat2 = 0;iat2 < nat;++iat2)
@@ -584,7 +491,7 @@ namespace RI_Benchmark
                     Vs[iat1][{iat2, iR}] = RI::Tensor<TR>({ Vq[iat1][{iat2, 0}].shape[0], Vq[iat1][{iat2, 0}].shape[1] });
                     for (int ik = 0; ik < nk; ++ik)
                     {
-                    const double arg = -1.0 * ModuleBase::TWO_PI * (klist->kvec_d[ik] * array3_to_Vector3_double(iR));
+                    const double arg = -1.0 * ModuleBase::TWO_PI * (klist->kvec_d[ik] * R);
                     const std::complex<double> kphase (cos(arg), sin(arg));
                     Vs[iat1][{iat2, iR}] += RI::Global_Func::convert<TR>(Vq[iat1][{iat2, ik}] * kphase) * RI::Global_Func::convert<TR>(klist->wk[ik]);
                     }

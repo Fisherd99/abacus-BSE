@@ -23,7 +23,7 @@ namespace LR
         const bool add_on,
         const MO_TYPE type)
     {
-        ModuleBase::TITLE("hamilt_lrtd", "ao_to_mo_pblas");
+        ModuleBase::TITLE("LR", "ao_to_mo_pblas");
         assert(pmat_ao.comm() == pcoeff.comm() && pmat_ao.comm() == pmat_mo.comm());
         assert(pmat_ao.blacs_ctxt == pcoeff.blacs_ctxt && pmat_ao.blacs_ctxt == pmat_mo.blacs_ctxt);
         assert(pmat_mo.get_local_size() > 0);
@@ -82,7 +82,7 @@ namespace LR
         const bool add_on,
         const MO_TYPE type)
     {
-        ModuleBase::TITLE("hamilt_lrtd", "cal_AX_plas");
+        ModuleBase::TITLE("LR", "ao_to_mo_pblas");
         assert(pmat_ao.comm() == pcoeff.comm() && pmat_ao.comm() == pmat_mo.comm());
         assert(pmat_ao.blacs_ctxt == pcoeff.blacs_ctxt && pmat_ao.blacs_ctxt == pmat_mo.blacs_ctxt);
         assert(pmat_mo.get_local_size() > 0);
