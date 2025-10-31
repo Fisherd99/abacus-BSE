@@ -25,9 +25,9 @@ void RI_kRlist::read_kpts(const std::string& file, const UnitCell& ucell, K_Vect
     for (int i = 0; i < 7; ++i) { std::getline(ifs, tmp); } // get the 7th line(number of atoms)
     int nat = std::stoi(tmp);
     for (int i = 0; i != nat; ++i) { std::getline(ifs, tmp); }
-    int nk_original = klist->get_nks();
+    int nks_original = klist->get_nks();
     std::cout << "Origianl klist(Cartesian|Direct)" << std::endl;
-    for (int ik = 0;ik < nk_original;++ik)
+    for (int ik = 0;ik < nks_original;++ik)
     {
         std::cout << "ik=" << ik <<": " << klist->kvec_c[ik].x << " " << klist->kvec_c[ik].y << " " << klist->kvec_c[ik].z 
         << " | " << klist->kvec_d[ik].x << " " << klist->kvec_d[ik].y << " " << klist->kvec_d[ik].z << std::endl;
@@ -35,18 +35,28 @@ void RI_kRlist::read_kpts(const std::string& file, const UnitCell& ucell, K_Vect
 
     ifs >> klist->nmp[0] >> klist->nmp[1] >> klist->nmp[2];
     int nk = klist->nmp[0] * klist->nmp[1] * klist->nmp[2];
-    klist->set_nks(nk);
-    klist->kvec_c.resize(nk);
-    klist->kvec_d.resize(nk);
-    klist->wk.resize(nk);
-    for (int ik = 0;ik < nk;++ik)
+    int nks = (PARAM.inp.nspin == 2) ? 2 * nk : nk;
+    assert(nks == nks_original);
+
+    for (int ik = 0; ik < nk; ++ik)
     {
         ifs >> klist->kvec_c[ik].x >> klist->kvec_c[ik].y >> klist->kvec_c[ik].z;
         klist->kvec_c[ik] /= ModuleBase::TWO_PI * ModuleBase::BOHR_TO_A; // in unit of 2pi/angstrom
         klist->kvec_d[ik] = klist->kvec_c[ik] * ucell.latvec;
     }
+    if (PARAM.inp.nspin == 2)
+    {
+        for (int ik = 0; ik < nk; ++ik)
+        {
+            klist->kvec_c[ik + nk] = klist->kvec_c[ik];
+            klist->kvec_d[ik + nk] = klist->kvec_d[ik];
+        }
+    }
+
+    // NOTE: K_Vectors.wk will be read in function `read_coulomb_mat` in ri_benchmark.hpp	
+
     std::cout << "After read_kpts: klist(Cartesian|Direct)" << std::endl;
-    for (int ik = 0;ik < nk;++ik)
+    for (int ik = 0; ik < nks; ++ik)
     {
         std::cout << "ik=" << ik <<": " << klist->kvec_c[ik].x << " " << klist->kvec_c[ik].y << " " << klist->kvec_c[ik].z 
         << " | " << klist->kvec_d[ik].x << " " << klist->kvec_d[ik].y << " " << klist->kvec_d[ik].z << std::endl;

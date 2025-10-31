@@ -391,6 +391,7 @@ void ESolver_BSE<T, TR>::read_ks_wfc()
     int nspin_tmp = PARAM.inp.nspin == 2 ? 2 : 1;
     BSE_IO::parse_band_out_file("band_out", nbands_file, nk_file, nspin_file);
     if (nk_file != this->nk) {
+        std::cout << "nk in `band_out`: " << nk_file << ", nk in BSE: " << this->nk << std::endl;
         ModuleBase::WARNING_QUIT("ESolver_BSE", "The nk in band_out is not consistent with BSE::nk.");
     }
     auto eig_gw_info = BSE_IO::read_energy_qp("energy_qp", this->nocc[0], this->nvirt[0], ncore, this->nk, nspin_tmp, nspin_file);

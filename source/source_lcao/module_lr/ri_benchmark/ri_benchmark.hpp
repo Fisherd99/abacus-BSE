@@ -361,8 +361,9 @@ namespace RI_Benchmark
         size_t nk = 0, nabf = 0, istart = 0, jstart = 0, iend = 0, jend = 0;
         std::string tmp;
         K_Vectors* const klist = kRlist.klist;
-        ifs >> nk;//   nkstot(actually nk)
-        assert(nk == klist->get_nks());
+        ifs >> nk;//   actual nk
+        int klist_nk = klist->nmp[0] * klist->nmp[1] * klist->nmp[2];
+        assert(nk == klist_nk);
         int ik_readin = -1;
         TLRI<TR> Vs;
         std::map<int, std::map<std::pair<int,int>, RI::Tensor<std::complex<double>>>> Vq; // <iat1, <<iat2,ik>, T>>
@@ -426,8 +427,9 @@ namespace RI_Benchmark
         size_t nk = 0, nabf = 0, istart = 0, jstart = 0, iend = 0, jend = 0;
         std::string tmp;
         K_Vectors* const klist = kRlist.klist;
-        ifs >> nk;//   nkstot(actually nk)
-        assert(nk == klist->get_nks());
+        ifs >> nk;  //   actual nk
+        int klist_nk = klist->nmp[0] * klist->nmp[1] * klist->nmp[2];
+        assert(nk == klist_nk);
         int ik_readin = -1;
         TLRI<TR> Vs;
         std::map<int, std::map<std::pair<int,int>, RI::Tensor<std::complex<double>>>> Vq; // <iat1, <<iat2,ik>, T>>
