@@ -2,7 +2,7 @@
 #pragma once
 #include "source_cell/unitcell.h"
 #include "source_psi/psi.h"
-#include "source_lcao/module_lr/bse/bse_io.h"
+#include "source_lcao/module_lr/utils/lr_io.h"
 #include "source_basis/module_ao/parallel_orbitals.h"
 #include <RI/global/Tensor.h>
 namespace RI_Benchmark
@@ -80,12 +80,6 @@ namespace RI_Benchmark
     template <typename TK>
     void read_aims_eigenvectors(psi::Psi<TK>& wfc_ks, const std::string& file, const int ncore, const int nbands, const int nbasis);
 
-    /// only for blocking by atom pairs (abacus type)
-    template <typename TCs, typename TR>
-    TLRI<TR> read_coulomb_mat(const std::string& file, const TLRI<TCs>& Cs, const BSE_IO::RI_kRlist& kRlist);
-    /// for any way of blocking (aims type)
-    template <typename TCs, typename TR>
-    TLRI<TR> read_coulomb_mat_general(const std::string& file, const TLRI<TCs>& Cs, const BSE_IO::RI_kRlist& kRlist);
     template <typename TR>
     bool compare_Vs(const TLRI<TR>& Vs1, const TLRI<TR>& Vs2, const double thr = 1e-4);
     template <typename TR>

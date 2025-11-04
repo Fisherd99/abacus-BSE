@@ -11,8 +11,8 @@ void solve_tda(const int& my_rank,
                 std::vector<double>& ev,
                 std::vector<T>& global_v)
 {
-    ModuleBase::TITLE("BSE", "solver_tda");
-    ModuleBase::timer::tick("BSE", "solver_tda");
+    ModuleBase::TITLE("HamiltBSE", "elpa_solve_tda");
+    ModuleBase::timer::tick("HamiltBSE", "elpa_solve_tda");
 
     assert(pA.get_global_row_size() == nA);
     assert(pA.get_global_col_size() == nA);
@@ -71,6 +71,6 @@ void solve_tda(const int& my_rank,
     elpa_deallocate(elpaInstance, &status);
     elpa_uninit(&status);
 
-    ModuleBase::timer::tick("BSE", "solver_tda");
+    ModuleBase::timer::tick("HamiltBSE", "elpa_solve_tda");
 }
 }

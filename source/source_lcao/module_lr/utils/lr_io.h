@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 
-namespace BSE_IO
+namespace LR_IO
 {
 using TA = int;
 using TC = std::array<int, 3>;
@@ -22,24 +22,6 @@ using TAC = std::pair<int, TC>;
 template <typename T>
 using TLRI = std::map<int, std::map<TAC, RI::Tensor<T>>>;
 
-class RI_kRlist
-{
-  public:
-    K_Vectors* klist = nullptr;
-    std::vector<TC> Rlist;
-    RI_kRlist() = default;
-    RI_kRlist(const std::string& file, const UnitCell& ucell, K_Vectors* pkv);
-    ~RI_kRlist() = default;
-    void read_kpts(const std::string& file, const UnitCell& ucell, K_Vectors* klist);
-};
-
-inline void parse_band_out_file(const std::string& file, int& nbands_file, int& nk_file, int& nspin_file)
-{
-    std::ifstream ifs(file);
-    if (!ifs) throw std::runtime_error(file + " not found");
-
-    ifs >> nk_file >> nspin_file >> nbands_file;
-}
 inline void read_one_data(std::ifstream& ifs, double& data)
 {
     std::string temp;
@@ -51,6 +33,25 @@ inline void read_one_data(std::ifstream& ifs, std::complex<double>& data)
     ifs >> real >> imag;
     data = std::complex<double>(real, imag);
 }
+
+inline void parse_band_out_file(const std::string& file, int& nbands_file, int& nk_file, int& nspin_file)
+{
+    std::ifstream ifs(file);
+    if (!ifs) throw std::runtime_error(file + " not found");
+
+    ifs >> nk_file >> nspin_file >> nbands_file;
+}
+
+class RI_kRlist
+{
+  public:
+    K_Vectors* klist = nullptr;
+    std::vector<TC> Rlist;
+    RI_kRlist() = default;
+    RI_kRlist(const std::string& file, const UnitCell& ucell, K_Vectors* pkv);
+    ~RI_kRlist() = default;
+    void read_kpts(const std::string& file, const UnitCell& ucell, K_Vectors* klist);
+};
 
 /// @brief vector as {ik, iband, <occ, ks_ene, gw_ene>}
 /// @param ncore: as output, number of core orbitals parsed from file
@@ -70,6 +71,14 @@ void read_librpa_eigenvectors(psi::Psi<TK>& wfc_ks,
                               const int nspin_tmp,
                               const int nspin_file,
                               Parallel_Orbitals& pmat);
+
+/// only for blocking by atom pairs (abacus type)
+template <typename TCs, typename TR>
+TLRI<TR> read_coulomb_mat(const std::string& file, const TLRI<TCs>& Cs, const LR_IO::RI_kRlist& kRlist);
+
+/// for any way of blocking (aims type)
+template <typename TCs, typename TR>
+TLRI<TR> read_coulomb_mat_general(const std::string& file, const TLRI<TCs>& Cs, const LR_IO::RI_kRlist& kRlist);
 
 /// @brief read Wxc(R) = Wc(R) + Vx(R) from file
 template <typename Tdata, typename TR>

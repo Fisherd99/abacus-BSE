@@ -45,6 +45,8 @@ struct MPIType<std::complex<double>> {
     static constexpr int value = MPI_DOUBLE_COMPLEX;
 };
 
+/// ================ DM_onebase ===================
+
 /// @brief calculate the 2d-block transition density matrix in AO basis
 /// \f[ \tilde{\rho}_{\mu\mu}=c_{j,\mu}c^*_{b,\nu} \f]
 template<typename T>

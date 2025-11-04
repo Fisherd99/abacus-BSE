@@ -1,4 +1,4 @@
-#include "hamilt_bse.h"
+#include "hamilt_bse_solver.h"
 
 namespace BSE
 {
@@ -69,8 +69,8 @@ void solve_full(const int& my_rank,
                 std::vector<double>& ev,
                 std::vector<std::complex<double>>& global_v)
 {
-    ModuleBase::TITLE("BSE", "solver_full");
-    ModuleBase::timer::tick("BSE", "solver_full");
+    ModuleBase::TITLE("HamiltBSE", "elpa_solve_full");
+    ModuleBase::timer::tick("HamiltBSE", "elpa_solve_full");
 
     int n = 2 * nA; // full_dim
     int nb = 1;     // block_dim
@@ -276,6 +276,6 @@ void solve_full(const int& my_rank,
     elpa_deallocate(elpaInstance, &status);
     elpa_uninit(&status);
 
-    ModuleBase::timer::tick("BSE", "solver_full");
+    ModuleBase::timer::tick("HamiltBSE", "elpa_solve_full");
 }
 } // namespace BSE

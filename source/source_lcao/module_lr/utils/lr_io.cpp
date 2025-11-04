@@ -1,7 +1,7 @@
-#include "bse_io.h"
-#include "bse_util.h"
+#include "lr_io.h"
+#include "source_lcao/module_lr/bse/bse_util.h"
 #include <dirent.h>
-namespace BSE_IO{
+namespace LR_IO{
 
 RI_kRlist::RI_kRlist(const std::string& file, const UnitCell& ucell, K_Vectors* const pkv)
 : klist(pkv)
@@ -26,11 +26,12 @@ void RI_kRlist::read_kpts(const std::string& file, const UnitCell& ucell, K_Vect
     int nat = std::stoi(tmp);
     for (int i = 0; i != nat; ++i) { std::getline(ifs, tmp); }
     int nks_original = klist->get_nks();
-    std::cout << "Origianl klist(Cartesian|Direct)" << std::endl;
+    std::cout << "Origianl klist (Cartesian|Direct)" << std::endl;
     for (int ik = 0;ik < nks_original;++ik)
     {
-        std::cout << "ik=" << ik <<": " << klist->kvec_c[ik].x << " " << klist->kvec_c[ik].y << " " << klist->kvec_c[ik].z 
-        << " | " << klist->kvec_d[ik].x << " " << klist->kvec_d[ik].y << " " << klist->kvec_d[ik].z << std::endl;
+        std::cout << "ik=" << std::setw(5) << ik << std::setw(11) << klist->kvec_c[ik].x << std::setw(11) 
+        << klist->kvec_c[ik].y << std::setw(11) << klist->kvec_c[ik].z << " | " << std::setw(11)
+        << klist->kvec_d[ik].x << std::setw(11) << klist->kvec_d[ik].y << std::setw(11) << klist->kvec_d[ik].z << std::endl;
     }
 
     ifs >> klist->nmp[0] >> klist->nmp[1] >> klist->nmp[2];
@@ -53,13 +54,14 @@ void RI_kRlist::read_kpts(const std::string& file, const UnitCell& ucell, K_Vect
         }
     }
 
-    // NOTE: K_Vectors.wk will be read in function `read_coulomb_mat` in ri_benchmark.hpp	
+    // NOTE: K_Vectors.wk will be read in function `read_coulomb_mat`	
 
     std::cout << "After read_kpts: klist(Cartesian|Direct)" << std::endl;
     for (int ik = 0; ik < nks; ++ik)
     {
-        std::cout << "ik=" << ik <<": " << klist->kvec_c[ik].x << " " << klist->kvec_c[ik].y << " " << klist->kvec_c[ik].z 
-        << " | " << klist->kvec_d[ik].x << " " << klist->kvec_d[ik].y << " " << klist->kvec_d[ik].z << std::endl;
+        std::cout << "ik=" << std::setw(5) << ik << std::setw(11) << klist->kvec_c[ik].x << std::setw(11) 
+        << klist->kvec_c[ik].y << std::setw(11) << klist->kvec_c[ik].z << " | " << std::setw(11)
+        << klist->kvec_d[ik].x << std::setw(11) << klist->kvec_d[ik].y << std::setw(11) << klist->kvec_d[ik].z << std::endl;
     }
 }
 
@@ -71,8 +73,7 @@ std::vector<double> read_energy_qp(const std::string& file,
                                    const int nspin_tmp,
                                    const int nspin_file)
 {
-    std::cout << "in read_energy_qp" << std::endl;
-    std::cout << "FISH_OUTPUT: nbands(nocc+nvir): " << (nocc+nvirt) << std::endl;
+    std::cout << "in read_energy_qp, nbands(nocc+nvir): " << (nocc+nvirt) << std::endl;
     std::vector<double> eig_info( 3 * nk * nspin_tmp * (nocc + nvirt)); // occ, eig_ks, eig_gw
     std::ifstream file_gw (file);
     if (!file_gw) throw std::runtime_error(file + " not found");
@@ -110,7 +111,7 @@ std::vector<double> read_energy_qp(const std::string& file,
                 eig_info[(ikstep + ib)*3] = occ_temps[ncore + ib];
                 eig_info[(ikstep + ib)*3 + 1] = ks_temps[ncore + ib];
                 eig_info[(ikstep + ib)*3 + 2] = gw_temps[ncore + ib];
-                std::cout <<"FISH_OUTPUT: ik=" << ik << "\t" << ib << "\t"
+                std::cout <<"GW_info: ik=" << ik << "\t" << ib << "\t"
                             << eig_info[(ikstep + ib)*3] << "\t" 
                             << eig_info[(ikstep + ib)*3 + 1] << "\t" 
                             << eig_info[(ikstep + ib)*3 + 2] << std::endl; //check
@@ -128,7 +129,7 @@ std::vector<double> read_energy_qp(const std::string& file,
         std::copy_n(eig_info.data(), spin_block, eig_info.data() + spin_block);
     }        
     file_gw.close();
-    std::cout << "FISH_OUTPUT: Finish read gw, ncore=" << ncore << std::endl;
+    std::cout << "Finish read gw, ncore=" << ncore << std::endl;
     return eig_info;
 }
 
@@ -173,7 +174,7 @@ void read_librpa_eigenvectors(psi::Psi<TK>& wfc_ks,
                         for (int ib = 0; ib < nbands_file; ++ib) {
                             for (int is = 0; is < nspin_file; ++is) {
                                 if (ib >= ncore && ib< (ncore+nbands)) {
-                                    BSE_IO::read_one_data(file_librpa_ks, wfc_ks_global(ik+is*nk, ib-ncore, iw));
+                                    LR_IO::read_one_data(file_librpa_ks, wfc_ks_global(ik+is*nk, ib-ncore, iw));
                                     file_librpa_ks >> std::ws; // skip the blank if there is
                                 }
                                 else {
@@ -242,11 +243,160 @@ void read_librpa_eigenvectors(psi::Psi<TK>& wfc_ks,
     }
 }
 
-template<typename Tdata, typename TR>
-auto read_Ws(const TLRI<TR>& Vs, const std::vector<TC>& Rlist)
--> std::map<TA,std::map<TAC,RI::Tensor<Tdata>>>
+template <typename TCs, typename TVs> // only for blocking by atom pairs (abacus type)
+TLRI<TVs> read_coulomb_mat(const std::string& file, const TLRI<TCs>& Cs, const LR_IO::RI_kRlist& kRlist)
 {
-    ModuleBase::TITLE("BSE", "read_Ws");
+    std::ifstream ifs;
+    ifs.open(file);
+    size_t nk = 0, nabf = 0, istart = 0, jstart = 0, iend = 0, jend = 0;
+    std::string tmp;
+    K_Vectors* const klist = kRlist.klist;
+    ifs >> nk;//   actual nk
+    int klist_nk = klist->nmp[0] * klist->nmp[1] * klist->nmp[2];
+    assert(nk == klist_nk);
+    int ik_readin = -1;
+    TLRI<TVs> Vs;
+    std::map<int, std::map<std::pair<int,int>, RI::Tensor<std::complex<double>>>> Vq; // <iat1, <<iat2,ik>, T>>
+    const int nat = Cs.size();
+    for (int iat1 = 0;iat1 < nat;++iat1)
+    {
+        for (int ik =0;ik < nk;++ik)
+        {
+            const size_t nabf1 = Cs.at(iat1).at({ 0, {0,0,0} }).shape[0];
+            for (int iat2 = 0;iat2 < nat;++iat2)
+            {
+                if (iat1 > iat2)
+                {   // coulomb_mat has only the upper triangle part
+                    Vq[iat1][{iat2, ik}] = Vq[iat2][{iat1, ik}].dagger();
+                    continue;
+                }
+                const size_t nabf2 = Cs.at(iat2).at({ 0, {0,0,0} }).shape[0];
+                ifs >> nabf >> istart >> iend >> jstart >> jend >> ik_readin >> klist->wk[ik];
+                assert(ik_readin == ik+1);
+                assert(nabf1 == iend - istart + 1);
+                assert(nabf2 == jend - jstart + 1);
+                RI::Tensor<std::complex<double>> t({ nabf1, nabf2 });
+                for (int i = 0;i < nabf1;++i)
+                {
+                    for (int j = 0;j < nabf2;++j)
+                    {
+                        LR_IO::read_one_data(ifs, t(i, j));
+                    }
+                }
+                Vq[iat1][{iat2, ik}] = t;
+            }
+        }
+    }
+
+    for ( const TC& R : kRlist.Rlist )
+    {
+        std::cout<<"read V: R="<<R[0]<<" "<<R[1]<<" "<<R[2]<<std::endl;
+        for (int iat1 = 0;iat1 < nat;++iat1)
+        {
+            for (int iat2 = 0;iat2 < nat;++iat2)
+            {
+                Vs[iat1][{iat2, R}] = RI::Tensor<TVs>({ Vq[iat1][{iat2, 0}].shape[0], Vq[iat1][{iat2, 0}].shape[1] });
+                for (int ik = 0;ik < nk;++ik)
+                {
+                    const ModuleBase::Vector3<double>& kvec = klist->kvec_d.at(ik);
+                    const double arg = -1.0 * ModuleBase::TWO_PI * (kvec.x * R[0] + kvec.y * R[1] + kvec.z * R[2]);
+                    const std::complex<double> kphase (cos(arg), sin(arg));
+                    Vs[iat1][{iat2, R}] += RI::Global_Func::convert<TVs> (Vq[iat1][{iat2, ik}] * kphase) * RI::Global_Func::convert<TVs>(klist->wk[ik]);
+                }
+            }
+        }
+    }
+    return Vs;
+}
+
+template <typename TCs, typename TVs> // any blocking (aims type)
+TLRI<TVs> read_coulomb_mat_general(const std::string& file, const TLRI<TCs>& Cs, const LR_IO::RI_kRlist& kRlist)
+{
+    std::ifstream ifs;
+    ifs.open(file);
+    size_t nk = 0, nabf = 0, istart = 0, jstart = 0, iend = 0, jend = 0;
+    std::string tmp;
+    K_Vectors* const klist = kRlist.klist;
+    ifs >> nk;  //   actual nk
+    int klist_nk = klist->nmp[0] * klist->nmp[1] * klist->nmp[2];
+    assert(nk == klist_nk);
+    int ik_readin = -1;
+    TLRI<TVs> Vs;
+    std::map<int, std::map<std::pair<int,int>, RI::Tensor<std::complex<double>>>> Vq; // <iat1, <<iat2,ik>, T>>
+    std::map<int,std::vector<std::complex<double>>> Vq_tmp; //<ik, vector> 
+    while (ifs.peek() != EOF)
+    {
+        ifs >> nabf >> istart >> iend >> jstart >> jend >> ik_readin >> klist->wk[ik_readin-1];
+        if (ifs.peek() == EOF) { break; }
+        int ik = ik_readin - 1;
+        if (Vq_tmp[ik].empty()) { Vq_tmp[ik].resize(nabf * nabf, 0.0); }
+        for (int i = istart - 1;i < iend;++i)
+        {
+            for (int j = jstart - 1;j < jend;++j)
+            {
+                LR_IO::read_one_data(ifs, Vq_tmp.at(ik)[i * nabf + j]);
+            }
+        }
+    }
+    const int nat = Cs.size();
+    istart = 0;    // 
+    for (int iat1 = 0;iat1 < nat;++iat1)
+    {
+        const size_t nabf1 = Cs.at(iat1).at({ 0, {0,0,0} }).shape[0];
+        jstart = 0;
+        for (int iat2 = 0;iat2 < nat;++iat2)
+        {
+            const size_t nabf2 = Cs.at(iat2).at({ 0, {0,0,0} }).shape[0];
+            for (int ik = 0; ik < nk; ++ik){                    
+                if (iat1 > iat2)
+                {   // coulomb_mat has only the upper triangle part
+                    Vq[iat1][{iat2, ik}] = Vq[iat2][{iat1, ik}].dagger();
+                }
+                else
+                {
+                    RI::Tensor<std::complex<double>> t({ nabf1, nabf2 });
+                    for (int i = 0;i < nabf1;++i)
+                    {
+                        for (int j = 0;j < nabf2;++j)
+                        {
+                            t(i, j) = Vq_tmp[ik][(istart + i) * nabf + jstart + j];
+                        }
+                    }
+                    Vq[iat1][{iat2, ik}] = t;
+                }
+            }
+            jstart += nabf2;
+        }
+        assert(jstart == nabf);
+        istart += nabf1;
+    }
+    assert(istart == nabf);
+
+    for ( const TC& R : kRlist.Rlist )
+    {
+        std::cout<<"read V: R="<<R[0]<<" "<<R[1]<<" "<<R[2]<<std::endl;
+        for (int iat1 = 0;iat1 < nat;++iat1)
+        {
+            for (int iat2 = 0;iat2 < nat;++iat2)
+            {
+                Vs[iat1][{iat2, R}] = RI::Tensor<TVs>({ Vq[iat1][{iat2, 0}].shape[0], Vq[iat1][{iat2, 0}].shape[1] });
+                for (int ik = 0; ik < nk; ++ik)
+                {
+                    const ModuleBase::Vector3<double>& kvec = klist->kvec_d.at(ik);
+                    const double arg = -1.0 * ModuleBase::TWO_PI * (kvec.x * R[0] + kvec.y * R[1] + kvec.z * R[2]);
+                    const std::complex<double> kphase (cos(arg), sin(arg));
+                    Vs[iat1][{iat2, R}] += RI::Global_Func::convert<TVs> (Vq[iat1][{iat2, ik}] * kphase) * RI::Global_Func::convert<TVs>(klist->wk[ik]);
+                }
+            }
+        }
+    }
+    return Vs;
+}
+
+template<typename Tdata, typename TVs>
+TLRI<Tdata> read_Ws(const TLRI<TVs>& Vs, const std::vector<TC>& Rlist)
+{
+    ModuleBase::TITLE("LR_IO", "read_Ws");
     std::map<TA,std::map<TAC,RI::Tensor<Tdata>>> Ws;
     
     const int nat = Vs.size();
@@ -267,6 +417,10 @@ auto read_Ws(const TLRI<TR>& Vs, const std::vector<TC>& Rlist)
                 else std::cout << "reading Wc file: " << filename << std::endl;
                 int nabf1 = Vs.at(iat).at({jat,{0,0,0}}).shape[0];
                 int nabf2 = Vs.at(iat).at({jat,{0,0,0}}).shape[1];
+
+                TC R; // iR of Wc file is not equal to iR in Rlist !!!
+                infileW >> filename >> filename >> filename >> filename >> filename >> R[0] >> R[1] >> R[2];
+                infileW.ignore(2048, '\n');
                 while(infileW.peek() == '%') infileW.ignore(2048, '\n');	//skip comments
 
                 infileW >> nabfmu >> nabfnu >> non_zero;
@@ -276,17 +430,18 @@ auto read_Ws(const TLRI<TR>& Vs, const std::vector<TC>& Rlist)
                 for (int index = 0; index < non_zero; ++index)
                 {
                     infileW >> mu >> nu ;
-                    BSE_IO::read_one_data(infileW, tensor_W(mu-1, nu-1));
+                    LR_IO::read_one_data(infileW, tensor_W(mu-1, nu-1));
                 }
                 infileW.close();
                 for(int i = 0; i != nabf1; ++i)
                     for(int j = 0; j != nabf2; ++j)
                     {
-                        tensor_W(i, j) += Vs.at(iat).at({jat, Rlist[iR]})(i,j);
-                        //std::cout << "FISH_OUTPUT: Wxc: " << i << " " << j << " " << tensor_W(i,j) << std::endl; //check
+                        tensor_W(i, j) += Vs.at(iat).at({jat, R})(i,j);
+                        //std::cout << "Wxc: " << i << " " << j << " " << tensor_W(i,j) << std::endl; //check
                     }
-                Ws[iat][{jat, Rlist[iR]}] = tensor_W;
-                std::cout << "FISH_OUTPUT: Finish read W for iat, jat, iR: " << iat << " " << jat << " " << iR << std::endl;
+                Ws[iat][{jat, R}] = tensor_W;
+                std::cout << "Finish read W for iat, jat, iR: " << iat << " " << jat << " " << iR 
+                    << "( " << R[0] << " " << R[1] << " " << R[2] << " )" << std::endl;
             }
         }
     }
@@ -303,10 +458,22 @@ template void read_librpa_eigenvectors<std::complex<double>>(
     const std::string& path, const int ncore, const int nbands_file,
     const int nspin_tmp, const int nspin_file, Parallel_Orbitals& pmat);
 
-template std::map<TA, std::map<TAC, RI::Tensor<double>>> 
-read_Ws<double, double>(const TLRI<double>& Vs, const std::vector<TC>& Rlist);
+template TLRI<double> read_coulomb_mat<double, double>
+(const std::string& file, const TLRI<double>& Cs, const LR_IO::RI_kRlist& kRlist);
 
-template std::map<TA, std::map<TAC, RI::Tensor<std::complex<double>>>>
-read_Ws<std::complex<double>, double>(const TLRI<double>& Vs, const std::vector<TC>& Rlist);
+template TLRI<std::complex<double>> read_coulomb_mat<std::complex<double>, std::complex<double>>
+(const std::string& file, const TLRI<std::complex<double>>& Cs, const LR_IO::RI_kRlist& kRlist);
 
-}// end of namespace BSE_IO
+template TLRI<double> read_coulomb_mat_general<double, double>
+(const std::string& file, const TLRI<double>& Cs, const LR_IO::RI_kRlist& kRlist);
+
+template TLRI<std::complex<double>> read_coulomb_mat_general<std::complex<double>, std::complex<double>>
+(const std::string& file, const TLRI<std::complex<double>>& Cs, const LR_IO::RI_kRlist& kRlist);
+
+template TLRI<double> read_Ws<double, double>
+(const TLRI<double>& Vs, const std::vector<TC>& Rlist);
+
+template TLRI<std::complex<double>> read_Ws<std::complex<double>, std::complex<double>>
+(const TLRI<std::complex<double>>& Vs, const std::vector<TC>& Rlist);
+
+}// end of namespace LR_IO

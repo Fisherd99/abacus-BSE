@@ -5,7 +5,7 @@
 #include "source_io/module_parameter/parameter.h"
 #include "source_io/cube_io.h"
 #include "source_io/print_info.h"
-#include "bse_io.h"
+#include "../utils/lr_io.h"
 #include "hamilt_bse.h"
 #include "source_lcao/module_lr/lr_spectrum.h"
 namespace BSE
@@ -15,7 +15,7 @@ namespace BSE
     template<typename T, typename TR = double>
     class ESolver_BSE : public LR::ESolver_LR<T, TR> {
     public:
-        BSE_IO::RI_kRlist kRlist;
+        LR_IO::RI_kRlist kRlist;
         psi::Psi<T>* psi_ks_global; ///< global version of psi_ks
         ModuleBase::matrix eig_gw; ///< GW energy
         std::vector<double> tda_ene, full_ene; // in Rydberg

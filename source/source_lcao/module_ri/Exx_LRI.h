@@ -41,6 +41,8 @@
 		class ESolver_BSE;
 		
 		template<typename T>
+		class MolecularWk;
+		template<typename T>
 		class MolecularWR;
 	}
 template<typename Tdata>
@@ -124,6 +126,7 @@ private:
 	friend class BSE::ESolver_BSE<double, double>;
 	friend class BSE::ESolver_BSE<std::complex<double>, double>;
 	friend class BSE::MolecularWR<Tdata>;
+	friend class BSE::MolecularWk<Tdata>;
 };
 
 #include "Exx_LRI.hpp"

@@ -97,13 +97,14 @@ namespace LR_Util
     }
     template<typename T>
     bool is_hermitian(const T* mat, const int n, const double threshold){
+        bool is_herm = true;
         std::vector<T> minus_mat(n*n);
         std::vector<T> sum_mat(n*n);
         for (int i = 0;i < n;++i) {
             for (int j = i;j < n;++j) {
                 minus_mat[i * n + j] = mat[i * n + j] - get_conj(mat[j * n + i]);
                 minus_mat[j * n + i] = -get_conj(minus_mat[i * n + j]);
-                if (std::abs(minus_mat[i * n + j]) > threshold) return false;
+                if (std::abs(minus_mat[i * n + j]) > threshold) { is_herm = false; }
                 sum_mat[i * n + j] = mat[i * n + j] + get_conj(mat[j * n + i]);
                 sum_mat[j * n + i] = get_conj(sum_mat[i * n + j]);
             }
@@ -111,20 +112,21 @@ namespace LR_Util
         const char norm_type = 'F';
         double norm1 = LapackConnector::lange(norm_type, n, n, minus_mat.data(), n, nullptr);
         double norm2 = LapackConnector::lange(norm_type, n, n, sum_mat.data(), n, nullptr);
-        std::cout << " Hermitian check: ||A - A^+||_F = " << norm1 << ", ||A + A^+||_F = " << norm2 << std::endl;
-        std::cout << " ||A - A^+||_F / ||A + A^+||_F = " << norm1 / norm2 << std::endl;
-        return true;
+        std::cout << "|  Hermitian check: ||A - A^+||_F = " << norm1 << ", ||A + A^+||_F = " << norm2 << std::endl;
+        std::cout << "|   ||A - A^+||_F / ||A + A^+||_F = " << norm1 / norm2 << std::endl;
+        return is_herm;
     }
 
     template<typename T>
     bool is_symmetric(const T* mat, const int n, const double threshold){
+        bool is_sym = true;
         std::vector<T> minus_mat(n*n);
         std::vector<T> sum_mat(n*n);
         for (int i = 0;i < n;++i) {
             for (int j = i;j < n;++j) {
                 minus_mat[i * n + j] = mat[i * n + j] - mat[j * n + i];
                 minus_mat[j * n + i] = -minus_mat[i * n + j];
-                if (std::abs(minus_mat[i * n + j]) > threshold) return false;
+                if (std::abs(minus_mat[i * n + j]) > threshold) {is_sym = false; }
                 sum_mat[i * n + j] = mat[i * n + j] + mat[j * n + i];
                 sum_mat[j * n + i] = sum_mat[i * n + j];
             }
@@ -134,7 +136,7 @@ namespace LR_Util
         double norm2 = LapackConnector::lange(norm_type, n, n, sum_mat.data(), n, nullptr);
         std::cout << "Symmetric check: ||A - A^T||_F = " << norm1 << ", ||A + A^T||_F = " << norm2 << std::endl;
         std::cout << "||A - A^T||_F / ||A + A^T||_F = " << norm1 / norm2 << std::endl;
-        return true;
+        return is_sym;
     }
 
     /// get the Psi wrapper of the selected spin from the Psi object

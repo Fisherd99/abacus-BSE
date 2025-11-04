@@ -9,6 +9,7 @@ if(ENABLE_LCAO)
     utils/lr_util.cpp
     utils/lr_util_hcontainer.cpp
     utils/lr_util_rR_reader.cpp
+    utils/lr_io.cpp
     ao_to_mo_transformer/ao_to_mo_parallel.cpp
     ao_to_mo_transformer/ao_to_mo_serial.cpp
     dm_trans/dm_trans_parallel.cpp
@@ -25,8 +26,7 @@ if(ENABLE_LCAO)
     bse/esolver_bse_lcao.cpp
     bse/hamilt_bse.cpp
     bse/hamilt_bse_solver.cpp
-    bse/bse_util.cpp
-    bse/bse_io.cpp)
+    bse/bse_util.cpp)
 
 add_library(
     lr

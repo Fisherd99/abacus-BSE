@@ -1,4 +1,4 @@
-#include "molecular_WR.h"
+#include "molecular_W.h"
 
 namespace BSE
 {
@@ -21,8 +21,9 @@ void MolecularWR<T>:: cal_W_global(std::vector<T>& WA_global)
     auto lri = this->exx_lri.lock();
 
     std::vector<TC> Rlist = this->BvK_cells;
-    // Rlist for the first key. TODO: MPI parallelize for Rlist
-    std::map<TC, std::map<TC, RI::Tensor<T>>> WR = lri->exx_lri.lri.cal_cvc_mo(Cs_oo_mo, Cs_vv_mo, Rlist);
+    
+    // Rlist for the first key of WR. TODO: MPI parallelize for Rlist
+    std::map<TC, std::map<TC, RI::Tensor<T>>> WR = lri->exx_lri.lri.cal_cvc_mo_R(CsR_oo_mo, CsR_vv_mo, Rlist);
     ModuleBase::timer::tick("MolecularWR", "cal_CVC_mo_R");
 
     ModuleBase::TITLE("MolecularWR", "transform_k_global");
@@ -77,9 +78,11 @@ void MolecularWR<T>:: cal_W_global(std::vector<T>& WA_global)
         }
     }
     ModuleBase::timer::tick("MolecularWR", "transform_k_global");
-};
+}
 
-/// @brief calculate C_sR_mo utilizing repeated calculations
+/// @brief calculate CsR_mo by 
+///         C'^\mu (m1,m2)[R1,R2] = c^*(m1,s)[R1] C^\mu (s,t)[R_ts] c(m2,t)[R2-R_ts]
+///         C^\mu (m1,m2)[R1,R2] = C'^\mu (m1,m2)[R1,R2] + C'^*\mu (m2,m1)[R2,R1]
 /// @note this method is faster than method2, but only valid for MO1 = MO2
 template <typename T>
 TCsR_mo<T> MolecularWR<T>::cal_CsR_mo(const UnitCell& ucell,
@@ -189,9 +192,7 @@ TCsR_mo<T> MolecularWR<T>::cal_CsR_mo(const UnitCell& ucell,
                 RI::Tensor<T> t = Cs_part_iat1.at(std::make_pair(R_1_mu, R_2_mu)).copy();
                 const RI::Tensor<T>& t2 = Cs_part_iat1.at(std::make_pair(R_2_mu, R_1_mu));
                 std::size_t nabf = t.shape[0];
-                std::size_t nmo1 = t.shape[1];
-                std::size_t nmo2 = t.shape[2];
-                for (size_t iabf = 0; iabf < nabf; ++iabf)
+                for (std::size_t iabf = 0; iabf < nabf; ++iabf)
                 {
                     T* out_ptr = &t(iabf, 0, 0);
                     const T* in_ptr = &t2(iabf, 0, 0);
@@ -218,7 +219,7 @@ TCsR_mo<T> MolecularWR<T>::cal_CsR_mo(const UnitCell& ucell,
     return CsR_mo;
 }
 
-/// @brief calculate C_sR_mo by C^\mu (m1,m2)[R1,R2] 
+/// @brief calculate CsR_mo by C^\mu (m1,m2)[R1,R2] 
 ///         = c^*(m1,s)[R1] C^\mu (s,t)[R_ts] c(m2,t)[R2-R_ts]
 ///          +c(m2,s)[R2] C^\mu (s,t)[R_ts] c^*(m1,t)[R1-R_ts]
 /// @note this method can calculate different MO1 and MO2, but slower than method1
@@ -311,7 +312,7 @@ TCsR_mo<T> MolecularWR<T>::cal_CsR_mo_method2(const UnitCell& ucell,
                         R_psi2 = R_2_mu % this->period;
                         // C(m1,m2) = c^*(m1,t) C(s,t) c(m2,s)         << row-major
                         // tmp_m1_s = (c_t_m1)^H (C_t_s)               << col-major
-                        container::BlasConnector::gemm('C', 'N', nmo1, nw2, nw2,
+                        container::BlasConnector::gemm('C', 'N', nmo1, nw1, nw2,
                                                         1.0, psi1_R[std::make_pair(iat2, R_psi1)].ptr(), nw2,
                                                         ptr, nw2,
                                                         0.0, tmp.data(), nmo1);
@@ -340,18 +341,22 @@ void MolecularWR<T>::print_CsR_mo_max(const TCsR_mo<T>& CsR_mo, const std::strin
     std::ofstream ofs_out(file_name + "_" + std::to_string(GlobalV::MY_RANK));
     for (auto& c1: CsR_mo)
     {
-        int iat1 = c1.first;
-        ofs_out << "Cs_mo: iat " << iat1 << std::endl;
+        int iat = c1.first;
+        ofs_out << "Cs_mo: iat " << iat << std::endl;
         for (auto& c2: c1.second)
         {
             ModuleBase::Vector3<double> R_1_mu = RI_Util::array3_to_Vector3(c2.first.first) * this->ucell.latvec;
             double R_1_mu_norm = R_1_mu.norm();
-            ofs_out << " R_1_mu:" << R_1_mu << std::endl;
+            ofs_out << " R_1_mu:" << R_1_mu;
 
             ModuleBase::Vector3<double> R_2_mu = RI_Util::array3_to_Vector3(c2.first.second) * this->ucell.latvec;
             double R_2_mu_norm = R_2_mu.norm();
             ofs_out << " R_2_mu:" << R_2_mu << std::endl;
             auto& tensor_mo = c2.second;
+
+            double max = tensor_mo.max_abs();
+            ofs_out <<"Mu_atom: " << iat << " ,|R_1_mu|: " << R_1_mu_norm << " ,|R_2_mu|: " << R_2_mu_norm
+                    << " ,max: " << max << std::endl;
 
             // print Cs_mo
             int nabf = tensor_mo.shape[0];
@@ -360,10 +365,6 @@ void MolecularWR<T>::print_CsR_mo_max(const TCsR_mo<T>& CsR_mo, const std::strin
             int size = nabf*nmo1*nmo2;
             assert(size == LR_Util::write_value(ofs_out, tensor_mo.ptr(), nabf, nmo1, nmo2));
             // print Cs_mo
-
-            double max = tensor_mo.max_abs();
-            ofs_out <<"Mu_atom: " << iat1 << " ,R_1_mu: " << R_1_mu_norm << " ,R_2_mu: " << R_2_mu_norm
-                    << " ,max: " << max << std::endl;
         }
     }
     ofs_out.close();

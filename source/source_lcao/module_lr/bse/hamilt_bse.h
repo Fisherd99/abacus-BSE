@@ -3,35 +3,30 @@
 // Thus, instead of iterative solver such as Davidson, here matrix is constructed directly.
 
 #pragma once
-#include "bse_io.h"
-#include "bse_util.h"
-#include "hamilt_bse_solver.h"
-#include "source_cell/unitcell.h"
 #include "source_base/parallel_2d.h"
+#include "source_base/timer.h"
+#include "source_cell/unitcell.h"
 #include "source_basis/module_ao/parallel_orbitals.h"
 #include "source_estate/module_dm/density_matrix.h"
 #include "source_hamilt/hamilt.h"
-#include "source_lcao/module_lr/dm_trans/dm_trans.h"
 #include "source_lcao/module_lr/potentials/pot_hxc_lrtd.h"
 #include "source_lcao/module_lr/ao_to_mo_transformer/ao_to_mo.h"
-#include "source_lcao/module_lr/operator_casida/operator_lr_diag.h"
-#include "source_lcao/module_lr/operator_casida/operator_lr_exx.h"
-//#include "source_lcao/module_lr/operator_casida/operator_lr_hxc.h"
 #include "source_lcao/module_lr/ri_benchmark/operator_ri_hartree.h"
 #include "source_lcao/module_lr/ri_benchmark/ri_benchmark.h"
 #include "source_lcao/module_lr/utils/lr_util.h"
+#include "source_lcao/module_lr/utils/lr_io.h"
+#include "source_lcao/module_ri/Exx_LRI.h"
 #include "source_lcao/module_ri/LRI_CV_Tools.h"
 #include "source_lcao/module_hcontainer/hcontainer_funcs.h"
-#include "source_base/timer.h"
 
-#include <typeinfo>
-
+#include "bse_util.h"
+#include "hamilt_bse_solver.h"
 namespace BSE
 {
 template <typename T>
 class HamiltBSE
 {
-  public:
+public:
     std::vector<T> BSE_A_global, BSE_B_global;
     std::vector<T> VA_global, WA_global;
     std::vector<T> VB_global, WB_global;
@@ -65,13 +60,26 @@ class HamiltBSE
 
     void cal_V_for_A();
     void cal_W_for_A();
-    void cal_V_for_B() {std::cout << "cal_V_for_B() is not implemented yet." << std::endl;};
+    void cal_V_for_B();
     void cal_W_for_B() {std::cout << "cal_W_for_B() is not implemented yet." << std::endl;};
     void init_bse_matrix(const bool is_full, const int& st_index);
     void tda_solver(const int& st_index, const int& nstates, double* ene_out, T* X_out);
     void full_solver(const int& st_index, const int& nstates, double* ene_out, T* X_out, T* Y_out);
     void grid_calculation(hamilt::HContainer<T>& VR) const;
-  private:
+    
+    template<typename... Args>
+    inline void write_AB_matrix(const std::string& file, const int& prec, const T* ptr, const int& size, Args&&... args)
+    {
+        std::ofstream ofs(file);
+        if (!ofs.is_open()){
+            throw std::runtime_error("Cannot open file " + file);
+        }
+        ofs << file << "(Ry, transpose) with threshold " << prec << std::endl;
+        ofs << std::setprecision(prec) << std::scientific;
+        LR_Util::write_value(ofs, ptr, size, args...);
+        ofs.close();
+    }
+private:
     const int nspin;
     const int naos;
     const std::vector<int> nocc;
@@ -92,7 +100,7 @@ class HamiltBSE
     const std::vector<Parallel_2D>& pX; // for tda, also pY for full
     const Parallel_2D& pc;
     const Parallel_Orbitals& pmat;
-    const std::vector<std::string>& spin_types; // singlet / triplet
+    const std::vector<std::string>& spin_types; // singlet, triplet, and rpa, ipa(independent particle approx)
     const std::string ri_hartree_benchmark;
 
     std::unique_ptr<elecstate::DensityMatrix<T, T>> DM_trans;

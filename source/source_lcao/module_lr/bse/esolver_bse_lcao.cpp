@@ -31,7 +31,7 @@ ESolver_BSE<T, TR>::ESolver_BSE(const Input_para& inp, UnitCell& ucell) :
     }
     this->kv.set(ucell, ucell.symm, PARAM.inp.kpoint_file, PARAM.inp.nspin, ucell.G, ucell.latvec, GlobalV::ofs_running);
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "INIT K-POINTS");
-    this->kRlist = BSE_IO::RI_kRlist("stru_out", this->ucell, &this->kv);
+    this->kRlist = LR_IO::RI_kRlist("stru_out", this->ucell, &this->kv);
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "Reset K-POINTS and R-list for RI");
     ModuleIO::setup_parameters(ucell, this->kv);
 
@@ -178,18 +178,17 @@ void ESolver_BSE<T, TR>::exx_init()
     //     list_As_Vs = RI::Distribute_Equally::distribute_atoms_periods(this->mpi_comm, atoms, period_Vs, 2, false);
 
     // start read Ws and Cs
-    std::cout << "prepare W matrix for BSE in ESolver_BSE(from scratch)" << std::endl;
     std::map<TA, std::map<TAC, RI::Tensor<T>>> Cs_in = LRI_CV_Tools::read_Cs_ao<T>("Cs_data_" + std::to_string(GlobalV::MY_RANK)+".txt");
-    std::map<TA, std::map<TAC, RI::Tensor<TR>>> Vs_in;
+    std::map<TA, std::map<TAC, RI::Tensor<T>>> Vs_in;
     if (this->input.ri_hartree_benchmark == "aims-librpa" ){
-        Vs_in = RI_Benchmark::read_coulomb_mat_general<T, TR>("coulomb_mat_0.txt", Cs_in, this->kRlist);
+        Vs_in = LR_IO::read_coulomb_mat_general<T, T>("coulomb_cut_0.txt", Cs_in, this->kRlist);
     }
     else if (this->input.ri_hartree_benchmark == "none" || this->input.ri_hartree_benchmark == "abacus-librpa" ){
-        Vs_in = RI_Benchmark::read_coulomb_mat<T, TR>("coulomb_mat_0.txt", Cs_in, this->kRlist);
+        Vs_in = LR_IO::read_coulomb_mat<T, T>("coulomb_cut_0.txt", Cs_in, this->kRlist);
     }
     
     // LRI_CV_Tools::write_Vs_abf(Vs_in, PARAM.globalv.global_out_dir + "Vs_test_" + std::to_string(GlobalV::MY_RANK));
-    std::map<TA, std::map<TAC, RI::Tensor<T>>> Ws_in = BSE_IO::read_Ws<T, TR>(Vs_in, this->kRlist.Rlist);
+    std::map<TA, std::map<TAC, RI::Tensor<T>>> Ws_in = LR_IO::read_Ws<T, T>(Vs_in, this->kRlist.Rlist);
     this->exx_lri->exx_lri.set_Vs(std::move(Ws_in), this->exx_lri->info.V_threshold);
     this->exx_lri->exx_lri.set_Cs(std::move(Cs_in), this->exx_lri->info.C_threshold);
     if (this->input.out_ri_cv)
@@ -389,12 +388,12 @@ void ESolver_BSE<T, TR>::read_ks_wfc()
     int nk_file = 0;
     int nspin_file = 0;
     int nspin_tmp = PARAM.inp.nspin == 2 ? 2 : 1;
-    BSE_IO::parse_band_out_file("band_out", nbands_file, nk_file, nspin_file);
+    LR_IO::parse_band_out_file("band_out", nbands_file, nk_file, nspin_file);
     if (nk_file != this->nk) {
         std::cout << "nk in `band_out`: " << nk_file << ", nk in BSE: " << this->nk << std::endl;
         ModuleBase::WARNING_QUIT("ESolver_BSE", "The nk in band_out is not consistent with BSE::nk.");
     }
-    auto eig_gw_info = BSE_IO::read_energy_qp("energy_qp", this->nocc[0], this->nvirt[0], ncore, this->nk, nspin_tmp, nspin_file);
+    auto eig_gw_info = LR_IO::read_energy_qp("energy_qp", this->nocc[0], this->nvirt[0], ncore, this->nk, nspin_tmp, nspin_file);
     for (int iks = 0; iks < this->kv.get_nks(); ++iks) {
         for (int ib = 0; ib < this->nbands; ++ib) {
         this->pelec->wg(iks, ib) = eig_gw_info[iks * this->nbands *3 + ib * 3 + 0];
@@ -402,7 +401,7 @@ void ESolver_BSE<T, TR>::read_ks_wfc()
         this->eig_gw(iks, ib) = eig_gw_info[iks * this->nbands *3 + ib * 3 + 2];
         }
     }
-    BSE_IO::read_librpa_eigenvectors<T>(*this->psi_ks, *this->psi_ks_global, "./", ncore, nbands_file, nspin_tmp, nspin_file, this->paraMat_);
+    LR_IO::read_librpa_eigenvectors<T>(*this->psi_ks, *this->psi_ks_global, "./", ncore, nbands_file, nspin_tmp, nspin_file, this->paraMat_);
 
     this->eig_ks = std::move(this->pelec->ekb);
 }
