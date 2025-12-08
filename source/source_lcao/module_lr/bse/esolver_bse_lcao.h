@@ -1,13 +1,14 @@
 #pragma once
-#include "source_lcao/module_lr/esolver_lrtd_lcao.h"
-#include "source_lcao/module_lr/ri_benchmark/ri_benchmark.h"
-#include "source_lcao/module_ri/Exx_LRI.h"
-#include "source_io/module_parameter/parameter.h"
-#include "source_io/cube_io.h"
-#include "source_io/print_info.h"
-#include "../utils/lr_io.h"
 #include "hamilt_bse.h"
+#include "source_io/cube_io.h"
+#include "source_io/module_parameter/parameter.h"
+#include "source_io/print_info.h"
+#include "source_lcao/module_lr/esolver_lrtd_lcao.h"
 #include "source_lcao/module_lr/lr_spectrum.h"
+#include "source_lcao/module_lr/ri_benchmark/ri_benchmark.h"
+#include "source_lcao/module_lr/utils/lr_io.h"
+#include "source_lcao/module_ri/LRI_CV_Tools.h"
+
 namespace BSE
 {
     template<typename T> using Real = typename GetTypeReal<T>::type;
@@ -15,14 +16,6 @@ namespace BSE
     template<typename T, typename TR = double>
     class ESolver_BSE : public LR::ESolver_LR<T, TR> {
     public:
-        LR_IO::RI_kRlist kRlist;
-        psi::Psi<T>* psi_ks_global; ///< global version of psi_ks
-        ModuleBase::matrix eig_gw; ///< GW energy
-        std::vector<double> tda_ene, full_ene; // in Rydberg
-
-        /// @brief  - [nspin_types][{nstates, nk* (locc* lvirt}]
-        std::vector<ct::Tensor> full_X, full_Y;
-
         /// @brief a from-scratch constructor
         ESolver_BSE(const Input_para& inp, UnitCell& ucell);
 
@@ -30,6 +23,18 @@ namespace BSE
             //delete this->psi_ks; // already deleted in ESolver_LR
             delete this->psi_ks_global;
         }
+
+        LR_IO::RI_kRlist kRlist;
+        psi::Psi<T>* psi_ks_global; ///< global version of psi_ks
+        ModuleBase::matrix eig_gw; ///< GW energy
+        std::vector<double> tda_ene, full_ene; // in Rydberg
+
+        /// @brief [nspin_types][{nstates, nk* (locc* lvirt}]
+        std::vector<ct::Tensor> full_X, full_Y;
+
+        std::unique_ptr<MolecularLRI<T>> mo_lri;
+        
+        std::vector<std::complex<double>> velocity_mo; ///< store the velocity matrix elements in MO basis
 
         void exx_init();
 
@@ -46,6 +51,7 @@ namespace BSE
         
         /// @brief X for tda and also Y for full BSE excitation
         void allocate_eigen_infos();
+
 
     };
 

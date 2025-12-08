@@ -74,11 +74,11 @@ void read_librpa_eigenvectors(psi::Psi<TK>& wfc_ks,
 
 /// only for blocking by atom pairs (abacus type)
 template <typename TCs, typename TR>
-TLRI<TR> read_coulomb_mat(const std::string& file, const TLRI<TCs>& Cs, const LR_IO::RI_kRlist& kRlist);
+TLRI<TR> read_coulomb_mat_k(const std::string& path, const TLRI<TCs>& Cs, const LR_IO::RI_kRlist& kRlist);
 
 /// for any way of blocking (aims type)
 template <typename TCs, typename TR>
-TLRI<TR> read_coulomb_mat_general(const std::string& file, const TLRI<TCs>& Cs, const LR_IO::RI_kRlist& kRlist);
+TLRI<TR> read_coulomb_mat_general_k(const std::string& path, const TLRI<TCs>& Cs, const LR_IO::RI_kRlist& kRlist);
 
 /// @brief read Wxc(R) = Wc(R) + Vx(R) from file
 template <typename Tdata, typename TR>

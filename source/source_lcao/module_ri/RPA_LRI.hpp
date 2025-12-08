@@ -442,8 +442,10 @@ void RPA_LRI<T, Tdata>::out_velocity(const UnitCell &ucell,
     std::vector<std::complex<double>> velocity_mo = LR_Util::cal_velocity_mo(ucell, gd, two_center_bundle,
         parav, parac, *this->p_kv, psi, nk, nspin_tmp, PARAM.globalv.nlocal, nocc, nvirt);
     if (GlobalV::MY_RANK == 0){
+        // for librpa readable
         LR_Util::output_spectrum_mo_librpa(velocity_mo, "velocity_matrix",
             nk, nspin_tmp, PARAM.inp.nbands, *this->p_kv);
+        // for human readable
         LR_Util::output_spectrum_mo(velocity_mo, "velocity_matrix_rpa", pelec->ekb.c,
             nk, nspin_tmp, PARAM.inp.nbands, *this->p_kv);
     }

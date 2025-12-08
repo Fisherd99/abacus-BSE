@@ -107,6 +107,7 @@ container::Tensor cal_dm_trans_onebase_pblas(
     // (lhs for row-major Tensor, rhs for column-major pblas, occ_aos is contiguous)
     
     // since psi::get_pointer(ib) is only for global wfc, we implement the conj through pzgemm 
+    // as a comparasion, see cal_dm_trans_onebase_blas(complex)
     pzgemm_(&transa, &transb, &naos, &naos, &one,
             &factor, c.get_pointer(), &one, &imo2_, pc.desc,
             c.get_pointer(), &one, &imo1_, pc.desc,
@@ -164,7 +165,7 @@ container::Tensor cal_dm_trans_onebase_blas(
 
     container::Tensor dm_trans(DAT::DT_COMPLEX_DOUBLE, DEV::CpuDevice, { naos, naos });    
 
-    char transa = 'N', transb = 'C';
+    char transa = 'N', transb = 'T';
     const std::complex<double> beta = 0;
     // for excitation => [C_virt * C_occ^\dagger]^T = C_occ^* * C_virt^T  
     // (lhs for row-major Tensor, rhs for column-major pblas, occ_aos is contiguous)

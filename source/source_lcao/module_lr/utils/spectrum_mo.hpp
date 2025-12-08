@@ -80,7 +80,7 @@ std::vector<std::complex<double>> cal_velocity_mo(const UnitCell& ucell,
         {
             assert(KS_num == nocc[is] + nvirt[is]);
 
-            for (int ik = is*nk; ik < nk; ++ik)
+            for (int ik = is*nk; ik < (is+1)*nk; ++ik)
             {            
                 hamilt::folding_HR(*vR.get_current_term_pointer(id), vk[ik].data<std::complex<double>>(), kv.kvec_d[ik], pmat.get_row_size(), 1/*column-major*/);
             }
@@ -175,7 +175,7 @@ std::vector<std::complex<double>> cal_dipole_r_mo(const UnitCell& ucell,
         {
             assert(KS_num == nocc[is] + nvirt[is]);
 
-            for (int ik = is*nk; ik < nk; ++ik)
+            for (int ik = is*nk; ik < (is+1)*nk; ++ik)
             {            
                 hamilt::folding_HR(rRReader.rR[id], rk[ik].data<std::complex<double>>(), kv.kvec_d[ik], pmat.get_row_size(), 1/*column-major*/);
             }

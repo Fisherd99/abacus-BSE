@@ -422,5 +422,17 @@ void ReadInput::item_lr_tddft()
         sync_stringvec(input.bse_spin_types, para.input.bse_spin_types.size(), "singlet");
         this->add_item(item);
     }
+    {
+        Input_Item item("bse_ri_hartree");
+        item.annotation = "whether to use RI approximation for Hartree term in BSE";
+        read_sync_bool(input.bse_ri_hartree);
+        this->add_item(item);
+    }
+    {
+        Input_Item item("bse_continue");
+        item.annotation = "which step to continue from previous BSE calculation";
+        read_sync_int(input.bse_continue);
+        this->add_item(item);
+    }
 }
 }

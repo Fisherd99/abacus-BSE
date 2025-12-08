@@ -1,6 +1,9 @@
 #include "lr_io.h"
 #include "source_lcao/module_lr/bse/bse_util.h"
 #include <dirent.h>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 namespace LR_IO{
 
 RI_kRlist::RI_kRlist(const std::string& file, const UnitCell& ucell, K_Vectors* const pkv)
@@ -54,7 +57,7 @@ void RI_kRlist::read_kpts(const std::string& file, const UnitCell& ucell, K_Vect
         }
     }
 
-    // NOTE: K_Vectors.wk will be read in function `read_coulomb_mat`	
+    // FISH_TODO: K_Vectors.wk is read in function `read_coulomb_mat_k`, and should change	
 
     std::cout << "After read_kpts: klist(Cartesian|Direct)" << std::endl;
     for (int ik = 0; ik < nks; ++ik)
@@ -148,6 +151,7 @@ void read_librpa_eigenvectors(psi::Psi<TK>& wfc_ks,
     int nbasis = pmat.get_wfc_global_nbasis();
     assert(nbands == wfc_ks_global.get_nbands());
     assert(nbasis == wfc_ks_global.get_nbasis());
+    assert((ncore + nbands) <= nbands_file);
     const size_t nk = PARAM.inp.nspin == 2 ? wfc_ks.get_nk() / 2 : wfc_ks.get_nk();
 
     if (GlobalV::MY_RANK == 0)
@@ -161,7 +165,7 @@ void read_librpa_eigenvectors(psi::Psi<TK>& wfc_ks,
             std::string fm(ptr->d_name);
             if (fm.find("KS_eigenvector") == 0)// find file KS_eigenvectorXXX
             {
-                std::cout << "found librpa_eigenvector file:" << fm << std::endl;
+                //std::cout << "found librpa_eigenvector file:" << fm << std::endl;
                 std::ifstream file_librpa_ks(path + fm);
                 std::string tmp;
                 while (file_librpa_ks.peek() != EOF)
@@ -170,12 +174,13 @@ void read_librpa_eigenvectors(psi::Psi<TK>& wfc_ks,
                     file_librpa_ks >> ik;
                     ik = ik - 1;
                     assert(readen_k[ik] == false);
+                    file_librpa_ks >> std::ws; // skip the blank and '\n' to get the next content
                     for (int iw = 0; iw < nbasis; ++iw) {
                         for (int ib = 0; ib < nbands_file; ++ib) {
                             for (int is = 0; is < nspin_file; ++is) {
                                 if (ib >= ncore && ib< (ncore+nbands)) {
                                     LR_IO::read_one_data(file_librpa_ks, wfc_ks_global(ik+is*nk, ib-ncore, iw));
-                                    file_librpa_ks >> std::ws; // skip the blank if there is
+                                    file_librpa_ks >> std::ws;
                                 }
                                 else {
                                     std::getline(file_librpa_ks, tmp); //skip the useless bands
@@ -188,6 +193,7 @@ void read_librpa_eigenvectors(psi::Psi<TK>& wfc_ks,
                     }
                     readen_k[ik] = true;
                 }
+                file_librpa_ks.close();
             }
         }
         closedir(dir);
@@ -197,21 +203,22 @@ void read_librpa_eigenvectors(psi::Psi<TK>& wfc_ks,
         }
         
     }// end of if (GlobalV::MY_RANK == 0); next MPI_comm to other ranks
+
+    // change wfc_ks_global phase to make arg(<psi(k)|psi(k'=0)>) = 0
+    std::cout << "Do phase correction" << std::endl;
     for (int iks = 0; iks < wfc_ks.get_nk(); ++iks){
         if (GlobalV::MY_RANK == 0) {
             // test: output wfc            
-            std::cout << "wfc_gs_read_from_librpa for iks:" << iks << std::endl;
-            for (int ib = 0; ib < nbands; ++ib)
-            {
-                std::cout << "band " << ib << ": ";
-                for (int iw = 0; iw < nbasis; ++iw)
-                {
-                    std::cout << wfc_ks_global(iks, ib, iw) << "  ";
-                }
-                std::cout << std::endl;
-            }
-
-            // change wfc_ks_global phase to make arg(<psi(k)|psi(k'=0)>) = 0
+            // std::cout << "wfc_gs_read_from_librpa for iks:" << iks << std::endl;
+            // for (int ib = 0; ib < nbands; ++ib)
+            // {
+            //     std::cout << "band " << ib << ": ";
+            //     for (int iw = 0; iw < nbasis; ++iw)
+            //     {
+            //         std::cout << wfc_ks_global(iks, ib, iw) << "  ";
+            //     }
+            //     std::cout << std::endl;
+            // }
             if (iks != 0)
             {
                 for(int ib = 0; ib < nbands; ++ib)
@@ -222,8 +229,8 @@ void read_librpa_eigenvectors(psi::Psi<TK>& wfc_ks,
                     {
                         wfc_ks_global(iks, ib, iw) *= phase;
                     }
-                    TK test_phase = BSE_Util::inner_product(&wfc_ks_global(iks,ib,0), &wfc_ks_global(0,ib,0), nbasis);
-                    std::cout << "After phase correction, iks, ib, phase: " << iks << " " << ib << " " << test_phase << std::endl;
+                    // TK test_phase = BSE_Util::inner_product(&wfc_ks_global(iks,ib,0), &wfc_ks_global(0,ib,0), nbasis);
+                    // std::cout << "After phase correction, iks, ib, phase: " << iks << " " << ib << " " << test_phase << std::endl;
                 }
             }
         }
@@ -240,41 +247,65 @@ void read_librpa_eigenvectors(psi::Psi<TK>& wfc_ks,
 #else
         BlasConnector::copy(nbands*nlocal, wfc_ks_global.get_pointer(), 1, wfc_ks.get_pointer(), 1);
 #endif
+        ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "read librpa eigenvectors.");
     }
 }
 
-template <typename TCs, typename TVs> // only for blocking by atom pairs (abacus type)
-TLRI<TVs> read_coulomb_mat(const std::string& file, const TLRI<TCs>& Cs, const LR_IO::RI_kRlist& kRlist)
+template <typename TCs, typename TVs> // only for blocking by atom pairs
+TLRI<TVs> read_coulomb_mat_k(const std::string& path, const TLRI<TCs>& Cs, const LR_IO::RI_kRlist& kRlist)
 {
-    std::ifstream ifs;
-    ifs.open(file);
+    struct dirent *ptr;
+    DIR *dir;
+    dir = opendir(path.c_str());
+
     size_t nk = 0, nabf = 0, istart = 0, jstart = 0, iend = 0, jend = 0;
     std::string tmp;
     K_Vectors* const klist = kRlist.klist;
-    ifs >> nk;//   actual nk
     int klist_nk = klist->nmp[0] * klist->nmp[1] * klist->nmp[2];
-    assert(nk == klist_nk);
     int ik_readin = -1;
     TLRI<TVs> Vs;
     std::map<int, std::map<std::pair<int,int>, RI::Tensor<std::complex<double>>>> Vq; // <iat1, <<iat2,ik>, T>>
     const int nat = Cs.size();
-    for (int iat1 = 0;iat1 < nat;++iat1)
+    std::vector<size_t> abf_start_index(nat+1, 1);
+    for (int iat = 0; iat < nat; ++iat)
     {
-        for (int ik =0;ik < nk;++ik)
+        abf_start_index[iat+1] = abf_start_index[iat] + Cs.at(iat).at({ 0, {0,0,0} }).shape[0];
+    }
+
+    auto to_atom = [&](const int start, const int end) -> int
+    {
+        for (int iat = 0;iat < nat;++iat)
         {
-            const size_t nabf1 = Cs.at(iat1).at({ 0, {0,0,0} }).shape[0];
-            for (int iat2 = 0;iat2 < nat;++iat2)
+            size_t abf_start = abf_start_index[iat];
+            size_t abf_end = abf_start_index[iat+1] - 1;
+            if (start == abf_start && end == abf_end)
             {
-                if (iat1 > iat2)
-                {   // coulomb_mat has only the upper triangle part
-                    Vq[iat1][{iat2, ik}] = Vq[iat2][{iat1, ik}].dagger();
-                    continue;
-                }
-                const size_t nabf2 = Cs.at(iat2).at({ 0, {0,0,0} }).shape[0];
-                ifs >> nabf >> istart >> iend >> jstart >> jend >> ik_readin >> klist->wk[ik];
-                assert(ik_readin == ik+1);
-                assert(nabf1 == iend - istart + 1);
-                assert(nabf2 == jend - jstart + 1);
+                return iat;
+            }
+        }
+        throw std::runtime_error("Error in read_coulomb_mat_k: cannot find the atom for given auxiliary basis set range");
+    };
+
+    while ((ptr = readdir(dir)) != NULL){// read all the files in the directory
+        std::string fm(ptr->d_name);
+        
+        if (fm.find("coulomb_cut_") == 0)// find file coulomb_cut_xxx
+        {
+            std::cout << "found coulomb file:" << fm << std::endl;
+            std::ifstream ifs(path  + fm);
+            ifs >> nk;//   actual nk
+            assert(nk == klist_nk);
+
+            while (ifs.peek() != EOF)
+            {
+                ifs >> nabf >> istart >> iend >> jstart >> jend >> ik_readin >> klist->wk[ik_readin-1];
+                if (ifs.peek() == EOF) { break; }
+                int ik = ik_readin - 1;
+                int iat1 = to_atom(istart, iend);
+                int iat2 = to_atom(jstart, jend);
+                const size_t nabf1 = iend - istart + 1;
+                const size_t nabf2 = jend - jstart + 1;             
+
                 RI::Tensor<std::complex<double>> t({ nabf1, nabf2 });
                 for (int i = 0;i < nabf1;++i)
                 {
@@ -284,13 +315,38 @@ TLRI<TVs> read_coulomb_mat(const std::string& file, const TLRI<TCs>& Cs, const L
                     }
                 }
                 Vq[iat1][{iat2, ik}] = t;
+
+                if (iat1 != iat2)
+                {   // coulomb_mat has only the upper triangle part
+                    Vq[iat2][{iat1, ik}] = t.dagger();
+                    continue;
+                }   
+            }
+            ifs.close();
+        }
+    }
+    closedir(dir);
+
+    for (const TC& R : kRlist.Rlist )
+    {
+        for (int iat1 = 0;iat1 < nat;++iat1)
+        {
+            for (int iat2 = 0;iat2 < nat;++iat2)
+            {
+                Vs[iat1][{iat2, R}] = RI::Tensor<TVs>({ Vq[iat1][{iat2, 0}].shape[0], Vq[iat1][{iat2, 0}].shape[1] });
             }
         }
     }
-
-    for ( const TC& R : kRlist.Rlist )
+    ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "read Vq files. Now convert Vq to VR.");
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static) collapse(3)
+#endif
+    for (const TC& R : kRlist.Rlist )
     {
-        std::cout<<"read V: R="<<R[0]<<" "<<R[1]<<" "<<R[2]<<std::endl;
+// #ifdef _OPENMP
+// #pragma omp critical
+//         std::cout<<"thread"<< omp_get_thread_num() << " convert V: R="<<R[0]<<" "<<R[1]<<" "<<R[2]<<std::endl;
+// #endif
         for (int iat1 = 0;iat1 < nat;++iat1)
         {
             for (int iat2 = 0;iat2 < nat;++iat2)
@@ -306,40 +362,57 @@ TLRI<TVs> read_coulomb_mat(const std::string& file, const TLRI<TCs>& Cs, const L
             }
         }
     }
+    ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "convert Vq to VR.");
     return Vs;
 }
 
-template <typename TCs, typename TVs> // any blocking (aims type)
-TLRI<TVs> read_coulomb_mat_general(const std::string& file, const TLRI<TCs>& Cs, const LR_IO::RI_kRlist& kRlist)
+template <typename TCs, typename TVs> // any blocking
+TLRI<TVs> read_coulomb_mat_general_k(const std::string& path, const TLRI<TCs>& Cs, const LR_IO::RI_kRlist& kRlist)
 {
-    std::ifstream ifs;
-    ifs.open(file);
-    size_t nk = 0, nabf = 0, istart = 0, jstart = 0, iend = 0, jend = 0;
-    std::string tmp;
-    K_Vectors* const klist = kRlist.klist;
-    ifs >> nk;  //   actual nk
-    int klist_nk = klist->nmp[0] * klist->nmp[1] * klist->nmp[2];
-    assert(nk == klist_nk);
-    int ik_readin = -1;
+    struct dirent *ptr;
+    DIR *dir;
+    dir = opendir(path.c_str());
     TLRI<TVs> Vs;
     std::map<int, std::map<std::pair<int,int>, RI::Tensor<std::complex<double>>>> Vq; // <iat1, <<iat2,ik>, T>>
     std::map<int,std::vector<std::complex<double>>> Vq_tmp; //<ik, vector> 
-    while (ifs.peek() != EOF)
-    {
-        ifs >> nabf >> istart >> iend >> jstart >> jend >> ik_readin >> klist->wk[ik_readin-1];
-        if (ifs.peek() == EOF) { break; }
-        int ik = ik_readin - 1;
-        if (Vq_tmp[ik].empty()) { Vq_tmp[ik].resize(nabf * nabf, 0.0); }
-        for (int i = istart - 1;i < iend;++i)
+
+    size_t nk = 0, nabf = 0, istart = 0, jstart = 0, iend = 0, jend = 0;
+    std::string tmp;
+    K_Vectors* const klist = kRlist.klist;
+    int klist_nk = klist->nmp[0] * klist->nmp[1] * klist->nmp[2];
+    int ik_readin = -1;
+
+    while ((ptr = readdir(dir)) != NULL){// read all the files in the directory
+        std::string fm(ptr->d_name);
+        if (fm.find("coulomb_cut_") == 0)// find file coulomb_cut_xxx
         {
-            for (int j = jstart - 1;j < jend;++j)
+            std::cout << "found coulomb file:" << fm << std::endl;
+            std::ifstream ifs(path  + fm);
+            ifs >> nk;  //   actual nk            
+            assert(nk == klist_nk);
+            
+            while (ifs.peek() != EOF)
             {
-                LR_IO::read_one_data(ifs, Vq_tmp.at(ik)[i * nabf + j]);
+                ifs >> nabf >> istart >> iend >> jstart >> jend >> ik_readin >> klist->wk[ik_readin-1];
+                if (ifs.peek() == EOF) { break; }
+                int ik = ik_readin - 1;
+                if (Vq_tmp[ik].empty()) { Vq_tmp[ik].resize(nabf * nabf, 0.0); }
+                auto& Vq_tmp_k = Vq_tmp.at(ik);
+                for (int i = istart - 1;i < iend;++i)
+                {
+                    for (int j = jstart - 1;j < jend;++j)
+                    {
+                        LR_IO::read_one_data(ifs, Vq_tmp_k[i * nabf + j]);
+                    }
+                }
             }
+            ifs.close();
         }
     }
+    closedir(dir);
+
     const int nat = Cs.size();
-    istart = 0;    // 
+    istart = 0;
     for (int iat1 = 0;iat1 < nat;++iat1)
     {
         const size_t nabf1 = Cs.at(iat1).at({ 0, {0,0,0} }).shape[0];
@@ -372,14 +445,30 @@ TLRI<TVs> read_coulomb_mat_general(const std::string& file, const TLRI<TCs>& Cs,
     }
     assert(istart == nabf);
 
-    for ( const TC& R : kRlist.Rlist )
+    ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "read Vq files. Now convert Vq to VR.");
+    for (const TC& R : kRlist.Rlist )
     {
-        std::cout<<"read V: R="<<R[0]<<" "<<R[1]<<" "<<R[2]<<std::endl;
         for (int iat1 = 0;iat1 < nat;++iat1)
         {
             for (int iat2 = 0;iat2 < nat;++iat2)
             {
                 Vs[iat1][{iat2, R}] = RI::Tensor<TVs>({ Vq[iat1][{iat2, 0}].shape[0], Vq[iat1][{iat2, 0}].shape[1] });
+            }
+        }
+    }
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static) collapse(3)
+#endif
+    for (const TC& R : kRlist.Rlist )
+    {
+#ifdef _OPENMP
+#pragma omp critical
+        std::cout<<"thread"<< omp_get_thread_num() << "convert V: R="<<R[0]<<" "<<R[1]<<" "<<R[2]<<std::endl;
+#endif
+        for (int iat1 = 0;iat1 < nat;++iat1)
+        {
+            for (int iat2 = 0;iat2 < nat;++iat2)
+            {
                 for (int ik = 0; ik < nk; ++ik)
                 {
                     const ModuleBase::Vector3<double>& kvec = klist->kvec_d.at(ik);
@@ -390,6 +479,7 @@ TLRI<TVs> read_coulomb_mat_general(const std::string& file, const TLRI<TCs>& Cs,
             }
         }
     }
+    ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "convert Vq to VR.");
     return Vs;
 }
 
@@ -414,7 +504,7 @@ TLRI<Tdata> read_Ws(const TLRI<TVs>& Vs, const std::vector<TC>& Rlist)
                 std::string filename = "Wc_Mu_"+std::to_string(iat)+"_Nu_"+std::to_string(jat)+"_iR_"+std::to_string(iR)+"_ifreq_0.mtx";
                 infileW.open("librpa.d/" + filename);
                 if(!infileW) throw std::runtime_error( filename + " not found!");
-                else std::cout << "reading Wc file: " << filename << std::endl;
+                // else std::cout << "reading Wc file: " << filename ;
                 int nabf1 = Vs.at(iat).at({jat,{0,0,0}}).shape[0];
                 int nabf2 = Vs.at(iat).at({jat,{0,0,0}}).shape[1];
 
@@ -440,11 +530,11 @@ TLRI<Tdata> read_Ws(const TLRI<TVs>& Vs, const std::vector<TC>& Rlist)
                         //std::cout << "Wxc: " << i << " " << j << " " << tensor_W(i,j) << std::endl; //check
                     }
                 Ws[iat][{jat, R}] = tensor_W;
-                std::cout << "Finish read W for iat, jat, iR: " << iat << " " << jat << " " << iR 
-                    << "( " << R[0] << " " << R[1] << " " << R[2] << " )" << std::endl;
+                // std::cout << " Finished. R: " << "( " << R[0] << " " << R[1] << " " << R[2] << " )" << std::endl;
             }
         }
     }
+    ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "read WR files.");
     return Ws;
 }
 
@@ -458,17 +548,17 @@ template void read_librpa_eigenvectors<std::complex<double>>(
     const std::string& path, const int ncore, const int nbands_file,
     const int nspin_tmp, const int nspin_file, Parallel_Orbitals& pmat);
 
-template TLRI<double> read_coulomb_mat<double, double>
-(const std::string& file, const TLRI<double>& Cs, const LR_IO::RI_kRlist& kRlist);
+template TLRI<double> read_coulomb_mat_k<double, double>
+(const std::string& path, const TLRI<double>& Cs, const LR_IO::RI_kRlist& kRlist);
 
-template TLRI<std::complex<double>> read_coulomb_mat<std::complex<double>, std::complex<double>>
-(const std::string& file, const TLRI<std::complex<double>>& Cs, const LR_IO::RI_kRlist& kRlist);
+template TLRI<std::complex<double>> read_coulomb_mat_k<std::complex<double>, std::complex<double>>
+(const std::string& path, const TLRI<std::complex<double>>& Cs, const LR_IO::RI_kRlist& kRlist);
 
-template TLRI<double> read_coulomb_mat_general<double, double>
-(const std::string& file, const TLRI<double>& Cs, const LR_IO::RI_kRlist& kRlist);
+template TLRI<double> read_coulomb_mat_general_k<double, double>
+(const std::string& path, const TLRI<double>& Cs, const LR_IO::RI_kRlist& kRlist);
 
-template TLRI<std::complex<double>> read_coulomb_mat_general<std::complex<double>, std::complex<double>>
-(const std::string& file, const TLRI<std::complex<double>>& Cs, const LR_IO::RI_kRlist& kRlist);
+template TLRI<std::complex<double>> read_coulomb_mat_general_k<std::complex<double>, std::complex<double>>
+(const std::string& path, const TLRI<std::complex<double>>& Cs, const LR_IO::RI_kRlist& kRlist);
 
 template TLRI<double> read_Ws<double, double>
 (const TLRI<double>& Vs, const std::vector<TC>& Rlist);

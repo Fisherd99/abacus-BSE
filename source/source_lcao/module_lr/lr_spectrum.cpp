@@ -19,10 +19,10 @@ elecstate::DensityMatrix<T, T> LR::LR_Spectrum<T>::cal_transition_density_matrix
         const int offset_x = offset_b + is * nk * this->pX[0].get_local_size();
         //1. transition density 
 #ifdef __MPI
-        std::vector<container::Tensor>  dm_trans_2d = cal_dm_trans_pblas(X + offset_x, this->pX[is], psi_ks[is], this->pc, this->naos, this->nocc[is], this->nvirt[is], this->pmat, (T)1.0 / (T)nk);
+        std::vector<container::Tensor>  dm_trans_2d = cal_dm_trans_pblas(X + offset_x, this->pX[is], psi_ks_vec[is], this->pc, this->naos, this->nocc[is], this->nvirt[is], this->pmat, (T)1.0 / (T)nk);
         // if (this->tdm_sym) for (auto& t : dm_trans_2d) LR_Util::matsym(t.data<T>(), naos, pmat);
 #else
-        std::vector<container::Tensor>  dm_trans_2d = cal_dm_trans_blas(X + offset_x, this->psi_ks[is], this->nocc[is], this->nvirt[is], (T)1.0 / (T)nk);
+        std::vector<container::Tensor>  dm_trans_2d = cal_dm_trans_blas(X + offset_x, this->psi_ks_vec[is], this->nocc[is], this->nvirt[is], (T)1.0 / (T)nk);
         // if (this->tdm_sym) for (auto& t : dm_trans_2d) LR_Util::matsym(t.data<T>(), naos);
 #endif
         for (int ik = 0;ik < this->nk;++ik) { DM_trans.set_DMK_pointer(ik + is * nk, dm_trans_2d[ik].data<T>()); }
@@ -337,6 +337,7 @@ void LR::LR_Spectrum<T>::transition_analysis(const std::string& spintype)
         }
     }
     ofs << "==================================================================== " << std::endl;
+    ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "LR::LR_Spectrum::transition_analysis");
 }
 
 template<typename T>
@@ -367,6 +368,7 @@ void LR::LR_Spectrum<T>::write_transition_dipole(const std::string& filename)
         << std::setw(13) << mean_squared_transition_dipole_[istate] << std::endl;
     }
     ofs.close();
+    ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "LR::LR_Spectrum::write_transition_dipole");
 }
 
 template class LR::LR_Spectrum<double>;

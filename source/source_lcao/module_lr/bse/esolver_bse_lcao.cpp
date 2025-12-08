@@ -15,7 +15,7 @@ ESolver_BSE<T, TR>::ESolver_BSE(const Input_para& inp, UnitCell& ucell) :
     LR::ESolver_LR<T, TR>(inp, ucell, GlobalC::exx_info)
 {
     ModuleBase::TITLE("ESolver_BSE", "ESolver_BSE(from scratch)");
-
+    ModuleBase::timer::tick("ESolver_BSE", "constructor");
     // xc kernel
     this->xc_kernel = LR_Util::tolower(inp.xc_kernel);
 
@@ -93,11 +93,6 @@ ESolver_BSE<T, TR>::ESolver_BSE(const Input_para& inp, UnitCell& ucell) :
                this->pw_big->nbz,
                this->pw_big->bz);
     Charge chg_gs;
-    if (this->input.ri_hartree_benchmark == "none")
-    {
-        this->read_ks_chg(chg_gs);
-    }
-    this->init_pot(chg_gs);
 
     // search adjacent atoms and init Gint
     double search_radius = -1.0;
@@ -130,9 +125,22 @@ ESolver_BSE<T, TR>::ESolver_BSE(const Input_para& inp, UnitCell& ucell) :
                                               this->gd));
     ModuleGint::Gint::set_gint_info(this->gint_info_.get());
     // new_version_GINT
-    // read exx Cs, Vs
+
+    this->mo_lri = LR_Util::make_unique<MolecularLRI<T>>(this->ucell,
+                                                        this->nk,
+                                                        this->kv,
+                                                        this->nocc[0],
+                                                        this->nvirt[0],
+                                                        *this->psi_ks_global);
+
     if (this->input.lr_solver != "spectrum")
     {
+        if (!this->input.bse_ri_hartree && this->input.ri_hartree_benchmark == "none")
+        {
+            this->read_ks_chg(chg_gs);
+        }
+        this->init_pot(chg_gs);
+
         this->exx_info.info_global.ccp_type = Conv_Coulomb_Pot_K::Ccp_Type::Hf;
         this->exx_info.info_global.hybrid_alpha = 1;
         this->exx_info.info_ri.ccp_rmesh_times = 10;
@@ -141,27 +149,25 @@ ESolver_BSE<T, TR>::ESolver_BSE(const Input_para& inp, UnitCell& ucell) :
         // this->exx_info.info_global.coulomb_param[Conv_Coulomb_Pot_K::Coulomb_Type::Fock]
         //     = {{{"alpha", "1"}, {"singularity_correction", "spencer"}}};
 
-        this->exx_lri = std::make_shared<Exx_LRI<T>>(this->exx_info.info_ri);
+        //this->exx_lri = std::make_shared<Exx_LRI<T>>(this->exx_info.info_ri);
         std::cout << "check bse_ri_pca_threshold: " << this->exx_info.info_ri.pca_threshold << std::endl;
         std::cout << "check bse_ri_ccp_rmesh_times: " << this->exx_info.info_ri.ccp_rmesh_times << std::endl;
+        std::cout << "check bse_ri_C_threshold: " << this->exx_info.info_ri.C_threshold << std::endl;
+        std::cout << "check bse_ri_V_threshold: " << this->exx_info.info_ri.V_threshold << std::endl;
         this->exx_init();
     }
+    ModuleBase::timer::tick("ESolver_BSE", "constructor");
 }
 
 template<typename T, typename TR>
 void ESolver_BSE<T, TR>::exx_init()
 {
-    // ======= exx_lri->init() without constructing abfs =======
-    this->exx_lri->mpi_comm = MPI_COMM_WORLD;
-    this->exx_lri->p_kv = &this->kv;
-    // ======= exx_lri->init() without constructing abfs =======
-
     // do things similar to `cal_exx_ions` but read Ws and Cs from file
-    std::vector<TA> atoms(this->ucell.nat);
-    for (int iat = 0; iat < this->ucell.nat; ++iat)
-    {
-        atoms[iat] = iat;
-    }
+    // std::vector<TA> atoms(this->ucell.nat);
+    // for (int iat = 0; iat < this->ucell.nat; ++iat)
+    // {
+    //     atoms[iat] = iat;
+    // }
     std::map<TA, TatomR> atoms_pos;
     for (int iat = 0; iat < this->ucell.nat; ++iat)
     {
@@ -171,36 +177,33 @@ void ESolver_BSE<T, TR>::exx_init()
                                           RI_Util::Vector3_to_array3(this->ucell.a2),
                                           RI_Util::Vector3_to_array3(this->ucell.a3)};
     const std::array<Tcell, 3> period = {this->kv.nmp[0], this->kv.nmp[1], this->kv.nmp[2]};
-    this->exx_lri->exx_lri.set_parallel(MPI_COMM_WORLD, atoms_pos, latvec, period);
+    this->mo_lri->LR_lri.set_parallel(MPI_COMM_WORLD, atoms_pos, latvec, period); // only for pass in MPI_Comm_WORLD, others are not used
+
     // const std::array<Tcell,Ndim> period_Vs = LRI_CV_Tools::cal_latvec_range<Tcell>(1+this->info.ccp_rmesh_times,
     // ucell, orb_cutoff_); 
     // const std::pair<std::vector<TA>, std::vector<std::vector<std::pair<TA,std::array<Tcell,Ndim>>>>>
     //     list_As_Vs = RI::Distribute_Equally::distribute_atoms_periods(this->mpi_comm, atoms, period_Vs, 2, false);
 
-    // start read Ws and Cs
-    std::map<TA, std::map<TAC, RI::Tensor<T>>> Cs_in = LRI_CV_Tools::read_Cs_ao<T>("Cs_data_" + std::to_string(GlobalV::MY_RANK)+".txt");
+    // start reading Ws and Cs
+    std::map<TA, std::map<TAC, RI::Tensor<T>>> Cs_in;
     std::map<TA, std::map<TAC, RI::Tensor<T>>> Vs_in;
-    if (this->input.ri_hartree_benchmark == "aims-librpa" ){
-        Vs_in = LR_IO::read_coulomb_mat_general<T, T>("coulomb_cut_0.txt", Cs_in, this->kRlist);
-    }
-    else if (this->input.ri_hartree_benchmark == "none" || this->input.ri_hartree_benchmark == "abacus-librpa" ){
-        Vs_in = LR_IO::read_coulomb_mat<T, T>("coulomb_cut_0.txt", Cs_in, this->kRlist);
-    }
-    
-    // LRI_CV_Tools::write_Vs_abf(Vs_in, PARAM.globalv.global_out_dir + "Vs_test_" + std::to_string(GlobalV::MY_RANK));
-    std::map<TA, std::map<TAC, RI::Tensor<T>>> Ws_in = LR_IO::read_Ws<T, T>(Vs_in, this->kRlist.Rlist);
-    this->exx_lri->exx_lri.set_Vs(std::move(Ws_in), this->exx_lri->info.V_threshold);
-    this->exx_lri->exx_lri.set_Cs(std::move(Cs_in), this->exx_lri->info.C_threshold);
-    if (this->input.out_ri_cv)
+    std::map<TA, std::map<TAC, RI::Tensor<T>>> Ws_in;
+    if (GlobalV::MY_RANK == 0)
     {
-        LRI_CV_Tools::write_Vs_abf(Ws_in, PARAM.globalv.global_out_dir + "Ws_in_test_" + std::to_string(GlobalV::MY_RANK));
-        LRI_CV_Tools::write_Cs_ao(Cs_in, PARAM.globalv.global_out_dir + "Cs_in_test_" + std::to_string(GlobalV::MY_RANK));
-        // out exx_lri tensor
-        TLRI<T>& Vs_exx = this->exx_lri->exx_lri.lri.data_pool.at("Vs_").Ds_ab;// see LRI::set_tensor_map2
-        LRI_CV_Tools::write_Vs_abf(Vs_exx, PARAM.globalv.global_out_dir + "Vs_lri_test_" + std::to_string(GlobalV::MY_RANK));
-        TLRI<T>& Cs_exx = this->exx_lri->exx_lri.lri.data_pool.at("Cs_").Ds_ab;// see LRI::set_tensor_map2
-        LRI_CV_Tools::write_Cs_ao(Cs_exx, PARAM.globalv.global_out_dir + "Cs_lri_test_" + std::to_string(GlobalV::MY_RANK));
+        Cs_in = LRI_CV_Tools::read_Cs_ao_all<T>( "./");
+        if (this->input.ri_hartree_benchmark == "aims-librpa" ){
+            Vs_in = LR_IO::read_coulomb_mat_general_k<T, T>("./", Cs_in, this->kRlist);
+        }
+        else if (this->input.ri_hartree_benchmark == "none" || this->input.ri_hartree_benchmark == "abacus-librpa" ){
+            Vs_in = LR_IO::read_coulomb_mat_k<T, T>("./", Cs_in, this->kRlist);
+        }
+        Ws_in = LR_IO::read_Ws<T, T>(Vs_in, this->kRlist.Rlist);
     }
+#ifdef __MPI
+    MPI_Barrier(MPI_COMM_WORLD);
+#endif
+    this->mo_lri->init(Cs_in, Vs_in, Ws_in, this->exx_info.info_ri);
+
 }
 
 template <typename T, typename TR>
@@ -223,19 +226,22 @@ void ESolver_BSE<T, TR>::runner(UnitCell& ucell, const int istep)
 
         HamiltBSE<T> bse_matrix(this->nspin, this->nbasis, this->nocc, this->nvirt,
                                 this->ucell, this->orb_cutoff_, this->gd, *this->psi_ks, *this->psi_ks_global, this->eig_gw,
-#ifdef __EXX
-                                this->exx_lri,
-#endif
+                                *this->mo_lri,
                                 this->pot[0], this->kv, this->paraX_, this->paraC_, this->paraMat_,
                                 this->input.bse_spin_types,
                                 this->input.bse_tda,
                                 this->input.ri_hartree_benchmark);
+
+        this->mo_lri->LR_lri.free_Vs();
+        this->mo_lri->LR_lri.free_Ws();
+
         auto write_tda_states = [&](const std::string& label, const Real<T>* e, const T* v, const int& dim, const int& nst, const int& prec = 8)->void
         {
             if (GlobalV::MY_RANK == 0) {
                 assert(nst == LR_Util::write_value(efile_out(label), prec, e, nst));
             }
             assert(nst * dim == LR_Util::write_value(vfile_out(label), prec, v, nst, dim));
+            ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "write tda states " + label);
         };
         auto write_full_states = [&](const std::string& label, const Real<T>* e, const T* X, const T* Y, const int& dim, const int& nst, const int& prec = 8)->void
         {
@@ -244,6 +250,7 @@ void ESolver_BSE<T, TR>::runner(UnitCell& ucell, const int istep)
             }
             assert(nst * dim == LR_Util::write_value(vfile_out("full_X_"+label), prec, X, nst, dim));
             assert(nst * dim == LR_Util::write_value(vfile_out("full_Y_"+label), prec, Y, nst, dim));
+            ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "write full states " + label);
         };
 
         if ((this->input.bse_tda == "both" || this->input.bse_tda == "tda")) {
@@ -251,7 +258,8 @@ void ESolver_BSE<T, TR>::runner(UnitCell& ucell, const int istep)
                 bse_matrix.tda_solver(is, this->nstates, &this->tda_ene[is * this->nstates], this->X[is].template data<T>());
                 
                 std::cout << "eigenvalues: (Ry)" << std::endl;
-                LR_Util::print_value(&this->tda_ene[is * this->nstates], this->nstates);
+                int write_states = std::min(this->nstates, 20);
+                LR_Util::print_value(&this->tda_ene[is * this->nstates], write_states);
                 if (this->input.out_wfc_lr) {
                     write_tda_states(this->input.bse_spin_types[is], &this->tda_ene[is * this->nstates],
                         this->X[is].template data<T>(), this->nloc_per_state, this->nstates);
@@ -264,7 +272,8 @@ void ESolver_BSE<T, TR>::runner(UnitCell& ucell, const int istep)
                     this->full_X[is].template data<T>(), this->full_Y[is].template data<T>());
 
                 std::cout << "eigenvalues: (Ry)" << std::endl;
-                LR_Util::print_value(&this->full_ene[is * this->nstates], this->nstates);
+                int write_states = std::min(this->nstates, 20);
+                LR_Util::print_value(&this->full_ene[is * this->nstates], write_states);
                 if (this->input.out_wfc_lr) {
                     write_full_states(this->input.bse_spin_types[is], &this->full_ene[is * this->nstates],
                         this->full_X[is].template data<T>(), this->full_Y[is].template data<T>(), this->nloc_per_state, this->nstates);
@@ -278,28 +287,28 @@ void ESolver_BSE<T, TR>::runner(UnitCell& ucell, const int istep)
         {
             if (GlobalV::MY_RANK == 0) {
                 assert(nst == LR_Util::read_value(efile_in(label), e, nst));
-                std::cout <<"Rank "<< GlobalV::MY_RANK << ": finish reading " << efile_in(label) << std::endl;
+                ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "finish reading " + efile_in(label));
             }
 #ifdef __MPI
 // in velocity gauge, the eigenvalues are used to calculate the transition dipole, so we'd better broadcast them
             MPI_Bcast(e, nst, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 #endif
             assert(nst * dim == LR_Util::read_value(vfile_in(label), v, nst, dim));
-            std::cout <<"Rank "<< GlobalV::MY_RANK << ": finish reading " << vfile_in(label) << std::endl;
+            ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "finish reading " + vfile_in(label));
         };
         auto read_full_states = [&](const std::string& label, Real<T>* e, T* X, T* Y, const int& dim, const int& nst)->void
         {
             if (GlobalV::MY_RANK == 0) {
                 assert(nst == LR_Util::read_value(efile_in(label), e, nst));
-                std::cout <<"Rank "<< GlobalV::MY_RANK << ": finish reading " << efile_in(label) << std::endl;
+                ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "finish reading " + efile_in(label));
             }
 #ifdef __MPI
             MPI_Bcast(e, nst, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 #endif
             assert(nst * dim == LR_Util::read_value(vfile_in("full_X_"+label), X, nst, dim));
-            std::cout <<"Rank "<< GlobalV::MY_RANK << ": finish reading " << vfile_in("full_X_"+label) << std::endl;
+            ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "finish reading " + vfile_in("full_X_"+label));
             assert(nst * dim == LR_Util::read_value(vfile_in("full_Y_"+label), Y, nst, dim));
-            std::cout <<"Rank "<< GlobalV::MY_RANK << ": finish reading " << vfile_in("full_Y_"+label) << std::endl;
+            ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "finish reading " + vfile_in("full_Y_"+label));
         };
 
         std::cout << "reading the excitation states from file: \n";
@@ -320,6 +329,7 @@ void ESolver_BSE<T, TR>::runner(UnitCell& ucell, const int istep)
     {
         ModuleBase::WARNING_QUIT("ESolver_BSE", "lr_solver must be elpa or spectrum");
     }
+    malloc_trim(0);
     ModuleBase::timer::tick("ESolver_BSE", "runner");
     return;
 }
@@ -328,7 +338,17 @@ template <typename T, typename TR>
 void ESolver_BSE<T, TR>::after_all_runners(UnitCell& ucell)
 {
     ModuleBase::TITLE("ESolver_BSE", "after_all_runners");
-    if (this->input.ri_hartree_benchmark != "none") { return; } //no need to calculate the spectrum in the benchmark routine
+    ModuleBase::timer::tick("ESolver_BSE", "after_all_runners");
+    const std::set<std::string> benchmarks = {"abacus-librpa", "abacus", "none" };
+    if (benchmarks.find(this->input.ri_hartree_benchmark) == benchmarks.end()) { return; } //no need to calculate the spectrum
+    
+    if (LR_Util::tolower(this->input.abs_gauge) == "velocity" )
+    {
+        const int nspin_tmp = PARAM.inp.nspin == 2 ? 2 : 1;
+        this->velocity_mo = LR_Util::cal_velocity_mo(this->ucell, this->gd, this->two_center_bundle_, 
+                                                    this->paraMat_, this->paraC_, this->kv, *this->psi_ks, 
+                                                    this->nk, nspin_tmp, this->nbasis, this->nocc, this->nvirt);
+    }
     if (this->input.bse_tda == "both" || this->input.bse_tda == "tda"){
         for (int is = 0;is < this->X.size();++is)
         {
@@ -336,7 +356,7 @@ void ESolver_BSE<T, TR>::after_all_runners(UnitCell& ucell)
                 this->ucell, this->kv, this->gd, this->orb_cutoff_, this->two_center_bundle_,
                 this->paraX_, this->paraC_, this->paraMat_,
                 &this->tda_ene[is * this->nstates], this->X[is].template data<T>(), this->nstates, false/*openshell*/,
-                LR_Util::tolower(this->input.abs_gauge));
+                LR_Util::tolower(this->input.abs_gauge), this->velocity_mo.data());
             spectrum.transition_analysis(this->input.bse_spin_types[is]);
             if (this->input.bse_spin_types[is] != "triplet")        // triplets has no transition dipole and no contribution to the spectrum
             {
@@ -358,7 +378,7 @@ void ESolver_BSE<T, TR>::after_all_runners(UnitCell& ucell)
                 this->ucell, this->kv, this->gd, this->orb_cutoff_, this->two_center_bundle_,
                 this->paraX_, this->paraC_, this->paraMat_,
                 &this->full_ene[is * this->nstates], this->full_X[is].template data<T>(), this->nstates, false/*openshell*/,
-                LR_Util::tolower(this->input.abs_gauge));
+                LR_Util::tolower(this->input.abs_gauge), this->velocity_mo.data());
             spectrum.transition_analysis(this->input.bse_spin_types[is]);
             if (this->input.bse_spin_types[is] != "triplet")        // triplets has no transition dipole and no contribution to the spectrum
             {
@@ -373,6 +393,8 @@ void ESolver_BSE<T, TR>::after_all_runners(UnitCell& ucell)
             }
         }
     }
+    ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "ESolver_BSE::after_all_runners");
+    ModuleBase::timer::tick("ESolver_BSE", "after_all_runners");
 }
 
 template<typename T, typename TR>

@@ -1,4 +1,4 @@
-#include "molecular_W.h"
+#include "molecular_lri.h"
 
 namespace BSE
 {
@@ -18,12 +18,12 @@ void MolecularWR<T>:: cal_W_global(std::vector<T>& WA_global)
     ModuleBase::TITLE("MolecularWR", "cal_CVC_mo_R");
     ModuleBase::timer::tick("MolecularWR", "cal_CVC_mo_R");
     // cal cvc_mo
-    auto lri = this->exx_lri.lock();
 
     std::vector<TC> Rlist = this->BvK_cells;
     
     // Rlist for the first key of WR. TODO: MPI parallelize for Rlist
-    std::map<TC, std::map<TC, RI::Tensor<T>>> WR = lri->exx_lri.lri.cal_cvc_mo_R(CsR_oo_mo, CsR_vv_mo, Rlist);
+    // 25-12-01 NOTE: THIS function is abandoned ! cal_cvc_mo_R is calculating Vs not Ws ! Just reserve for test!
+    std::map<TC, std::map<TC, RI::Tensor<T>>> WR = LR_lri.lri.cal_cvc_mo_R(CsR_oo_mo, CsR_vv_mo, Rlist);
     ModuleBase::timer::tick("MolecularWR", "cal_CVC_mo_R");
 
     ModuleBase::TITLE("MolecularWR", "transform_k_global");
@@ -88,10 +88,10 @@ template <typename T>
 TCsR_mo<T> MolecularWR<T>::cal_CsR_mo(const UnitCell& ucell,
                                       const TLRI<T>& Cs_ao,
                                       const psi::Psi<T>& psi_ks,
-                                      const int& nocc,
-                                      const int& nvirt,
+                                      const int nocc,
+                                      const int nvirt,
                                       const LR::MO_TYPE type,
-                                      const std::string& type_str)
+                                      const std::string type_str)
 {
     ModuleBase::TITLE("MolecularWR", "cal_CsR_mo");
     using namespace RI::Array_Operator;
@@ -227,10 +227,10 @@ template <typename T>
 TCsR_mo<T> MolecularWR<T>::cal_CsR_mo_method2(const UnitCell& ucell,
                                               const TLRI<T>& Cs_ao,
                                               const psi::Psi<T>& psi_ks,
-                                              const int& nocc,
-                                              const int& nvirt,
+                                              const int nocc,
+                                              const int nvirt,
                                               const LR::MO_TYPE type,
-                                              const std::string& type_str)
+                                              const std::string type_str)
 {
     ModuleBase::TITLE("MolecularWR", "cal_CsR_mo_method2");
     ModuleBase::timer::tick("MolecularWR", "cal_CsR_mo_method2");
@@ -334,7 +334,7 @@ TCsR_mo<T> MolecularWR<T>::cal_CsR_mo_method2(const UnitCell& ucell,
 }
 
 template <typename T>
-void MolecularWR<T>::print_CsR_mo_max(const TCsR_mo<T>& CsR_mo, const std::string& file_name)
+void MolecularWR<T>::print_CsR_mo_max(const TCsR_mo<T>& CsR_mo, const std::string file_name)
 {
     ModuleBase::TITLE("MolecularWR", "print_CsR_mo_max");
     ModuleBase::timer::tick("MolecularWR", "print_CsR_mo_max");
@@ -376,9 +376,9 @@ void MolecularWR<T>::print_CsR_mo_max(const TCsR_mo<T>& CsR_mo, const std::strin
 template <typename T>
 std::map<TAC, RI::Tensor<T>>
 MolecularWR<T>::slice_psi_R(const psi::Psi<T>& psi_ks,
-                            const int& imo,
-                            const int& nmo,
-                            const std::string& file_name)
+                            const int imo,
+                            const int nmo,
+                            const std::string file_name)
 {
     ModuleBase::TITLE("MolecularWR", "slice_psi_R");
     ModuleBase::timer::tick("MolecularWR", "slice_psi_R");

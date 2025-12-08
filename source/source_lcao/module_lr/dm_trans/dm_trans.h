@@ -11,14 +11,14 @@ namespace LR
 
 #ifndef MO_TYPE_H
 #define MO_TYPE_H
-    enum MO_TYPE { OO, VO, VV, ALL };
+    enum MO_TYPE { OO, VO, OV, VV, ALL };
 #endif
-/*
-MO_TYPE: OO   VO    VV    ALL(not used in dm_trans)
-nmo1    nocc nocc  nvirt nocc+nvirt
-nmo2    nocc nvirt nvirt nocc+nvirt
-imo1    0    0     nocc  0
-imo2    0    nocc  nocc  0
+/* the first index is contiguous in memory
+MO_TYPE: OO   VO    OV    VV    ALL(not used in dm_trans)
+nmo1     nocc nocc  nvirt nvirt nocc+nvirt
+nmo2     nocc nvirt nocc  nvirt nocc+nvirt
+imo1     0    0     nocc  nocc  0
+imo2     0    nocc  0     nocc  0
 */
 #ifdef __MPI
 /// @brief calculate the 2d-block transition density matrix in AO basis using p?gemm

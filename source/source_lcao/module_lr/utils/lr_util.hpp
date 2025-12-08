@@ -112,8 +112,8 @@ namespace LR_Util
         const char norm_type = 'F';
         double norm1 = LapackConnector::lange(norm_type, n, n, minus_mat.data(), n, nullptr);
         double norm2 = LapackConnector::lange(norm_type, n, n, sum_mat.data(), n, nullptr);
-        std::cout << "|  Hermitian check: ||A - A^+||_F = " << norm1 << ", ||A + A^+||_F = " << norm2 << std::endl;
-        std::cout << "|   ||A - A^+||_F / ||A + A^+||_F = " << norm1 / norm2 << std::endl;
+        std::cout << "|  Hermitian check: ||A - A^H||_F = " << norm1 << ", ||A + A^H||_F = " << norm2 << std::endl;
+        std::cout << "|   ||A - A^H||_F / ||A + A^H||_F = " << norm1 / norm2 << std::endl;
         return is_herm;
     }
 
@@ -134,8 +134,8 @@ namespace LR_Util
         const char norm_type = 'F';
         double norm1 = LapackConnector::lange(norm_type, n, n, minus_mat.data(), n, nullptr);
         double norm2 = LapackConnector::lange(norm_type, n, n, sum_mat.data(), n, nullptr);
-        std::cout << "Symmetric check: ||A - A^T||_F = " << norm1 << ", ||A + A^T||_F = " << norm2 << std::endl;
-        std::cout << "||A - A^T||_F / ||A + A^T||_F = " << norm1 / norm2 << std::endl;
+        std::cout << "|  Symmetric check: ||B - B^T||_F = " << norm1 << ", ||B + B^T||_F = " << norm2 << std::endl;
+        std::cout << "|   ||B - B^T||_F / ||B + B^T||_F = " << norm1 / norm2 << std::endl;
         return is_sym;
     }
 

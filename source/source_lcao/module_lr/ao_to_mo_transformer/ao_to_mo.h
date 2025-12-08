@@ -10,14 +10,14 @@ namespace LR
 {
 #ifndef MO_TYPE_H
 #define MO_TYPE_H
-    enum MO_TYPE { OO, VO, VV, ALL };
+    enum MO_TYPE { OO, VO, OV, VV, ALL };
 #endif
-/*
-MO_TYPE: OO   VO    VV    ALL
-nmo1    nocc nocc  nvirt nocc+nvirt
-nmo2    nocc nvirt nvirt nocc+nvirt
-imo1    0    0     nocc  0
-imo2    0    nocc  nocc  0
+/* the first index is contiguous in memory
+MO_TYPE: OO   VO    OV    VV    ALL
+nmo1     nocc nocc  nvirt nvirt nocc+nvirt
+nmo2     nocc nvirt nocc  nvirt nocc+nvirt
+imo1     0    0     nocc  nocc  0
+imo2     0    nocc  0     nocc  0
 */
     inline void set_dim(const MO_TYPE type, const int& nocc, const int& nvirt,
         int& nmo1, int& nmo2, int& imo1, int& imo2)
@@ -29,6 +29,9 @@ imo2    0    nocc  nocc  0
             break;
         case MO_TYPE::VO:
             nmo1 = nocc; nmo2 = nvirt; imo1 = 0; imo2 = nocc;
+            break;
+        case MO_TYPE::OV:
+            nmo1 = nvirt; nmo2 = nocc; imo1 = nocc; imo2 = 0;
             break;
         case MO_TYPE::VV:
             nmo1 = nvirt; nmo2 = nvirt; imo1 = nocc; imo2 = nocc;

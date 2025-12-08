@@ -360,7 +360,10 @@ struct Input_para
         = {}; ///< the number of basis functions for each atom type used in FHI-aims (for benchmark)
     std::string bse_tda = "tda"; ///< TDA type can be: "tda", "full", "both"
     std::vector<std::string> bse_spin_types = {"singlet", "triplet"}; ///< spin type for close-shell case to be calculated
-    
+    bool bse_ri_hartree = true; ///< whether to use RI approximation for Hartree term in BSE
+    int bse_continue = 0; ///< which step to continue from previous BSE calculation
+                          ///< 0: new; 1: continue from A_V; 2: continue from A_V and A_W
+
     // ==============   #Parameters (11.Output) ===========================
     bool out_stru = false;                ///< outut stru file each ion step
     int out_freq_elec = 0;                ///< the frequency of electronic iter to output charge and wavefunction
