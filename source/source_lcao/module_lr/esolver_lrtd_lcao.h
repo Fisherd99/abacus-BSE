@@ -110,6 +110,7 @@ namespace LR
         Parallel_Orbitals paraMat_;
 
         TwoCenterBundle two_center_bundle_;
+        std::vector<std::complex<double>> velocity_mo; ///< store the velocity matrix elements in MO basis
 
         int cal_nupdown_form_occ(const ModuleBase::matrix& wg);
         void setup_2center_table(TwoCenterBundle& two_center_bundle, LCAO_Orbitals& orb, UnitCell& ucell);

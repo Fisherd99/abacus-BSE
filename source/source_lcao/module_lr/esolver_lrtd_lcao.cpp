@@ -81,7 +81,7 @@ void LR::ESolver_LR<T, TR>::setup_2center_table(TwoCenterBundle& two_center_bund
 template<typename T, typename TR>
 void LR::ESolver_LR<T, TR>::parameter_check()const
 {
-    const std::set<std::string> lr_solvers = { "dav", "lapack" , "spectrum", "dav_subspace", "cg", "elpa" };
+    const std::set<std::string> lr_solvers = { "dav", "lapack" , "spectrum", "dav_subspace", "cg", "elpa", "plot" };
     const std::set<std::string> xc_kernels = { "rpa", "lda", "pwlda", "pbe", "hf", "hse", "bse" };
     const std::set<std::string> abs_gauge = { "velocity", "length", "length-file" };
     const std::set<std::string> benchmarks = {"aims", "aims-librpa", "abacus-librpa", "abacus", "none" };
@@ -672,6 +672,13 @@ void LR::ESolver_LR<T, TR>::after_all_runners(UnitCell& ucell)
     ModuleBase::TITLE("ESolver_LR", "after_all_runners");
     if (input.ri_hartree_benchmark != "none") { return; } //no need to calculate the spectrum in the benchmark routine
     //cal spectrum
+    if (LR_Util::tolower(this->input.abs_gauge) == "velocity" )
+    {
+        const int nspin_tmp = PARAM.inp.nspin == 2 ? 2 : 1;
+        this->velocity_mo = LR_Util::cal_velocity_mo(this->ucell, this->gd, this->two_center_bundle_, 
+                                                    this->paraMat_, this->paraC_, this->kv, *this->psi_ks, 
+                                                    this->nk, nspin_tmp, this->nbasis, this->nocc, this->nvirt);
+    }
     std::vector<double> freq(100);
     std::vector<double> abs_wavelen_range({ 20, 200 });//default range
     if (input.abs_wavelen_range.size() >= 2 && std::abs(input.abs_wavelen_range[1] - input.abs_wavelen_range[0]) > 0.02)
@@ -689,6 +696,8 @@ void LR::ESolver_LR<T, TR>::after_all_runners(UnitCell& ucell)
             this->paraX_, this->paraC_, this->paraMat_,
             &this->pelec->ekb.c[is * nstates], this->X[is].template data<T>(), nstates, openshell,
             LR_Util::tolower(input.abs_gauge));
+        if (LR_Util::tolower(this->input.abs_gauge) == "velocity" ) {spectrum.set_vmo(this->velocity_mo.data());}
+        spectrum.cal_spectrum();
         spectrum.transition_analysis(spin_types[is]);
         if (spin_types[is] != "triplet")        // triplets has no transition dipole and no contribution to the spectrum
         {
@@ -701,18 +710,6 @@ void LR::ESolver_LR<T, TR>::after_all_runners(UnitCell& ucell)
             {
                 spectrum.test_transition_dipoles_velocity_ks(eig_ks.c);
                 spectrum.write_transition_dipole(PARAM.globalv.global_out_dir + "transition_dipole_velocity_ks.dat");
-                // const int nk = PARAM.inp.nspin == 2 ? kv.get_nks() / 2 : kv.get_nks();
-                // const int nspin_tmp = PARAM.inp.nspin == 2 ? 2 : 1;
-                // std::vector<std::complex<double>> velocity_mo = LR_Util::cal_velocity_mo(this->ucell, this->gd, this->two_center_bundle_,
-                //     this->paraMat_, this->paraC_, this->kv, *this->psi_ks, nk, nspin_tmp, this->nbasis, this->nocc, this->nvirt);
-                // if (GlobalV::MY_RANK == 0){
-                //     LR_Util::output_spectrum_mo(velocity_mo, "velocity_mo_lr", eig_ks.c, nk, nspin_tmp, nocc[0]+nvirt[0], this->kv);
-                // }
-                // std::vector<std::complex<double>> dipole_mo = LR_Util::cal_dipole_r_mo(ucell,
-                //     this->paraMat_, this->paraC_, this->kv, *this->psi_ks, nk, nspin_tmp, this->nbasis, this->nocc, this->nvirt);
-                // if (GlobalV::MY_RANK == 0){
-                //     LR_Util::output_spectrum_mo(dipole_mo, "dipole_mo_lr", eig_ks.c, nk, nspin_tmp, nocc[0]+nvirt[0], this->kv);
-                // }
             }
 
             // =============================================== for test ====================================================

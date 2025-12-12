@@ -21,21 +21,26 @@ namespace LR
             const TwoCenterBundle& two_center_bundle_,
             const std::vector<Parallel_2D>& pX_in, const Parallel_2D& pc_in, const Parallel_Orbitals& pmat_in,
             const double* eig, const T* X, const int& nstate, const bool& openshell,
-            const std::string& gauge, const std::complex<double>* vmo_ptr = nullptr) :
+            const std::string& gauge) :
             nspin_x(openshell ? 2 : 1), naos(naos), nocc(nocc), nvirt(nvirt), psi_ks(psi_ks_in), 
             nk(nspin_global == 2 ? kv_in.get_nks() / 2 : kv_in.get_nks()),
             gint(gint), rho_basis(rho_basis), ucell(ucell), kv(kv_in), gd_(gd),
             orb_cutoff_(orb_cutoff), two_center_bundle_(two_center_bundle_),
             pX(pX_in), pc(pc_in), pmat(pmat_in),
-            eig(eig), X(X), nstate(nstate), gauge(gauge), vmo_ptr(vmo_ptr),
+            eig(eig), X(X), nstate(nstate), gauge(gauge),
             ldim(nk* (nspin_x == 2 ? pX_in[0].get_local_size() + pX_in[1].get_local_size() : pX_in[0].get_local_size())),
             gdim(nk* std::inner_product(nocc.begin(), nocc.end(), nvirt.begin(), 0))
         {
             for (int is = 0;is < nspin_global;++is) { psi_ks_vec.emplace_back(LR_Util::get_psi_spin(psi_ks_in, is, nk)); }
-            gauge == "velocity" ? this->cal_transition_dipoles_velocity() : this->cal_transition_dipoles_length();
-            this->oscillator_strength();
-            ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "LR::LR_Spectrum::constructor");
         };
+        void set_vmo(std::complex<double>* vmo_in) { this->vmo_ptr = vmo_in; };
+        void set_Y(T* Y_in) { this->Y = Y_in; };
+        void set_full(bool tag) { this->is_full = tag; };
+        void cal_spectrum(){
+            this->gauge == "velocity" ? this->cal_transition_dipoles_velocity() : this->cal_transition_dipoles_length();
+            this->oscillator_strength();
+            ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "LR_Spectrum::cal_spectrum");
+        }
         /// @brief calculate the optical absorption spectrum with $Im[1/[(w+i\eta)^2-\Omega_S^2]]$
         void optical_absorption_method1(const std::vector<double>& freq, const double eta);
         /// @brief calculate the optical absorption spectrum with lorentzian delta function
@@ -84,6 +89,8 @@ namespace LR
         const double ana_thr = 0.3;     ///< {abs(X) > thr} will appear in the transition analysis log
         const double* eig;
         const T* X;
+        T* Y; ///< the deexcitation part of amplitudes
+        bool is_full = false;
         const K_Vectors& kv;
         psi::Psi<T>& psi_ks;
         std::vector<psi::Psi<T>> psi_ks_vec;
@@ -101,7 +108,7 @@ namespace LR
         void cal_gint_rho(double** rho, const int& nrxx);
         std::map<std::string, int> get_pair_info(const int i); ///< given the index in X, return its ispin, ik, iocc, ivirt
 
-        const std::complex<double>* vmo_ptr = nullptr;  ///< pointer to velocity matrix elements in MO basis, used in velocity gauge
+        std::complex<double>* vmo_ptr = nullptr;  ///< pointer to velocity matrix elements in MO basis, used in velocity gauge
         std::vector<ModuleBase::Vector3<T>> transition_dipole_;   ///< $\braket{ \psi_{i} | \mathbf{r} | \psi_{a} }$
         std::vector<double> mean_squared_transition_dipole_;    /// $|dipole|^2/3$, atomic unit (Hartree)
         std::vector<double> oscillator_strength_;///< $2/3\Omega |\sum_{ia\sigma} \braket{\psi_{i}|\mathbf{r}|\psi_{a}} |^2$, atomic unit (Hartree)

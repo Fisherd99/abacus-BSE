@@ -27,14 +27,14 @@ namespace BSE
         LR_IO::RI_kRlist kRlist;
         psi::Psi<T>* psi_ks_global; ///< global version of psi_ks
         ModuleBase::matrix eig_gw; ///< GW energy
+        double cbm_energy, vbm_energy; //conduction band minimum and valence band maximum
+        double direct_gap;
         std::vector<double> tda_ene, full_ene; // in Rydberg
 
         /// @brief [nspin_types][{nstates, nk* (locc* lvirt}]
         std::vector<ct::Tensor> full_X, full_Y;
 
         std::unique_ptr<MolecularLRI<T>> mo_lri;
-        
-        std::vector<std::complex<double>> velocity_mo; ///< store the velocity matrix elements in MO basis
 
         void exx_init();
 

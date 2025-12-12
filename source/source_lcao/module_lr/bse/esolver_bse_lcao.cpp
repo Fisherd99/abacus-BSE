@@ -246,7 +246,7 @@ void ESolver_BSE<T, TR>::runner(UnitCell& ucell, const int istep)
         auto write_full_states = [&](const std::string& label, const Real<T>* e, const T* X, const T* Y, const int& dim, const int& nst, const int& prec = 8)->void
         {
             if (GlobalV::MY_RANK == 0) {
-                assert(nst == LR_Util::write_value(efile_out(label), prec, e, nst));
+                assert(nst == LR_Util::write_value(efile_out("full_"+label), prec, e, nst));
             }
             assert(nst * dim == LR_Util::write_value(vfile_out("full_X_"+label), prec, X, nst, dim));
             assert(nst * dim == LR_Util::write_value(vfile_out("full_Y_"+label), prec, Y, nst, dim));
@@ -258,8 +258,10 @@ void ESolver_BSE<T, TR>::runner(UnitCell& ucell, const int istep)
                 bse_matrix.tda_solver(is, this->nstates, &this->tda_ene[is * this->nstates], this->X[is].template data<T>());
                 
                 std::cout << "eigenvalues: (Ry)" << std::endl;
-                int write_states = std::min(this->nstates, 20);
-                LR_Util::print_value(&this->tda_ene[is * this->nstates], write_states);
+                int write_nstates = std::min(this->nstates, 20);
+                LR_Util::print_value(&this->tda_ene[is * this->nstates], write_nstates);
+                std::cout << "Excition binding energies (eV):" << (direct_gap - tda_ene[is * this->nstates]) * ModuleBase::Ry_to_eV << std::endl;
+
                 if (this->input.out_wfc_lr) {
                     write_tda_states(this->input.bse_spin_types[is], &this->tda_ene[is * this->nstates],
                         this->X[is].template data<T>(), this->nloc_per_state, this->nstates);
@@ -272,8 +274,10 @@ void ESolver_BSE<T, TR>::runner(UnitCell& ucell, const int istep)
                     this->full_X[is].template data<T>(), this->full_Y[is].template data<T>());
 
                 std::cout << "eigenvalues: (Ry)" << std::endl;
-                int write_states = std::min(this->nstates, 20);
-                LR_Util::print_value(&this->full_ene[is * this->nstates], write_states);
+                int write_nstates = std::min(this->nstates, 20);
+                LR_Util::print_value(&this->full_ene[is * this->nstates], write_nstates);
+                std::cout << "Excition binding energies (eV):" << (direct_gap - full_ene[is * this->nstates]) * ModuleBase::Ry_to_eV << std::endl;
+
                 if (this->input.out_wfc_lr) {
                     write_full_states(this->input.bse_spin_types[is], &this->full_ene[is * this->nstates],
                         this->full_X[is].template data<T>(), this->full_Y[is].template data<T>(), this->nloc_per_state, this->nstates);
@@ -281,8 +285,9 @@ void ESolver_BSE<T, TR>::runner(UnitCell& ucell, const int istep)
             }
         }
     }
-    else if (this->input.lr_solver == "spectrum")
+    else if (this->input.lr_solver == "spectrum" || this->input.lr_solver == "plot")
     {
+        std::cout << "Reading BSE excitation states from file." << std::endl;
         auto read_tda_states = [&](const std::string& label, Real<T>* e, T* v, const int& dim, const int& nst)->void
         {
             if (GlobalV::MY_RANK == 0) {
@@ -299,7 +304,7 @@ void ESolver_BSE<T, TR>::runner(UnitCell& ucell, const int istep)
         auto read_full_states = [&](const std::string& label, Real<T>* e, T* X, T* Y, const int& dim, const int& nst)->void
         {
             if (GlobalV::MY_RANK == 0) {
-                assert(nst == LR_Util::read_value(efile_in(label), e, nst));
+                assert(nst == LR_Util::read_value(efile_in("full_"+label), e, nst));
                 ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "finish reading " + efile_in(label));
             }
 #ifdef __MPI
@@ -311,7 +316,6 @@ void ESolver_BSE<T, TR>::runner(UnitCell& ucell, const int istep)
             ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "finish reading " + vfile_in("full_Y_"+label));
         };
 
-        std::cout << "reading the excitation states from file: \n";
         if (this->input.bse_tda == "both" || this->input.bse_tda == "tda") {
             for (int is = 0; is < this->input.bse_spin_types.size(); ++is) {
                 read_tda_states(this->input.bse_spin_types[is], &this->tda_ene[is * this->nstates],
@@ -327,7 +331,7 @@ void ESolver_BSE<T, TR>::runner(UnitCell& ucell, const int istep)
     }
     else
     {
-        ModuleBase::WARNING_QUIT("ESolver_BSE", "lr_solver must be elpa or spectrum");
+        ModuleBase::WARNING_QUIT("ESolver_BSE", "lr_solver must be elpa, plot or spectrum");
     }
     malloc_trim(0);
     ModuleBase::timer::tick("ESolver_BSE", "runner");
@@ -356,11 +360,12 @@ void ESolver_BSE<T, TR>::after_all_runners(UnitCell& ucell)
                 this->ucell, this->kv, this->gd, this->orb_cutoff_, this->two_center_bundle_,
                 this->paraX_, this->paraC_, this->paraMat_,
                 &this->tda_ene[is * this->nstates], this->X[is].template data<T>(), this->nstates, false/*openshell*/,
-                LR_Util::tolower(this->input.abs_gauge), this->velocity_mo.data());
+                LR_Util::tolower(this->input.abs_gauge));
+            if (LR_Util::tolower(this->input.abs_gauge) == "velocity" ) {spectrum.set_vmo(this->velocity_mo.data());}
+            spectrum.cal_spectrum();
             spectrum.transition_analysis(this->input.bse_spin_types[is]);
             if (this->input.bse_spin_types[is] != "triplet")        // triplets has no transition dipole and no contribution to the spectrum
             {
-                // spectrum.optical_absorption_method1(freq, input.abs_broadening);
                 spectrum.write_transition_dipole(PARAM.globalv.global_out_dir + "transition_dipole.dat");
 
                 if (LR_Util::tolower(this->input.abs_gauge) == "velocity")
@@ -371,14 +376,18 @@ void ESolver_BSE<T, TR>::after_all_runners(UnitCell& ucell)
             }
         }        
     }
-    else if (this->input.bse_tda == "both" || this->input.bse_tda == "full"){
+    if (this->input.bse_tda == "both" || this->input.bse_tda == "full"){
         for (int is = 0;is < this->full_X.size();++is)
-        {    //FISH_TODO: full spectrum
+        {    //FISH_TODO: full spectrum should be (X+Y)(X-Y)*, but here is |X+Y|^2 temporarily
             LR::LR_Spectrum<T> spectrum(this->nspin, this->nbasis, this->nocc, this->nvirt, this->gint_, *this->pw_rho, *this->psi_ks,
                 this->ucell, this->kv, this->gd, this->orb_cutoff_, this->two_center_bundle_,
                 this->paraX_, this->paraC_, this->paraMat_,
                 &this->full_ene[is * this->nstates], this->full_X[is].template data<T>(), this->nstates, false/*openshell*/,
-                LR_Util::tolower(this->input.abs_gauge), this->velocity_mo.data());
+                LR_Util::tolower(this->input.abs_gauge));
+            if (LR_Util::tolower(this->input.abs_gauge) == "velocity" ) {spectrum.set_vmo(this->velocity_mo.data());}
+            spectrum.set_Y(this->full_Y[is].template data<T>());
+            spectrum.set_full(true);
+            spectrum.cal_spectrum();
             spectrum.transition_analysis(this->input.bse_spin_types[is]);
             if (this->input.bse_spin_types[is] != "triplet")        // triplets has no transition dipole and no contribution to the spectrum
             {
@@ -416,13 +425,39 @@ void ESolver_BSE<T, TR>::read_ks_wfc()
         ModuleBase::WARNING_QUIT("ESolver_BSE", "The nk in band_out is not consistent with BSE::nk.");
     }
     auto eig_gw_info = LR_IO::read_energy_qp("energy_qp", this->nocc[0], this->nvirt[0], ncore, this->nk, nspin_tmp, nspin_file);
+    int cbm_k(0), vbm_k(0), direct_k(0);
     for (int iks = 0; iks < this->kv.get_nks(); ++iks) {
         for (int ib = 0; ib < this->nbands; ++ib) {
-        this->pelec->wg(iks, ib) = eig_gw_info[iks * this->nbands *3 + ib * 3 + 0];
-        this->pelec->ekb(iks, ib) = eig_gw_info[iks * this->nbands *3 + ib * 3 + 1];
-        this->eig_gw(iks, ib) = eig_gw_info[iks * this->nbands *3 + ib * 3 + 2];
+            this->pelec->wg(iks, ib) = eig_gw_info[iks * this->nbands *3 + ib * 3 + 0];
+            this->pelec->ekb(iks, ib) = eig_gw_info[iks * this->nbands *3 + ib * 3 + 1];
+            this->eig_gw(iks, ib) = eig_gw_info[iks * this->nbands *3 + ib * 3 + 2];
+        }
+        double cbm = this->eig_gw(iks, this->nocc[0]);
+        double vbm = this->eig_gw(iks, this->nocc[0]-1);
+        if (iks == 0) {
+            this->cbm_energy = cbm;
+            this->vbm_energy = vbm;
+            this->direct_gap = cbm - vbm;
+        }
+        else {
+            if (this->cbm_energy > cbm) {
+                this->cbm_energy = cbm;
+                cbm_k = iks;
+            }
+            if (this->vbm_energy < vbm) {
+                this->vbm_energy = vbm;
+                vbm_k = iks;
+            }
+            if (this->direct_gap > cbm - vbm) {
+                this->direct_gap = cbm - vbm;
+                direct_k = iks;
+            }
         }
     }
+    std::cout << "VBM energy (eV): " << this->vbm_energy * ModuleBase::Ry_to_eV << " at k " << vbm_k << std::endl;
+    std::cout << "CBM energy (eV): " << this->cbm_energy * ModuleBase::Ry_to_eV << " at k " << cbm_k << std::endl;
+    std::cout << "Indirect gap (eV): " << (this->cbm_energy - this->vbm_energy) * ModuleBase::Ry_to_eV << std::endl;
+    std::cout << "Direct gap (eV): " << this->direct_gap * ModuleBase::Ry_to_eV << " at k " << direct_k << std::endl;
     LR_IO::read_librpa_eigenvectors<T>(*this->psi_ks, *this->psi_ks_global, "./", ncore, nbands_file, nspin_tmp, nspin_file, this->paraMat_);
 
     this->eig_ks = std::move(this->pelec->ekb);

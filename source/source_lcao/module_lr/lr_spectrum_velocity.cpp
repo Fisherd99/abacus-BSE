@@ -130,7 +130,7 @@ namespace LR
     template<typename T>
     void LR::LR_Spectrum<T>::cal_transition_dipole_istate_velocity_mo(DipoleEnergyType method, const std::vector<double>& eig_ks_diff)
     {
-        ModuleBase::timer::tick("LR_Spectrum", "cal_transition_dipoles_istate_velocity_mo");
+        ModuleBase::timer::tick("LR_Spectrum", "cal_transition_dipole_istate_velocity_mo");
         if (this->vmo_ptr == nullptr)
         {
             ModuleBase::WARNING_QUIT("LR_Spectrum", "velocity_mo is null. Please pass a valid pointer.");
@@ -175,10 +175,18 @@ namespace LR
                                 if (use_ks_gap)
                                 {
                                     td += this->vmo_ptr[v_index] * X[X_index] / eig_ks_diff[X_index - loffset_X_b];
+                                    if (this->is_full)
+                                    {
+                                        td += std::conj(this->vmo_ptr[v_index]) * Y[X_index] / eig_ks_diff[X_index - loffset_X_b];
+                                    }
                                 }
                                 else
                                 {
                                     td += this->vmo_ptr[v_index] * X[X_index];
+                                    if (this->is_full)
+                                    {
+                                        td += std::conj(this->vmo_ptr[v_index]) * Y[X_index];
+                                    }
                                 }
                             }
                         }
@@ -199,6 +207,7 @@ namespace LR
             this->transition_dipole_[istate] = convert_ptr_to_vector3<T>(ptr);
             this->mean_squared_transition_dipole_[istate] = cal_mean_squared_dipole(transition_dipole_[istate]);
         }
+        ModuleBase::timer::tick("LR_Spectrum", "cal_transition_dipole_istate_velocity_mo");
     }
 
     template<typename T>

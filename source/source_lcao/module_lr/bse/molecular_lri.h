@@ -24,6 +24,8 @@ using TLRI = std::map<TA, std::map<TAC, RI::Tensor<T>>>;
 template <typename T>
 using TLRIk = std::map<Tk, std::map<TA, std::map<TA, RI::Tensor<T>>>>;
 template <typename T>
+using TCsk_ao_mo = std::map<Tk, std::map<TA, RI::Tensor<T>>>;
+template <typename T>
 using TCsk_mo = std::map<std::pair<Tk, Tk>, std::map<TA, RI::Tensor<T>>>;
 
 template<typename T>
@@ -54,55 +56,63 @@ public:
     /// =============== calculation interface ====================
     void cal_W_for_A(std::vector<T>& m_global)
     {
-        TCsk_mo<T> Csk_oo_k21 = slice_Csk_mo(nocc, nvirt, LR::MO_TYPE::OO, "OOk21", this->k2_list, this->k1_list, this->list_I);
-        TCsk_mo<T> Csk_vv_k12 = slice_Csk_mo(nocc, nvirt, LR::MO_TYPE::VV, "VVk12", this->k1_list, this->k2_list, this->list_J);
+        //TCsk_mo<T> Csk_oo_k21 = slice_Csk_mo(nocc, nvirt, LR::MO_TYPE::OO, "OOk21", this->k2_list, this->k1_list, this->list_I);
+        //TCsk_mo<T> Csk_vv_k12 = slice_Csk_mo(nocc, nvirt, LR::MO_TYPE::VV, "VVk12", this->k1_list, this->k2_list, this->list_J);
     // check
     // cal_Csk_mo_method2(ucell, Csk_ao, psi_ks, nocc, nvirt, LR::MO_TYPE::OO, "OO", this->k2_list, this->k1_list);
     // cal_Csk_mo_method2(ucell, Csk_ao, psi_ks, nocc, nvirt, LR::MO_TYPE::VV, "VV", this->k1_list, this->k2_list);
         ModuleBase::TITLE("MolecularLRI", "cal_W_for_A");
         ModuleBase::timer::tick("MolecularLRI", "cal_W_for_A");
         std::map<Tk, std::map<Tk, RI::Tensor<T>>>
-            Wk = LR_lri.lri.cal_cvc_mo_k(Csk_oo_k21, Csk_vv_k12, k1_list, k2_list, list_I, list_J,
-                                         "Ws_", { 0,3,1,2 }); // (jiab) -> (jbia)
+            Wk = LR_lri.lri.cal_cvc_mo_k_onthefly(this->Csk_ao_mo, this->map_psi, k1_list, k2_list, list_I, list_J,
+                {"O","O","V","V"}, (std::size_t)nocc, (std::size_t)nvirt, "Ws_", { 0,3,1,2 }); // (jiab) -> (jbia)
+        //    Wk = LR_lri.lri.cal_cvc_mo_k(Csk_oo_k21, Csk_vv_k12, k1_list, k2_list, list_I, list_J,
+        //                                 "Ws_", { 0,3,1,2 }); // (jiab) -> (jbia)
         ModuleBase::timer::tick("MolecularLRI", "cal_W_for_A");
         this->transform_k_global(m_global, Wk);
     }
     void cal_W_for_B(std::vector<T>& m_global)
     {
-        TCsk_mo<T> Csk_vo_k21 = slice_Csk_mo(nocc, nvirt, LR::MO_TYPE::OV, "VOk21", this->k2_list, this->k1_list, this->list_I);
-        TCsk_mo<T> Csk_vo_k12 = slice_Csk_mo(nocc, nvirt, LR::MO_TYPE::OV, "VOk12", this->k1_list, this->k2_list, this->list_J);
+        //TCsk_mo<T> Csk_vo_k21 = slice_Csk_mo(nocc, nvirt, LR::MO_TYPE::OV, "VOk21", this->k2_list, this->k1_list, this->list_I);
+        //TCsk_mo<T> Csk_vo_k12 = slice_Csk_mo(nocc, nvirt, LR::MO_TYPE::OV, "VOk12", this->k1_list, this->k2_list, this->list_J);
 
         ModuleBase::TITLE("MolecularLRI", "cal_W_for_B");
         ModuleBase::timer::tick("MolecularLRI", "cal_W_for_B");
         std::map<Tk, std::map<Tk, RI::Tensor<T>>>
-            Wk = LR_lri.lri.cal_cvc_mo_k(Csk_vo_k21, Csk_vo_k12, k1_list, k2_list, list_I, list_J,
-                                         "Ws_", { 3,0,1,2 }); // (biaj) -> (jbia)
+            Wk = LR_lri.lri.cal_cvc_mo_k_onthefly(this->Csk_ao_mo, this->map_psi, k1_list, k2_list, list_I, list_J,
+                {"V","O","V","O"}, (std::size_t)nocc, (std::size_t)nvirt, "Ws_", { 3,0,1,2 }); // (biaj) -> (jbia)
+        //    Wk = LR_lri.lri.cal_cvc_mo_k(Csk_vo_k21, Csk_vo_k12, k1_list, k2_list, list_I, list_J,
+        //                                 "Ws_", { 3,0,1,2 }); // (biaj) -> (jbia)
         ModuleBase::timer::tick("MolecularLRI", "cal_W_for_B");
         this->transform_k_global(m_global, Wk);
     }
     void cal_hartree_for_A(std::vector<T>& m_global)
     {
-        TCsk_mo<T> Csk_vo_k1 = slice_Csk_mo(nocc, nvirt, LR::MO_TYPE::OV, "VOk1", this->k1_list, this->k1_list, this->list_I);
-        TCsk_mo<T> Csk_ov_k2 = slice_Csk_mo(nocc, nvirt, LR::MO_TYPE::VO, "OVk2", this->k2_list, this->k2_list, this->list_J);
+        //TCsk_mo<T> Csk_vo_k1 = slice_Csk_mo(nocc, nvirt, LR::MO_TYPE::OV, "VOk1", this->k1_list, this->k1_list, this->list_I);
+        //TCsk_mo<T> Csk_ov_k2 = slice_Csk_mo(nocc, nvirt, LR::MO_TYPE::VO, "OVk2", this->k2_list, this->k2_list, this->list_J);
 
         ModuleBase::TITLE("MolecularLRI", "cal_hartree_for_A");
         ModuleBase::timer::tick("MolecularLRI", "cal_hartree_for_A");
         std::map<Tk, std::map<Tk, RI::Tensor<T>>>
-            Vk = LR_lri.lri.cal_cvc_mo_k_hartree(Csk_vo_k1, Csk_ov_k2, k1_list, k2_list, list_I, list_J,
-                                                 "Vs_", {2,3,1,0}); // (aijb) -> (jbia)
+            Vk = LR_lri.lri.cal_cvc_mo_k_hartree_onthefly(this->Csk_ao_mo, this->map_psi, k1_list, k2_list, list_I, list_J,
+                {"V","O","O","V"}, (std::size_t)nocc, (std::size_t)nvirt, "Vs_", {2,3,1,0}); // (aijb) -> (jbia)
+        //    Vk = LR_lri.lri.cal_cvc_mo_k_hartree(Csk_vo_k1, Csk_ov_k2, k1_list, k2_list, list_I, list_J,
+        //                                         "Vs_", {2,3,1,0}); // (aijb) -> (jbia)
         ModuleBase::timer::tick("MolecularLRI", "cal_hartree_for_A");
         this->transform_k_global(m_global, Vk);
     }
     void cal_hartree_for_B(std::vector<T>& m_global)
     {
-        TCsk_mo<T> Csk_vo_k1 = slice_Csk_mo(nocc, nvirt, LR::MO_TYPE::OV, "VOk1", this->k1_list, this->k1_list, this->list_I);
-        TCsk_mo<T> Csk_vo_k2 = slice_Csk_mo(nocc, nvirt, LR::MO_TYPE::OV, "VOk2", this->k2_list, this->k2_list, this->list_J);
+        //TCsk_mo<T> Csk_vo_k1 = slice_Csk_mo(nocc, nvirt, LR::MO_TYPE::OV, "VOk1", this->k1_list, this->k1_list, this->list_I);
+        //TCsk_mo<T> Csk_vo_k2 = slice_Csk_mo(nocc, nvirt, LR::MO_TYPE::OV, "VOk2", this->k2_list, this->k2_list, this->list_J);
 
         ModuleBase::TITLE("MolecularLRI", "cal_hartree_for_B");
         ModuleBase::timer::tick("MolecularLRI", "cal_hartree_for_B");
         std::map<Tk, std::map<Tk, RI::Tensor<T>>>
-            Vk = LR_lri.lri.cal_cvc_mo_k_hartree(Csk_vo_k1, Csk_vo_k2, k1_list, k2_list, list_I, list_J,
-                                                 "Vs_", {3,2,1,0}); // (aibj) -> (jbia)
+            Vk = LR_lri.lri.cal_cvc_mo_k_hartree_onthefly(this->Csk_ao_mo, this->map_psi, k1_list, k2_list, list_I, list_J,
+                {"V","O","V","O"}, (std::size_t)nocc, (std::size_t)nvirt, "Vs_", {3,2,1,0}); // (aibj) -> (jbia)
+        //    Vk = LR_lri.lri.cal_cvc_mo_k_hartree(Csk_vo_k1, Csk_vo_k2, k1_list, k2_list, list_I, list_J,
+        //                                         "Vs_", {3,2,1,0}); // (aibj) -> (jbia)
         ModuleBase::timer::tick("MolecularLRI", "cal_hartree_for_B");
         this->transform_k_global(m_global, Vk);
     }
@@ -150,6 +160,13 @@ protected:
                           const psi::Psi<T>& psi_ks,
                           const std::vector<Tk>& k_list,
                           const std::vector<TA>& list_IJ);
+
+    // <k, <iat, tesnor{nabfs, nw, nmo}>>
+    TCsk_ao_mo<T> cal_Csk_ao_mo(const UnitCell& ucell,
+                                const TLRIk<T>& Csk_ao,
+                                const std::vector<Tk>& k_list,
+                                const std::vector<TA>& list_IJ);
+
     // slice Csk_mo according to k1_list and k2_list
     TCsk_mo<T> slice_Csk_mo(const int nocc,
                             const int nvirt,
@@ -173,8 +190,7 @@ protected:
 
     // transform total psi to map type according k coordinate and atom index
     std::map<Tk, std::map<TA, RI::Tensor<T>>> transform_psi_k(const psi::Psi<T>& psi_ks,
-                                                              const std::vector<Tk>& k_list,
-                                                              const std::vector<TA>& list_atoms);
+                                                              const std::vector<Tk>& k_list);
     // slice psi part according to imo and nmo, and return map type
     std::map<Tk, std::map<TA, RI::Tensor<T>>> slice_psi_k(const psi::Psi<T>& psi_ks,
                                                           const int imo,
@@ -188,6 +204,7 @@ protected:
     const int nvirt;
     const int ndim;
     const psi::Psi<T>& psi_ks;
+    std::map<Tk, std::map<TA, RI::Tensor<T>>> map_psi;
     std::vector<int> list_I;
     std::vector<int> list_J;
     std::vector<int> list_IJ;
@@ -195,6 +212,7 @@ protected:
     std::vector<Tk> k2_list;
     std::vector<Tk> k_list;
     std::map<Tk, int> kpoint_index_map;
+    TCsk_ao_mo<T> Csk_ao_mo;
     TCsk_mo<T> Csk_mo;
 };// class MolecularLRI
 

@@ -89,6 +89,7 @@ HamiltBSE<T>::HamiltBSE(const int& nspin,
         }
         else if(st == "rpa") {
             this->cal_V_for_A();
+            if (tda == "both" || tda == "full") { this->cal_V_for_B(); }
         }
         else if(st != "ipa") {
             throw std::runtime_error("Unsupported type in BSE: " + st);
@@ -124,7 +125,7 @@ void HamiltBSE<T>::cal_V_for_A(){
         for (int ik2 = 0; ik2 < nk; ++ik2) {                    
             for (int j = 0; j < nocc[0]; ++j) {
                 for (int b = 0; b < nvirt[0]; ++b) {//calculate row {aik1} for each column {bjk2}
-                    ModuleBase::timer::tick("HamiltBSE", "cal_V_column");
+                    ModuleBase::timer::tick("HamiltBSE", "cal_V_column_by_grid");
                     int bjk = ik2 * nocc[0] * nvirt[0] + j * nvirt[0] + b; // column index in BSE matrix
                     // 2. calculate transition matrix jk2→bk2, D(k)=c_b(k)c^†_j(k)
         #ifdef __MPI
@@ -167,7 +168,7 @@ void HamiltBSE<T>::cal_V_for_A(){
         #else
                     LR::ao_to_mo_blas(v_k_2d, psi_is, nocc[is], nvirt[is], this->VA_global.data()+bjk * this->ndim, false, LR::MO_TYPE::VO);
         #endif
-                    ModuleBase::timer::tick("HamiltBSE", "cal_V_column");
+                    ModuleBase::timer::tick("HamiltBSE", "cal_V_column_by_grid");
                 }
             }
         }
@@ -207,7 +208,7 @@ void HamiltBSE<T>::cal_V_for_B(){
         for (int ik2 = 0; ik2 < nk; ++ik2) {                    
             for (int j = 0; j < nocc[0]; ++j) {
                 for (int b = 0; b < nvirt[0]; ++b) {//calculate row {aik1} for each column {bjk2}
-                    ModuleBase::timer::tick("HamiltBSE", "cal_V_column");
+                    ModuleBase::timer::tick("HamiltBSE", "cal_V_column_by_grid");
                     int bjk = ik2 * nocc[0] * nvirt[0] + j * nvirt[0] + b; // column index in BSE matrix
                     // 2. calculate transition matrix jk2←bk2, D(k)=c_j(k)c^†_b(k)
         #ifdef __MPI
@@ -250,7 +251,7 @@ void HamiltBSE<T>::cal_V_for_B(){
         #else
                     LR::ao_to_mo_blas(v_k_2d, psi_is, nocc[is], nvirt[is], this->VB_global.data()+bjk * this->ndim, false, LR::MO_TYPE::VO);
         #endif
-                    ModuleBase::timer::tick("HamiltBSE", "cal_V_column");
+                    ModuleBase::timer::tick("HamiltBSE", "cal_V_column_by_grid");
                 }
             }
         }
@@ -300,8 +301,8 @@ void HamiltBSE<T>::cal_W_for_B(){
     if (GlobalV::MY_RANK == 0){
         this->write_AB_matrix("B_W_matrix.dat", 6, this->WB_global.data(), this->ndim, this->ndim);
     }
-    ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "cal_W_for_A");
-    ModuleBase::timer::tick("HamiltBSE", "cal_W_for_A");
+    ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "cal_W_for_B");
+    ModuleBase::timer::tick("HamiltBSE", "cal_W_for_B");
 }
 
 
@@ -485,7 +486,7 @@ void HamiltBSE<double>::full_solver(const int& st_index, const int& nstates,
                             this->nocc, this->nvirt, this->pX, false/*openshell*/);
 
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "BSE Full solver");
-    ModuleBase::timer::tick("HamiltBSE", "full_solver");
+    ModuleBase::timer::tick("HamiltBSE", "full_solver(double)");
 }
 
 template <>
@@ -524,8 +525,9 @@ void HamiltBSE<std::complex<double>>::full_solver(const int& st_index, const int
                             this->nocc, this->nvirt, this->pX, false/*openshell*/);
     LR_Util::global2local_X(Y_out, global_Y_full.data(), nstates, this->nk,
                             this->nocc, this->nvirt, this->pX, false/*openshell*/);
-
-    ModuleBase::timer::tick("HamiltBSE", "full_solver");
+    
+    ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "BSE FULL solver");
+    ModuleBase::timer::tick("HamiltBSE", "full_solver(complex)");
 }
 
 template<>
@@ -553,7 +555,7 @@ void HamiltBSE<double>::grid_calculation(hamilt::HContainer<double>& VR) const
     ModuleGint::cal_gint_vl(vr_hxc.c, &VR);
     // LR_Util::print_HR(VR, this->ucell.nat, "VR(real, 2d)");
 
-    ModuleBase::timer::tick("OperatorLRHxc", "grid_calculation");
+    ModuleBase::timer::tick("HamiltBSE", "grid_calculation(double)");
 }
 
 template<>
@@ -595,7 +597,7 @@ void HamiltBSE<std::complex<double>>::grid_calculation(hamilt::HContainer<std::c
     VR.set_zero();
     dmR_to_hR('R');   //real
     if (this->nk > 1) { dmR_to_hR('I'); }   //imag for multi-k
-    ModuleBase::timer::tick("OperatorLRHxc", "grid_calculation");
+    ModuleBase::timer::tick("HamiltBSE", "grid_calculation(complex)");
 }
 
 template class HamiltBSE<double>;

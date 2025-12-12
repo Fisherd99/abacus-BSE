@@ -133,6 +133,9 @@ std::vector<double> read_energy_qp(const std::string& file,
     }        
     file_gw.close();
     std::cout << "Finish read gw, ncore=" << ncore << std::endl;
+
+
+
     return eig_info;
 }
 
@@ -247,8 +250,8 @@ void read_librpa_eigenvectors(psi::Psi<TK>& wfc_ks,
 #else
         BlasConnector::copy(nbands*nlocal, wfc_ks_global.get_pointer(), 1, wfc_ks.get_pointer(), 1);
 #endif
-        ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "read librpa eigenvectors.");
     }
+    ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "read librpa eigenvectors.");
 }
 
 template <typename TCs, typename TVs> // only for blocking by atom pairs

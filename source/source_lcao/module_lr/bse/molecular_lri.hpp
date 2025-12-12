@@ -87,9 +87,11 @@ void MolecularLRI<T>::init(TLRI<T>& Cs_in, TLRI<T>& Vs_in, TLRI<T>& Ws_in, const
     ModuleBase::timer::tick("MolecularLRI", "distribute_atom_and_k");
 
     // 2. calculate Csk_mo
+    this->map_psi = this->transform_psi_k(this->psi_ks, this->k_list);
     TLRI<T>& Cs_ao = this->LR_lri.lri.data_pool.at("Cs_").Ds_ab;
     TLRIk<T> Csk_ao = cal_Csk_ao(Cs_ao, this->k_list, this->list_IJ);
-    this->Csk_mo = cal_Csk_mo(ucell, Csk_ao, this->psi_ks, this->k_list, this->list_IJ);
+    this->Csk_ao_mo = cal_Csk_ao_mo(ucell, Csk_ao, this->k_list, this->list_IJ);
+    //this->Csk_mo = cal_Csk_mo(ucell, Csk_ao, this->psi_ks, this->k_list, this->list_IJ);
     this->LR_lri.free_Cs(); // free Cs_ao to save memory
 }
 
@@ -182,9 +184,89 @@ TLRIk<T> MolecularLRI<T>::cal_Csk_ao(const TLRI<T>& CsR_ao,
             }
         }
     }
+    ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "calculate Csk_ao");
     ModuleBase::timer::tick("MolecularLRI", "cal_Csk_ao");
     return Csk_ao;
 }
+
+/// @brief calculate Csk_ao_mo by C^\mu (s,m)[k] = C^\mu (s,t)[k] c(m,t)[k]
+/// s,t: atom orbital index; m: band index
+template <typename T>
+TCsk_ao_mo<T> MolecularLRI<T>::cal_Csk_ao_mo(const UnitCell& ucell,
+                                      const TLRIk<T>& Csk_ao,
+                                      const std::vector<Tk>& k_list,
+                                      const std::vector<TA>& list_IJ)
+{
+    ModuleBase::TITLE("MolecularLRI", "cal_Csk_ao_mo");            
+    ModuleBase::timer::tick("MolecularLRI", "cal_Csk_ao_mo");
+    const std::size_t nmo = psi_ks.get_nbands();
+
+#ifdef __MKL
+    const std::size_t mkl_threads = mkl_get_max_threads();
+    std::cout << "MKL threads max: " << mkl_threads << std::endl;
+    mkl_set_num_threads(1);
+#endif
+
+    // <k, <iat, tesnor{nmo, nao}>>
+    std::map<Tk, std::map<TA, RI::Tensor<T>>> Csk_ao_mo;  // C'^\mu (s,m)[k] = C^\mu (s,t)[k] c(m,t)[k]
+
+    for (auto k: k_list)
+    {
+        auto& Ck_ao_mo = Csk_ao_mo[k];
+        for (auto iat : list_IJ){
+            Ck_ao_mo[iat];
+        }
+    }
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static) collapse(2)
+#endif
+    for (auto k: k_list)
+    {
+        auto& psi_k = this->map_psi.at(k);        
+        auto& Ck_ao_mo = Csk_ao_mo.at(k);
+        const std::map<TA, std::map<TA, RI::Tensor<T>>>& Ck_ao = Csk_ao.at(k);
+        for (auto iat1 : list_IJ)
+        {
+            auto& Ck_I = Ck_ao.at(iat1);
+            const int it1 = ucell.iat2it[iat1];
+            const std::size_t nw1 = ucell.atoms[it1].nw;
+            const std::size_t nabf = Ck_I.begin()->second.shape[0];
+            auto& tensor_ao_mo = Ck_ao_mo.at(iat1); // C'^\mu (s,m)[k]
+            tensor_ao_mo = RI::Tensor<T>({nabf, nw1, nmo}); // initialize to zero
+            for (const auto& Ck_IJ: Ck_I)
+            {
+                const int iat2 = Ck_IJ.first;
+                const int it2 = ucell.iat2it[iat2];
+                const int nw2 = ucell.atoms[it2].nw;
+
+                const auto& tensor_ao = Ck_IJ.second; // C^\mu (s,t)[k]
+                assert(nabf == tensor_ao.shape[0]);
+                assert(nw1 == tensor_ao.shape[1]);
+                assert(nw2 == tensor_ao.shape[2]);
+                const auto& psi_k_J = psi_k.at(iat2); // c(m,t)[k]
+                assert(nw2 == psi_k_J.shape[1]);
+
+                for (int iabf = 0; iabf < nabf; ++iabf)
+                {
+                    // caution: Cs are row-major  (iw2 contiguous)
+                    // C'(s,m) = C(s,t) c(m,t)         << row-major
+                    // C'_m_s = (c_t_m)^T (C_t_s)      << col-major
+                    container::BlasConnector::gemm('T', 'N', nmo, nw1, nw2,
+                                                    1.0, psi_k_J.ptr(), nw2,
+                                                    &tensor_ao(iabf, 0, 0), nw2,
+                                                    1.0, &tensor_ao_mo(iabf, 0, 0), nmo);
+                }
+            }
+        }
+    }
+#ifdef __MKL
+    mkl_set_num_threads(mkl_threads);
+#endif
+    ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "cal_Csk_ao_mo");
+    ModuleBase::timer::tick("MolecularLRI", "cal_Csk_ao_mo");
+    return Csk_ao_mo;
+}
+
 
 /// @brief calculate Csk_mo by 
 ///         C'^\mu (m1,m2)[k1,k2] = c^*(m1,s)[k1] C^\mu (s,t)[k2] c(m2,t)[k2]
@@ -206,7 +288,7 @@ TCsk_mo<T> MolecularLRI<T>::cal_Csk_mo(const UnitCell& ucell,
     mkl_set_num_threads(1);
 #endif
     // <k, <iat, tensor{nmo, iat.nw}>>
-    std::map<Tk, std::map<TA, RI::Tensor<T>>> psi_k = transform_psi_k(psi_ks, k_list, list_IJ);
+    std::map<Tk, std::map<TA, RI::Tensor<T>>> psi_k = transform_psi_k(psi_ks, k_list);
 
     // <{k1, k2}, <iat, tesnor{nabf, nmo1, nmo2}>>
     TCsk_mo<T> Csk_mo_part;  // C'^\mu (m1,m2)[k1,k2] = c^*(m1,s)[k1] C^\mu (s,t)[k2] c(m2,t)[k2]
@@ -242,7 +324,7 @@ TCsk_mo<T> MolecularLRI<T>::cal_Csk_mo(const UnitCell& ucell,
                 const int it1 = ucell.iat2it[iat1];
                 const int nw1 = ucell.atoms[it1].nw;
                 const std::size_t nabf = Ck_I.begin()->second.shape[0];
-                Cmo_part_k1_k2[iat1] = RI::Tensor<T>({nabf, nmo1, nmo2});
+                Cmo_part_k1_k2.at(iat1) = RI::Tensor<T>({nabf, nmo1, nmo2});
                 for (const auto& Ck_IJ: Ck_I)
                 {
                     const int iat2 = Ck_IJ.first;
@@ -262,12 +344,12 @@ TCsk_mo<T> MolecularLRI<T>::cal_Csk_mo(const UnitCell& ucell,
                         // C'(m1,m2) = c^*(m1,s) C(s,t) c(m2,t)         << row-major
                         // tmp_m1_t = (c_s_m1)^H (C_t_s)^T              << col-major
                         container::BlasConnector::gemm('C', 'T', nmo1, nw2, nw1,
-                                                        1.0, psi1_k1[iat1].ptr(), nw1,
+                                                        1.0, psi1_k1.at(iat1).ptr(), nw1,
                                                         ptr, nw2,
                                                         0.0, tmp.data(), nmo1);
                         // C'_m2_m1 = (c_t_m2)^T (tmp_m1_t)^T           << col-major
                         container::BlasConnector::gemm('T', 'T', nmo2, nmo1, nw2,
-                                                        1.0, psi2_k2[iat2].ptr(), nw2,
+                                                        1.0, psi2_k2.at(iat2).ptr(), nw2,
                                                         tmp.data(), nmo1,                                                        
                                                         1.0, &Cmo_part_k1_k2[iat1](iabf, 0, 0), nmo2);
                     }
@@ -278,6 +360,7 @@ TCsk_mo<T> MolecularLRI<T>::cal_Csk_mo(const UnitCell& ucell,
 #ifdef __MKL
     mkl_set_num_threads(mkl_threads);
 #endif
+    ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "calculate Csk_mo_part");
     ModuleBase::timer::tick("MolecularLRI", "cal_Csk_mo_part");
 
     // C'^\mu (m1,m2)[k1,k2] is finished, now calculate C^\mu (m1,m2)[k1,k2]
@@ -314,10 +397,11 @@ TCsk_mo<T> MolecularLRI<T>::cal_Csk_mo(const UnitCell& ucell,
                 }
                 Csk_mo.at(std::make_pair(k1, k2)).at(iat1) = std::move(t);
             }
+            ModuleBase::TITLE("MolecularLRI", "Csk_mo_add");
         }
     }
+    ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "calculate Csk_mo_add");
     ModuleBase::timer::tick("MolecularLRI", "cal_Csk_mo_add");
-    ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "calculate Csk_mo");
     // print C_mo max
     // this->print_Csk_mo_max(Csk_mo, "Csk_mo_" + type_str);
     // this->print_Csk_mo_max(Csk_mo_part, "Csk_mo_part_" + type_str);
@@ -565,7 +649,7 @@ void MolecularLRI<T>::print_Csk_mo_max(const TCsk_mo<T>& Csk_mo, const std::stri
 /// @brief transform psi to <k, <iat, tensor{nmo, iat.nw}>>, mo is not sliced
 template <typename T>
 std::map<Tk, std::map<TA, RI::Tensor<T>>>
-MolecularLRI<T>::transform_psi_k(const psi::Psi<T>& psi_ks, const std::vector<Tk>& k_list, const std::vector<TA>& list_atoms)
+MolecularLRI<T>::transform_psi_k(const psi::Psi<T>& psi_ks, const std::vector<Tk>& k_list)
 {
     ModuleBase::TITLE("MolecularLRI", "transform_psi_k");
     ModuleBase::timer::tick("MolecularLRI", "transform_psi_k");
@@ -574,7 +658,7 @@ MolecularLRI<T>::transform_psi_k(const psi::Psi<T>& psi_ks, const std::vector<Tk
     for (const auto& k : k_list) // initialize
     {
         auto& psi_map_k = psi_map[k];
-        for (const auto& iat : list_atoms)
+        for (int iat = 0; iat < this->ucell.nat; ++iat)
         {
             psi_map_k[iat];
         }
@@ -586,7 +670,7 @@ MolecularLRI<T>::transform_psi_k(const psi::Psi<T>& psi_ks, const std::vector<Tk
     {
         auto& psi_map_k = psi_map.at(k);
         int k_index = this->kpoint_index_map.at(k);
-        for (int iat : list_atoms)
+        for (int iat = 0; iat < this->ucell.nat; ++iat)
         {
             const int it = this->ucell.iat2it[iat];
             const std::size_t nw = this->ucell.atoms[it].nw;
