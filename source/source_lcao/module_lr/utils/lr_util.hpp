@@ -231,7 +231,7 @@ namespace LR_Util
     template <typename T>
     void gather_2d_to_full(const Parallel_2D& pv, const T* submat, T* fullmat, bool row_major, int global_nrow, int global_ncol)
     {
-        ModuleBase::TITLE("LR_Util", "gather_2d_to_full");
+        //ModuleBase::TITLE("LR_Util", "gather_2d_to_full");
         assert(pv.get_global_row_size() == global_nrow);
         assert(pv.get_global_col_size() == global_ncol);
         auto get_mpi_datatype = []() -> MPI_Datatype {

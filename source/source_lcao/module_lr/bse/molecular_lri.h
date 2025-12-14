@@ -65,7 +65,7 @@ public:
         ModuleBase::timer::tick("MolecularLRI", "cal_W_for_A");
         std::map<Tk, std::map<Tk, RI::Tensor<T>>>
             Wk = LR_lri.lri.cal_cvc_mo_k_onthefly(this->Csk_ao_mo, this->map_psi, k1_list, k2_list, list_I, list_J,
-                {"O","O","V","V"}, (std::size_t)nocc, (std::size_t)nvirt, "Ws_", { 0,3,1,2 }); // (jiab) -> (jbia)
+                {"O","O","V","V"}, (std::size_t)nocc, (std::size_t)nvirt, "Ws_", GlobalV::ofs_running, { 0,3,1,2 }); // (jiab) -> (jbia)
         //    Wk = LR_lri.lri.cal_cvc_mo_k(Csk_oo_k21, Csk_vv_k12, k1_list, k2_list, list_I, list_J,
         //                                 "Ws_", { 0,3,1,2 }); // (jiab) -> (jbia)
         ModuleBase::timer::tick("MolecularLRI", "cal_W_for_A");
@@ -80,7 +80,7 @@ public:
         ModuleBase::timer::tick("MolecularLRI", "cal_W_for_B");
         std::map<Tk, std::map<Tk, RI::Tensor<T>>>
             Wk = LR_lri.lri.cal_cvc_mo_k_onthefly(this->Csk_ao_mo, this->map_psi, k1_list, k2_list, list_I, list_J,
-                {"V","O","V","O"}, (std::size_t)nocc, (std::size_t)nvirt, "Ws_", { 3,0,1,2 }); // (biaj) -> (jbia)
+                {"V","O","V","O"}, (std::size_t)nocc, (std::size_t)nvirt, "Ws_", GlobalV::ofs_running, { 3,0,1,2 }); // (biaj) -> (jbia)
         //    Wk = LR_lri.lri.cal_cvc_mo_k(Csk_vo_k21, Csk_vo_k12, k1_list, k2_list, list_I, list_J,
         //                                 "Ws_", { 3,0,1,2 }); // (biaj) -> (jbia)
         ModuleBase::timer::tick("MolecularLRI", "cal_W_for_B");

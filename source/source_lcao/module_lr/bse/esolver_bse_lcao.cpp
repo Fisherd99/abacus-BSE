@@ -326,6 +326,19 @@ void ESolver_BSE<T, TR>::runner(UnitCell& ucell, const int istep)
             for (int is = 0; is < this->input.bse_spin_types.size(); ++is) {
                 read_full_states(this->input.bse_spin_types[is], &this->full_ene[is * this->nstates],
                     this->full_X[is].template data<T>(), this->full_Y[is].template data<T>(), this->nloc_per_state, this->nstates);
+                // check whether |X|^2 - |Y|^2 = 1
+                for (int i = 0; i < this->nstates; ++i) 
+                {
+                    double norm_xy = 0.0;
+                    for (int j = 0; j < this->nloc_per_state; ++j) {
+                        norm_xy += std::norm(this->full_X[is].template data<T>()[i * this->nloc_per_state + j])
+                                 - std::norm(this->full_Y[is].template data<T>()[i * this->nloc_per_state + j]);
+                    }
+                    Parallel_Reduce::reduce_all(norm_xy);
+                    if (std::abs(norm_xy - 1.0) > 1e-6){
+                        std::cout << "| CHECK WARNING: for full excitation " << i << ", |X|^2 - |Y|^2 = " <<std::setprecision(10) << norm_xy << std::endl;
+                    }
+                }
             }
         }
     }

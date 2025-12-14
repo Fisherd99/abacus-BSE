@@ -511,6 +511,9 @@ void HamiltBSE<std::complex<double>>::full_solver(const int& st_index, const int
     // copy positive eigenvalues
     std::vector<std::complex<double>> global_X_full(this->ndim * nstates, 0.0);
     std::vector<std::complex<double>> global_Y_full(this->ndim * nstates, 0.0);
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
     for (int i = 0; i < this->ndim; ++i) {
         assert(ev[i+this->ndim] >= 0.0);
         for (int j = 0; j < this->ndim; ++j) {

@@ -32,6 +32,18 @@ namespace LR
         const double c = eta_au / std::sqrt(2. * std::log(2.));
         return std::exp(-dfreq_au * dfreq_au / (2 * c * c)) / (std::sqrt(2 * M_PI) * c);
     }
+    //|FULL inline double cal_mean_squared_dipole_full(const ModuleBase::Vector3<double>& dipole,
+    //                                            const ModuleBase::Vector3<double>& dipole2)
+    // {
+    //     return (dipole * dipole2) / 3.;
+    // }
+    // inline double cal_mean_squared_dipole_full(const ModuleBase::Vector3<std::complex<double>>& dipole,
+    //                                            const ModuleBase::Vector3<std::complex<double>>& dipole2)
+    // {
+    //     std::complex<double> result
+    //         = dipole.x * std::conj(dipole2.x) + dipole.y * std::conj(dipole2.y) + dipole.z * std::conj(dipole2.z);
+    //     return (std::abs(result)) / 3.;
+    // }
     template<typename T>
     void LR::LR_Spectrum<T>::optical_absorption_method2(const std::vector<double>& freq, const double eta)
     {
@@ -142,7 +154,8 @@ namespace LR
         this->transition_dipole_.resize(nstate);
         this->mean_squared_transition_dipole_.resize(nstate);
 
-        std::vector<std::complex<double>> trans_dipole_buf(3 * nstate, 0.0); // $= \sum_{aik} i <ik|v|ak>X_{aik}/Ω$
+        std::vector<std::complex<double>> trans_dipole_buf(3 * nstate, 0.0); // $= \sum_{aik} i (<ik|v|ak>X_{aik} + <ak|v|ik>Y_{aik})/Ω$
+        //|FULL std::vector<std::complex<double>> trans_dipole_buf2(3 * nstate, 0.0);// $= \sum_{aik} i (<ik|v|ak>X_{aik} - <ak|v|ik>Y_{aik})/Ω$
         // vmo is global [spin, direction, kpoint, nbands, nbands], X is local [spin, kpoint, nocc_local, nvirt_local]
 
 #ifdef _OPENMP
@@ -156,6 +169,7 @@ namespace LR
             for (int id = 0; id < 3; ++id)
             {
                 std::complex<double> td = 0.0;
+                //|FULL std::complex<double> td2 = 0.0;
                 for (int is = 0; is < this->nspin_x; ++is)
                 {
                     const int loffset_X_bs = loffset_X_b + is * nk * pX[0].get_local_size();
@@ -178,6 +192,8 @@ namespace LR
                                     if (this->is_full)
                                     {
                                         td += std::conj(this->vmo_ptr[v_index]) * Y[X_index] / eig_ks_diff[X_index - loffset_X_b];
+                                    //|FULL    td2 += this->vmo_ptr[v_index] * X[X_index] / eig_ks_diff[X_index - loffset_X_b];
+                                    //|FULL    td2 -= std::conj(this->vmo_ptr[v_index]) * Y[X_index] / eig_ks_diff[X_index - loffset_X_b];
                                     }
                                 }
                                 else
@@ -186,6 +202,8 @@ namespace LR
                                     if (this->is_full)
                                     {
                                         td += std::conj(this->vmo_ptr[v_index]) * Y[X_index];
+                                    //|FULL    td2 += this->vmo_ptr[v_index] * X[X_index];
+                                    //|FULL    td2 -= std::conj(this->vmo_ptr[v_index]) * Y[X_index];
                                     }
                                 }
                             }
@@ -195,9 +213,16 @@ namespace LR
                 td *= fac;
                 if (this->nspin_x == 1) { td *= sqrt(2.0); } // *2 for 2 spins, /sqrt(2) for the halfed dimension of X in the normalizaiton
                 trans_dipole_buf[3 * istate + id] = td;
+                //|FULL if (this->is_full)
+                // {
+                //     td2 *= fac;
+                //     if (this->nspin_x == 1) { td *= sqrt(2.0); }
+                //     trans_dipole_buf2[3 * istate + id] = td2;
+                // }
             }   // end for direction
         }
         Parallel_Reduce::reduce_all(trans_dipole_buf.data(), 3 * nstate);
+        //|FULL if (this->is_full) { Parallel_Reduce::reduce_all(trans_dipole_buf2.data(), 3 * nstate); }
 #ifdef _OPENMP
 #pragma omp parallel for schedule(static)
 #endif
@@ -205,6 +230,12 @@ namespace LR
         {
             std::complex<double>* ptr = &trans_dipole_buf[3 * istate];
             this->transition_dipole_[istate] = convert_ptr_to_vector3<T>(ptr);
+            //|FULL if (this->is_full)
+            // {
+            //     this->mean_squared_transition_dipole_[istate] = cal_mean_squared_dipole_full(this->transition_dipole_[istate],
+            //         convert_ptr_to_vector3<T>(&trans_dipole_buf2[3 * istate]));
+            // }
+            // else 
             this->mean_squared_transition_dipole_[istate] = cal_mean_squared_dipole(transition_dipole_[istate]);
         }
         ModuleBase::timer::tick("LR_Spectrum", "cal_transition_dipole_istate_velocity_mo");
