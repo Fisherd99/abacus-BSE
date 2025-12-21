@@ -87,14 +87,14 @@ namespace LR
                     {
                         LR_IO::RI_kRlist kRlist ("stru_out", ucell_in, const_cast<K_Vectors*>(&kv_in));
                         Cs_read = LRI_CV_Tools::read_Cs_ao_all<T>("./");
-                        Vs_read = LR_IO::read_coulomb_mat_k<T,T>("coulomb_mat_0.txt", Cs_read, kRlist);
+                        Vs_read = LR_IO::read_coulomb_mat_k<T,T>("./", Cs_read, kRlist);
                     }
                     if (!std::set<std::string>({ "rpa", "hf"}).count(xc_kernel)) {
                         throw std::runtime_error("ri_hartree_benchmark is only supported for xc_kernel = rpa, hf"); 
                     }
                     RI_Benchmark::OperatorRIHartree<T>* ri_hartree_op
                         = new RI_Benchmark::OperatorRIHartree<T>(ucell_in, naos, nocc[0], nvirt[0], psi_ks_in,
-                            Cs_read, Vs_read, ri_hartree_benchmark == "aims", aims_nbasis);
+                            Cs_read, Vs_read);
                     this->ops->add(ri_hartree_op);
                 }
                 else if (spin_type == "triplet") { std::cout << "Hatree term is not needed for S2:triplet." << std::endl; }
@@ -120,8 +120,7 @@ namespace LR
                 // std::cout << "exx_alpha=" << exx_alpha << std::endl; // the default value of exx_alpha is 0.25 when dft_functional is pbe or hse
                 hamilt::Operator<T>* lr_exx = new OperatorLREXX<T>(nspin, naos, nocc[0], nvirt[0], ucell_in, psi_ks_in,
                     this->DM_trans, exx_lri_in, kv_in, pX_in[0], pc_in, pmat_in,
-                    (xc_kernel == "hf") ? 1.0 : exx_alpha, //alpha
-                    aims_nbasis);
+                    (xc_kernel == "hf") ? 1.0 : exx_alpha);
                 this->ops->add(lr_exx);
             }
 #endif

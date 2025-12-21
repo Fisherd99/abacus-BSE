@@ -30,12 +30,10 @@ namespace LR
             const Parallel_2D& pX_in,
             const Parallel_2D& pc_in,
             const Parallel_Orbitals& pmat_in,
-            const double& alpha = 1.0,
-            const std::vector<int>& aims_nbasis = {})
+            const double& alpha = 1.0)
             : nspin(nspin), naos(naos), nocc(nocc), nvirt(nvirt), nk(kv_in.get_nks() / nspin),
             psi_ks(psi_ks_in), DM_trans(DM_trans_in), exx_lri(exx_lri_in), kv(kv_in),
-            pX(pX_in), pc(pc_in), pmat(pmat_in), ucell(ucell_in), alpha(alpha),
-            aims_nbasis(aims_nbasis)
+            pX(pX_in), pc(pc_in), pmat(pmat_in), ucell(ucell_in), alpha(alpha)
         {
             ModuleBase::TITLE("OperatorLREXX", "OperatorLREXX");
             std::cout<<"Initializing OperatorLREXX"<<std::endl;
@@ -81,7 +79,6 @@ namespace LR
         /// ground state wavefunction
         const psi::Psi<T>& psi_ks = nullptr;
         psi::Psi<T> psi_ks_full;
-        const std::vector<int> aims_nbasis={};    ///< number of basis functions for each type of atom in FHI-aims
 
         /// transition density matrix 
         std::unique_ptr<elecstate::DensityMatrix<T, T>>& DM_trans;

@@ -15,7 +15,7 @@ namespace LR_Util
         int nelec = 0;
         for (int it = 0; it < ucell.ntype; ++it) {
             nelec += ucell.atoms[it].ncpp.zv * ucell.atoms[it].na;
-}
+        }
         return nelec;
     }
 

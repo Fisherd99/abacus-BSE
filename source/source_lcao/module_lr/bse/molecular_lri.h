@@ -65,7 +65,7 @@ public:
         ModuleBase::timer::tick("MolecularLRI", "cal_W_for_A");
         std::map<Tk, std::map<Tk, RI::Tensor<T>>>
             Wk = LR_lri.lri.cal_cvc_mo_k_onthefly(this->Csk_ao_mo, this->map_psi, k1_list, k2_list, list_I, list_J,
-                {"O","O","V","V"}, (std::size_t)nocc, (std::size_t)nvirt, "Ws_", GlobalV::ofs_running, { 0,3,1,2 }); // (jiab) -> (jbia)
+                {"O","O","V","V"}, (std::size_t)nocc, (std::size_t)nvirt, "Ws_", GlobalV::ofs_running, { 0,2,1,3 }); // (jiba) -> (jbia)
         //    Wk = LR_lri.lri.cal_cvc_mo_k(Csk_oo_k21, Csk_vv_k12, k1_list, k2_list, list_I, list_J,
         //                                 "Ws_", { 0,3,1,2 }); // (jiab) -> (jbia)
         ModuleBase::timer::tick("MolecularLRI", "cal_W_for_A");
@@ -80,7 +80,7 @@ public:
         ModuleBase::timer::tick("MolecularLRI", "cal_W_for_B");
         std::map<Tk, std::map<Tk, RI::Tensor<T>>>
             Wk = LR_lri.lri.cal_cvc_mo_k_onthefly(this->Csk_ao_mo, this->map_psi, k1_list, k2_list, list_I, list_J,
-                {"V","O","V","O"}, (std::size_t)nocc, (std::size_t)nvirt, "Ws_", GlobalV::ofs_running, { 3,0,1,2 }); // (biaj) -> (jbia)
+                {"V","O","O","V"}, (std::size_t)nocc, (std::size_t)nvirt, "Ws_", GlobalV::ofs_running, { 2,0,1,3 }); // (bija) -> (jbia)
         //    Wk = LR_lri.lri.cal_cvc_mo_k(Csk_vo_k21, Csk_vo_k12, k1_list, k2_list, list_I, list_J,
         //                                 "Ws_", { 3,0,1,2 }); // (biaj) -> (jbia)
         ModuleBase::timer::tick("MolecularLRI", "cal_W_for_B");
@@ -88,31 +88,21 @@ public:
     }
     void cal_hartree_for_A(std::vector<T>& m_global)
     {
-        //TCsk_mo<T> Csk_vo_k1 = slice_Csk_mo(nocc, nvirt, LR::MO_TYPE::OV, "VOk1", this->k1_list, this->k1_list, this->list_I);
-        //TCsk_mo<T> Csk_ov_k2 = slice_Csk_mo(nocc, nvirt, LR::MO_TYPE::VO, "OVk2", this->k2_list, this->k2_list, this->list_J);
-
         ModuleBase::TITLE("MolecularLRI", "cal_hartree_for_A");
         ModuleBase::timer::tick("MolecularLRI", "cal_hartree_for_A");
         std::map<Tk, std::map<Tk, RI::Tensor<T>>>
             Vk = LR_lri.lri.cal_cvc_mo_k_hartree_onthefly(this->Csk_ao_mo, this->map_psi, k1_list, k2_list, list_I, list_J,
-                {"V","O","O","V"}, (std::size_t)nocc, (std::size_t)nvirt, "Vs_", {2,3,1,0}); // (aijb) -> (jbia)
-        //    Vk = LR_lri.lri.cal_cvc_mo_k_hartree(Csk_vo_k1, Csk_ov_k2, k1_list, k2_list, list_I, list_J,
-        //                                         "Vs_", {2,3,1,0}); // (aijb) -> (jbia)
+                {"O","V","O","V"}, (std::size_t)nocc, (std::size_t)nvirt, "Vs_", true);
         ModuleBase::timer::tick("MolecularLRI", "cal_hartree_for_A");
         this->transform_k_global(m_global, Vk);
     }
     void cal_hartree_for_B(std::vector<T>& m_global)
     {
-        //TCsk_mo<T> Csk_vo_k1 = slice_Csk_mo(nocc, nvirt, LR::MO_TYPE::OV, "VOk1", this->k1_list, this->k1_list, this->list_I);
-        //TCsk_mo<T> Csk_vo_k2 = slice_Csk_mo(nocc, nvirt, LR::MO_TYPE::OV, "VOk2", this->k2_list, this->k2_list, this->list_J);
-
         ModuleBase::TITLE("MolecularLRI", "cal_hartree_for_B");
         ModuleBase::timer::tick("MolecularLRI", "cal_hartree_for_B");
         std::map<Tk, std::map<Tk, RI::Tensor<T>>>
             Vk = LR_lri.lri.cal_cvc_mo_k_hartree_onthefly(this->Csk_ao_mo, this->map_psi, k1_list, k2_list, list_I, list_J,
-                {"V","O","V","O"}, (std::size_t)nocc, (std::size_t)nvirt, "Vs_", {3,2,1,0}); // (aibj) -> (jbia)
-        //    Vk = LR_lri.lri.cal_cvc_mo_k_hartree(Csk_vo_k1, Csk_vo_k2, k1_list, k2_list, list_I, list_J,
-        //                                         "Vs_", {3,2,1,0}); // (aibj) -> (jbia)
+                {"O","V","O","V"}, (std::size_t)nocc, (std::size_t)nvirt, "Vs_", false);
         ModuleBase::timer::tick("MolecularLRI", "cal_hartree_for_B");
         this->transform_k_global(m_global, Vk);
     }
@@ -154,18 +144,30 @@ protected:
     // <k, <I, <J, tesnor{nabfs, nmo1, nmo2}>>>
     TLRIk<T> cal_Csk_ao(const TLRI<T>& CsR_ao, const std::vector<Tk>& k_list, const std::vector<TA>& list_IJ);
 
+    // <k, <iat, tesnor{nabfs, nw, nmo}>>
+    TCsk_ao_mo<T> cal_Csk_ao_mo(const UnitCell& ucell,
+        const TLRIk<T>& Csk_ao,
+        const std::vector<Tk>& k_list,
+        const std::vector<TA>& list_IJ);
+    
+    // transform total psi to map type according k coordinate and atom index
+    std::map<Tk, std::map<TA, RI::Tensor<T>>> transform_psi_k(const psi::Psi<T>& psi_ks,
+        const std::vector<Tk>& k_list);
+    
+    /// ===== Below are functions not used, and reserver for reference =====
+    
+    // slice psi part according to imo and nmo, and return map type
+    std::map<Tk, std::map<TA, RI::Tensor<T>>> slice_psi_k(const psi::Psi<T>& psi_ks,
+            const int imo,
+            const std::size_t nmo,
+            const std::vector<Tk>& k_list);
+    
     // <{k1, k2}, <iat, tesnor{nabfs, nmo1, nmo2}>>
     TCsk_mo<T> cal_Csk_mo(const UnitCell& ucell,
                           const TLRIk<T>& Csk_ao,
                           const psi::Psi<T>& psi_ks,
                           const std::vector<Tk>& k_list,
                           const std::vector<TA>& list_IJ);
-
-    // <k, <iat, tesnor{nabfs, nw, nmo}>>
-    TCsk_ao_mo<T> cal_Csk_ao_mo(const UnitCell& ucell,
-                                const TLRIk<T>& Csk_ao,
-                                const std::vector<Tk>& k_list,
-                                const std::vector<TA>& list_IJ);
 
     // slice Csk_mo according to k1_list and k2_list
     TCsk_mo<T> slice_Csk_mo(const int nocc,
@@ -187,15 +189,6 @@ protected:
                                   const std::vector<Tk>& kmo2_list);
 
     void print_Csk_mo_max(const TCsk_mo<T>& Csk_mo, const std::string file_name);
-
-    // transform total psi to map type according k coordinate and atom index
-    std::map<Tk, std::map<TA, RI::Tensor<T>>> transform_psi_k(const psi::Psi<T>& psi_ks,
-                                                              const std::vector<Tk>& k_list);
-    // slice psi part according to imo and nmo, and return map type
-    std::map<Tk, std::map<TA, RI::Tensor<T>>> slice_psi_k(const psi::Psi<T>& psi_ks,
-                                                          const int imo,
-                                                          const std::size_t nmo,
-                                                          const std::vector<Tk>& k_list);
 
     const UnitCell& ucell;
     const int nk;

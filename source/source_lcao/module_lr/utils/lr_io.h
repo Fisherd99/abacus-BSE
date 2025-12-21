@@ -34,12 +34,27 @@ inline void read_one_data(std::ifstream& ifs, std::complex<double>& data)
     data = std::complex<double>(real, imag);
 }
 
-inline void parse_band_out_file(const std::string& file, int& nbands_file, int& nk_file, int& nspin_file)
+inline void parse_band_out_file(const std::string& file, int& nbands_file, int& nk_file, int& nspin_file, int& nocc_file)
 {
     std::ifstream ifs(file);
     if (!ifs) throw std::runtime_error(file + " not found");
+    std::string tmp, line;
+    double occ;
+    int nocc_count = 0;
 
     ifs >> nk_file >> nspin_file >> nbands_file;
+    for (int i = 0; i < 4; ++i) {std::getline(ifs, tmp); } //skip 4 lines
+
+    while (ifs.peek() != EOF)
+    {
+        std::getline(ifs, line);
+        std::istringstream iss(line);
+        
+        iss >> tmp >> occ;
+        if (occ > 0.1) nocc_count++;
+        else if (occ < 0.1) break;
+    }
+    nocc_file = nocc_count;
 }
 
 class RI_kRlist

@@ -108,22 +108,25 @@ ESolver_BSE<T, TR>::ESolver_BSE(const Input_para& inp, UnitCell& ucell) :
                          search_radius,
                          PARAM.inp.test_atom_input);
     // new_version_GINT
-    this->gint_info_.reset(new ModuleGint::GintInfo(this->pw_big->nbx,
-                                              this->pw_big->nby,
-                                              this->pw_big->nbz,
-                                              this->pw_rho->nx,
-                                              this->pw_rho->ny,
-                                              this->pw_rho->nz,
-                                              0,
-                                              0,
-                                              this->pw_big->nbzp_start,
-                                              this->pw_big->nbx,
-                                              this->pw_big->nby,
-                                              this->pw_big->nbzp,
-                                              orb.Phi,
-                                              ucell,
-                                              this->gd));
-    ModuleGint::Gint::set_gint_info(this->gint_info_.get());
+    if (this->input.ri_hartree_benchmark == "none")
+    {
+        this->gint_info_.reset(new ModuleGint::GintInfo(this->pw_big->nbx,
+            this->pw_big->nby,
+            this->pw_big->nbz,
+            this->pw_rho->nx,
+            this->pw_rho->ny,
+            this->pw_rho->nz,
+            0,
+            0,
+            this->pw_big->nbzp_start,
+            this->pw_big->nbx,
+            this->pw_big->nby,
+            this->pw_big->nbzp,
+            orb.Phi,
+            ucell,
+            this->gd));
+            ModuleGint::Gint::set_gint_info(this->gint_info_.get());
+    }
     // new_version_GINT
 
     this->mo_lri = LR_Util::make_unique<MolecularLRI<T>>(this->ucell,
@@ -177,7 +180,7 @@ void ESolver_BSE<T, TR>::exx_init()
                                           RI_Util::Vector3_to_array3(this->ucell.a2),
                                           RI_Util::Vector3_to_array3(this->ucell.a3)};
     const std::array<Tcell, 3> period = {this->kv.nmp[0], this->kv.nmp[1], this->kv.nmp[2]};
-    this->mo_lri->LR_lri.set_parallel(MPI_COMM_WORLD, atoms_pos, latvec, period); // only for pass in MPI_Comm_WORLD, others are not used
+    this->mo_lri->LR_lri.set_parallel(MPI_COMM_WORLD, atoms_pos, latvec, period);
 
     // const std::array<Tcell,Ndim> period_Vs = LRI_CV_Tools::cal_latvec_range<Tcell>(1+this->info.ccp_rmesh_times,
     // ucell, orb_cutoff_); 
@@ -260,6 +263,12 @@ void ESolver_BSE<T, TR>::runner(UnitCell& ucell, const int istep)
                 std::cout << "eigenvalues: (Ry)" << std::endl;
                 int write_nstates = std::min(this->nstates, 20);
                 LR_Util::print_value(&this->tda_ene[is * this->nstates], write_nstates);
+                std::cout << "eigenvalues: (eV)" << std::endl;
+                for (int i = 0;i < write_nstates; ++i)
+                {
+                    std::cout << this->tda_ene[is * this->nstates + i] * ModuleBase::Ry_to_eV << " ";
+                }
+                std::cout << std::endl;
                 std::cout << "Excition binding energies (eV):" << (direct_gap - tda_ene[is * this->nstates]) * ModuleBase::Ry_to_eV << std::endl;
 
                 if (this->input.out_wfc_lr) {
@@ -276,6 +285,11 @@ void ESolver_BSE<T, TR>::runner(UnitCell& ucell, const int istep)
                 std::cout << "eigenvalues: (Ry)" << std::endl;
                 int write_nstates = std::min(this->nstates, 20);
                 LR_Util::print_value(&this->full_ene[is * this->nstates], write_nstates);
+                for (int i = 0;i < write_nstates; ++i)
+                {
+                    std::cout << this->full_ene[is * this->nstates + i] * ModuleBase::Ry_to_eV << " ";
+                }
+                std::cout << std::endl;
                 std::cout << "Excition binding energies (eV):" << (direct_gap - full_ene[is * this->nstates]) * ModuleBase::Ry_to_eV << std::endl;
 
                 if (this->input.out_wfc_lr) {
@@ -431,8 +445,9 @@ void ESolver_BSE<T, TR>::read_ks_wfc()
     int nbands_file = 0;
     int nk_file = 0;
     int nspin_file = 0;
+    int nocc_file = 0;
     int nspin_tmp = PARAM.inp.nspin == 2 ? 2 : 1;
-    LR_IO::parse_band_out_file("band_out", nbands_file, nk_file, nspin_file);
+    LR_IO::parse_band_out_file("band_out", nbands_file, nk_file, nspin_file, nocc_file);
     if (nk_file != this->nk) {
         std::cout << "nk in `band_out`: " << nk_file << ", nk in BSE: " << this->nk << std::endl;
         ModuleBase::WARNING_QUIT("ESolver_BSE", "The nk in band_out is not consistent with BSE::nk.");
@@ -446,7 +461,15 @@ void ESolver_BSE<T, TR>::read_ks_wfc()
             this->eig_gw(iks, ib) = eig_gw_info[iks * this->nbands *3 + ib * 3 + 2];
         }
         double cbm = this->eig_gw(iks, this->nocc[0]);
+        for (int ib = this->nocc[0]; ib < this->nbands; ++ib) { // in case of non-ordered bands
+            double e = this->eig_gw(iks, ib);
+            if (e < cbm) cbm = e;
+        }
         double vbm = this->eig_gw(iks, this->nocc[0]-1);
+        for (int ib = 0; ib < this->nocc[0]-1; ++ib) {
+            double e = this->eig_gw(iks, ib);
+            if (e > vbm) vbm = e;
+        }
         if (iks == 0) {
             this->cbm_energy = cbm;
             this->vbm_energy = vbm;

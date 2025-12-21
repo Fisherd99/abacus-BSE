@@ -108,28 +108,8 @@ void LR::ESolver_LR<T, TR>::set_dimension()
     this->nspin = PARAM.inp.nspin;
     this->nstates = input.lr_nstates;
     this->nbasis = PARAM.globalv.nlocal;
-    // calculate the number of occupied and unoccupied states
-    // which determines the basis size of the excited states
+    int ks_nbands = PARAM.inp.nbands;
     this->nocc_max = LR_Util::cal_nocc(LR_Util::cal_nelec(ucell));
-    this->nocc_in = std::max(1, std::min(input.nocc, this->nocc_max));
-    this->nvirt_in = PARAM.inp.nbands - this->nocc_max;   //nbands-nocc
-    if (input.nvirt > this->nvirt_in) { GlobalV::ofs_warning << "ESolver_LR: input nvirt is too large to cover by nbands, set nvirt = nbands - nocc = " << this->nvirt_in << std::endl; }
-    else if (input.nvirt > 0) { this->nvirt_in = input.nvirt; }
-    this->nbands = this->nocc_in + this->nvirt_in;
-    this->nk = PARAM.inp.nspin == 2 ? this->kv.get_nks() / 2 : this->kv.get_nks();
-    this->nocc.resize(nspin, nocc_in);
-    this->nvirt.resize(nspin, nvirt_in);
-    if (this->nstates <= 0) { 
-        this->nstates = nk * nocc_in * nvirt_in;
-        GlobalV::ofs_running << "ESolver_LR: lr_nstates <= 0, set nstates = nk * nocc * nvirt = " << this->nstates << std::endl;
-    }
-    for (int is = 0;is < nspin;++is) { this->npairs.push_back(nocc[is] * nvirt[is]); }
-    GlobalV::ofs_running << "Setting LR-TDDFT parameters: " << std::endl;
-    GlobalV::ofs_running << "number of occupied bands: " << nocc_in << std::endl;
-    GlobalV::ofs_running << "number of virtual bands: " << nvirt_in << std::endl;
-    GlobalV::ofs_running << "number of Atom orbitals (LCAO-basis size): " << this->nbasis << std::endl;
-    GlobalV::ofs_running << "number of KS bands: " << this->eig_ks.nc << std::endl;
-    GlobalV::ofs_running << "number of excited states to be solved: " << this->nstates << std::endl;
     if (input.ri_hartree_benchmark == "aims" || input.ri_hartree_benchmark == "aims-librpa"
         && !input.aims_nbasis.empty())
     {
@@ -146,7 +126,37 @@ void LR::ESolver_LR<T, TR>::set_dimension()
             this->ucell.atoms[it].nw = input.aims_nbasis[it];
         }
         this->ucell.set_iat2iwt(1/*npol*/); // update iat2iwt for aims_nbasis 25-05-23
+
+        int nbands_file = 0;
+        int nk_file = 0;
+        int nspin_file = 0;
+        int nocc_file = 0;
+        LR_IO::parse_band_out_file("band_out", nbands_file, nk_file, nspin_file, nocc_file);
+        std::cout << "nocc from band_out: " << nocc_file << std::endl;
+        ks_nbands = nbands_file;
+        this->nocc_max = nocc_file;
     }
+    // calculate the number of occupied and unoccupied states
+    // which determines the basis size of the excited states    
+    this->nocc_in = std::max(1, std::min(input.nocc, this->nocc_max));
+    this->nvirt_in = ks_nbands - this->nocc_max;   //nbands-nocc
+    if (input.nvirt > this->nvirt_in) { GlobalV::ofs_running << "ESolver_LR: input nvirt is too large to cover by nbands, set nvirt = nbands - nocc = " << this->nvirt_in << std::endl; }
+    else if (input.nvirt > 0) { this->nvirt_in = input.nvirt; }
+    this->nbands = this->nocc_in + this->nvirt_in;
+    this->nk = PARAM.inp.nspin == 2 ? this->kv.get_nks() / 2 : this->kv.get_nks();
+    this->nocc.resize(nspin, nocc_in);
+    this->nvirt.resize(nspin, nvirt_in);
+    if (this->nstates <= 0) { 
+        this->nstates = nk * nocc_in * nvirt_in;
+        GlobalV::ofs_running << "ESolver_LR: lr_nstates <= 0, set nstates = nk * nocc * nvirt = " << this->nstates << std::endl;
+    }
+    for (int is = 0;is < nspin;++is) { this->npairs.push_back(nocc[is] * nvirt[is]); }
+    GlobalV::ofs_running << "Setting LR-TDDFT parameters: " << std::endl;
+    GlobalV::ofs_running << "number of occupied bands: " << nocc_in << std::endl;
+    GlobalV::ofs_running << "number of virtual bands: " << nvirt_in << std::endl;
+    GlobalV::ofs_running << "number of Atom orbitals (LCAO-basis size): " << this->nbasis << std::endl;
+    GlobalV::ofs_running << "number of KS bands: " << this->eig_ks.nc << std::endl;
+    GlobalV::ofs_running << "number of excited states to be solved: " << this->nstates << std::endl;
 }
 
 template<typename T, typename TR>

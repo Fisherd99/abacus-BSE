@@ -13,9 +13,10 @@ RI_kRlist::RI_kRlist(const std::string& file, const UnitCell& ucell, K_Vectors* 
     const TC period = RI_Util::get_Born_vonKarmen_period(*klist);
     this->Rlist = RI_Util::get_Born_von_Karmen_cells(period);
     std::cout << "Rlist:" << std::endl;
+    int count = 0;
     for (const auto& iR: Rlist)
     {
-        std::cout << "iR:" << iR[0] << " " << iR[1] << " " << iR[2] << std::endl;
+        std::cout << "iR=" << count <<": "<< iR[0] << " " << iR[1] << " " << iR[2] << std::endl;
     }
 };
 
@@ -342,7 +343,7 @@ TLRI<TVs> read_coulomb_mat_k(const std::string& path, const TLRI<TCs>& Cs, const
     }
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "read Vq files. Now convert Vq to VR.");
 #ifdef _OPENMP
-#pragma omp parallel for schedule(static) collapse(3)
+#pragma omp parallel for schedule(dynamic) collapse(3)
 #endif
     for (const TC& R : kRlist.Rlist )
     {
@@ -460,14 +461,14 @@ TLRI<TVs> read_coulomb_mat_general_k(const std::string& path, const TLRI<TCs>& C
         }
     }
 #ifdef _OPENMP
-#pragma omp parallel for schedule(static) collapse(3)
+#pragma omp parallel for schedule(dynamic) collapse(3)
 #endif
     for (const TC& R : kRlist.Rlist )
     {
-#ifdef _OPENMP
-#pragma omp critical
-        std::cout<<"thread"<< omp_get_thread_num() << "convert V: R="<<R[0]<<" "<<R[1]<<" "<<R[2]<<std::endl;
-#endif
+// #ifdef _OPENMP
+// #pragma omp critical
+//         std::cout<<"thread"<< omp_get_thread_num() << "convert V: R="<<R[0]<<" "<<R[1]<<" "<<R[2]<<std::endl;
+// #endif
         for (int iat1 = 0;iat1 < nat;++iat1)
         {
             for (int iat2 = 0;iat2 < nat;++iat2)

@@ -114,9 +114,9 @@ namespace LR
         for (int ik = 0;ik < nk;++ik) { DMk_trans_pointer[ik] = &DMk_trans_vector[ik]; }
         // if multi-k, DM_trans(TR=double) -> Ds_trans(TR=T=complex<double>)
         std::vector<std::map<TA, std::map<TAC, RI::Tensor<T>>>> Ds_trans =
-            aims_nbasis.empty() ?
-            RI_2D_Comm::split_m2D_ktoR<T>(ucell,this->kv, DMk_trans_pointer, this->pmat, 1)
-            : RI_Benchmark::split_Ds(DMk_trans_vector, aims_nbasis, ucell); //0.5 will be multiplied
+            // aims_nbasis.empty() ? // ucell.nw is updated, abandoned 25-05-23
+            RI_2D_Comm::split_m2D_ktoR<T>(ucell,this->kv, DMk_trans_pointer, this->pmat, 1);
+            //: RI_Benchmark::split_Ds(DMk_trans_vector, aims_nbasis, ucell); //0.5 will be multiplied
         // LR_Util::print_CV(Ds_trans[0], "Ds_trans in OperatorLREXX", 1e-10);
         
         // 2. cal_Hs

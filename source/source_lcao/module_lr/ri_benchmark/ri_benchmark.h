@@ -31,9 +31,7 @@ namespace RI_Benchmark
         const psi::Psi<TK>& wfc_ks,
         const int& nocc,
         const int& nvirt,
-        const int& occ_first=false,
-        const bool& read_from_aims=false,
-        const std::vector<int>& aims_nbasis={});
+        const int& occ_first=false);
 
     /// A=CVC, sum over atom quads
     template <typename TK, typename TR>

@@ -55,28 +55,25 @@ namespace RI_Benchmark
         const psi::Psi<TK>& wfc_ks,
         const int& nocc,
         const int& nvirt,
-        const int& occ_first,
-        const bool& read_from_aims,
-        const std::vector<int>& aims_nbasis)
+        const int& occ_first)
     {
         // assert(wfc_ks.get_nk() == 1);   // currently only gamma-only is supported
         assert(nocc + nvirt <= wfc_ks.get_nbands());
-        const bool use_aims_nbasis = (read_from_aims && !aims_nbasis.empty());
         TLRI<TK> Cs_mo;
         int iw1 = 0;
         for (auto& c1 : Cs_ao)
         {
             const int& iat1 = c1.first;
             const int& it1 = ucell.iat2it[iat1];
-            const int& nw1 = (use_aims_nbasis ? aims_nbasis[it1] : ucell.atoms[it1].nw);
-            if (!use_aims_nbasis) { assert(iw1 == ucell.get_iat2iwt()[iat1]); }
+            const int& nw1 = ucell.atoms[it1].nw;
+            assert(iw1 == ucell.get_iat2iwt()[iat1]);
             int iw2 = 0;
             for (auto& c2 : c1.second)
             {
                 const int& iat2 = c2.first.first;
                 const int& it2 = ucell.iat2it[iat2];
-                const int& nw2 = (use_aims_nbasis ? aims_nbasis[it2] : ucell.atoms[it2].nw);
-                if (!use_aims_nbasis) { assert(iw2 == ucell.get_iat2iwt()[iat2]); }
+                const int& nw2 = ucell.atoms[it2].nw;
+                assert(iw2 == ucell.get_iat2iwt()[iat2]);
 
                 const auto& tensor_ao = c2.second;
                 const size_t& nabf = tensor_ao.shape[0];
@@ -377,6 +374,7 @@ namespace RI_Benchmark
         }
         return true;
     }
+    // since ucell.nw is updated from aims_nbasis, this function is abandoned 25-05-23
     template <typename TR>
     std::vector<TLRI<TR>> split_Ds(const std::vector<std::vector<TR>>& Ds, const std::vector<int>& aims_nbasis, const UnitCell& ucell) // vector index: ispin
     {

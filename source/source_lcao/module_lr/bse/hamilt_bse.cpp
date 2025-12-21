@@ -108,7 +108,7 @@ void HamiltBSE<T>::cal_V_for_A(){
     }
     this->VA_global.resize( this->ndim * this->ndim, 0.0);
     if (this->ri_hartree_benchmark == "aims" || this->ri_hartree_benchmark == "abacus") {
-        throw std::runtime_error("this BSE routine only supports aims/abacus-librpa benchmark");
+        throw std::runtime_error("this BSE routine only supports aims-librpa/abacus-librpa benchmark");
     }
     else if (PARAM.inp.bse_ri_hartree || this->ri_hartree_benchmark =="aims-librpa" || this->ri_hartree_benchmark == "abacus-librpa") {
         std::cout << "Calculating Hartree term for A with RI approximation" << std::endl;
@@ -191,7 +191,7 @@ void HamiltBSE<T>::cal_V_for_B(){
     }
     this->VB_global.resize( this->ndim * this->ndim, 0.0);
     if (this->ri_hartree_benchmark == "aims" || this->ri_hartree_benchmark == "abacus") {
-        throw std::runtime_error("this BSE routine only supports aims/abacus-librpa benchmark");
+        throw std::runtime_error("this BSE routine only supports aims-librpa/abacus-librpa benchmark");
     }
     else if (PARAM.inp.bse_ri_hartree || this->ri_hartree_benchmark =="aims-librpa" || this->ri_hartree_benchmark == "abacus-librpa") {
         std::cout << "Calculating Hartree term for B with RI approximation" << std::endl;
@@ -411,7 +411,7 @@ void HamiltBSE<T>::init_bse_matrix(const bool is_full, const int & st_index){
 template <typename T>
 void HamiltBSE<T>::tda_solver(const int & st_index, const int& nstates, double* ene_out, T* X_out){
     ModuleBase::TITLE("HamiltBSE", "tda_solver");
-    ModuleBase::timer::tick("HamiltBSE", "tda_solver");
+    ModuleBase::timer::tick("HamiltBSE", "elpa_tda_solver");
 
     std::fill(this->BSE_A_global.begin(), this->BSE_A_global.end(), 0.0);
 
@@ -440,7 +440,7 @@ void HamiltBSE<T>::tda_solver(const int & st_index, const int& nstates, double* 
                             this->nocc, this->nvirt, this->pX, false/*openshell*/);
     
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "BSE TDA solver");
-    ModuleBase::timer::tick("HamiltBSE", "tda_solver");
+    ModuleBase::timer::tick("HamiltBSE", "elpa_tda_solver");
 }
 
 template <>
@@ -449,7 +449,7 @@ void HamiltBSE<double>::full_solver(const int& st_index, const int& nstates,
                                     double* X_out,
                                     double* Y_out){
     ModuleBase::TITLE("HamiltBSE", "full_solver(double)");
-    ModuleBase::timer::tick("HamiltBSE", "full_solver(double)");
+    ModuleBase::timer::tick("HamiltBSE", "elpa_full_solver(double)");
 
     this->init_bse_matrix(true, st_index);
 
@@ -486,7 +486,7 @@ void HamiltBSE<double>::full_solver(const int& st_index, const int& nstates,
                             this->nocc, this->nvirt, this->pX, false/*openshell*/);
 
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "BSE Full solver");
-    ModuleBase::timer::tick("HamiltBSE", "full_solver(double)");
+    ModuleBase::timer::tick("HamiltBSE", "elpa_full_solver(double)");
 }
 
 template <>
@@ -495,7 +495,7 @@ void HamiltBSE<std::complex<double>>::full_solver(const int& st_index, const int
                                                     std::complex<double>* X_out,
                                                     std::complex<double>* Y_out){
     ModuleBase::TITLE("HamiltBSE", "full_solver(complex)");
-    ModuleBase::timer::tick("HamiltBSE", "full_solver(complex)");
+    ModuleBase::timer::tick("HamiltBSE", "elpa_full_solver(complex)");
 
     this->init_bse_matrix(true, st_index);
 
@@ -530,7 +530,7 @@ void HamiltBSE<std::complex<double>>::full_solver(const int& st_index, const int
                             this->nocc, this->nvirt, this->pX, false/*openshell*/);
     
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "BSE FULL solver");
-    ModuleBase::timer::tick("HamiltBSE", "full_solver(complex)");
+    ModuleBase::timer::tick("HamiltBSE", "elpa_full_solver(complex)");
 }
 
 template<>
