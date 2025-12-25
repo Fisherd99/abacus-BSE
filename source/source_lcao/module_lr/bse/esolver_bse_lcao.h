@@ -7,6 +7,7 @@
 #include "source_lcao/module_lr/lr_spectrum.h"
 #include "source_lcao/module_lr/ri_benchmark/ri_benchmark.h"
 #include "source_lcao/module_lr/utils/lr_io.h"
+#include "source_lcao/module_lr/utils/exciton_plotter.h"
 #include "source_lcao/module_ri/LRI_CV_Tools.h"
 
 namespace BSE

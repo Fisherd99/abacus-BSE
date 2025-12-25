@@ -27,8 +27,8 @@ std::vector<std::complex<double>> cal_velocity_mo(const UnitCell& ucell,
                                                 const std::vector<int> nocc, 
                                                 const std::vector<int> nvirt)
 {
-    ModuleBase::TITLE("LR::LR_Util", "cal_velocity_mo");
-    ModuleBase::timer::tick("LR::LR_Util", "cal_velocity_mo");
+    ModuleBase::TITLE("LR_Util", "cal_velocity_mo");
+    ModuleBase::timer::tick("LR_Util", "cal_velocity_mo");
     std::cout<<"Calculating velocity matrix in KS presentation..."<<std::endl;
     // get_velocity_matrix_R(ucell, gd_, pmat, two_center_bundle_);
     LCAO_Orbitals orb;
@@ -86,15 +86,15 @@ std::vector<std::complex<double>> cal_velocity_mo(const UnitCell& ucell,
             }
         }
 #ifdef __MPI
-        ao_to_mo_pblas(vk, pmat, c_psi_ks, pc, nbasis,
+        LR::ao_to_mo_pblas(vk, pmat, c_psi_ks, pc, nbasis,
                         nocc[0], nvirt[0], pmo, v_mo.data(),
                         false, // add_on
-                        LR::MO_TYPE::ALL);
+                        LR_Util::MO_TYPE::ALL);
 #else
-        ao_to_mo_blas(vk, c_psi_ks, 
+        LR::ao_to_mo_blas(vk, c_psi_ks, 
                         nocc[0], nvirt[0], v_mo.data(),
                         false , //add_on
-                        LR::MO_TYPE::ALL);
+                        LR_Util::MO_TYPE::ALL);
 #endif
         // gather local vk to global velocity_mo
         for (int is = 0; is < nspin_tmp; ++is)
@@ -111,7 +111,7 @@ std::vector<std::complex<double>> cal_velocity_mo(const UnitCell& ucell,
         }
     }//id
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "Finish velocity matrix in KS presentation.");
-    ModuleBase::timer::tick("LR::LR_Util", "cal_velocity_mo");
+    ModuleBase::timer::tick("LR_Util", "cal_velocity_mo");
     return velocity_mo;
 }
 
@@ -127,8 +127,8 @@ std::vector<std::complex<double>> cal_dipole_r_mo(const UnitCell& ucell,
                                                 const std::vector<int> nocc, 
                                                 const std::vector<int> nvirt)
 {
-    ModuleBase::TITLE("LR::LR_Util", "cal_dipole_r_mo");
-    ModuleBase::timer::tick("LR::LR_Util", "cal_dipole_r_mo");
+    ModuleBase::TITLE("LR_Util", "cal_dipole_r_mo");
+    ModuleBase::timer::tick("LR_Util", "cal_dipole_r_mo");
     std::cout<<"Calculating r-dipole matrix in KS presentation..."<<std::endl;
     LR_Util::rRFileReader rRReader (PARAM.globalv.global_readin_dir + "rr.csr",
         PARAM.globalv.global_readin_dir + "srs1_nao.csr", pmat, ucell, kv);
@@ -181,15 +181,15 @@ std::vector<std::complex<double>> cal_dipole_r_mo(const UnitCell& ucell,
             }
         }
 #ifdef __MPI
-        ao_to_mo_pblas(rk, pmat, c_psi_ks, pc, nbasis,
+        LR::ao_to_mo_pblas(rk, pmat, c_psi_ks, pc, nbasis,
                         nocc[0], nvirt[0], pmo, r_mo.data(),
                         false, // add_on
-                        LR::MO_TYPE::ALL);
+                        LR_Util::MO_TYPE::ALL);
 #else
-        ao_to_mo_blas(rk, c_psi_ks, 
+        LR::ao_to_mo_blas(rk, c_psi_ks, 
                         nocc[0], nvirt[0], r_mo.data(),
                         false , //add_on
-                        LR::MO_TYPE::ALL);
+                        LR_Util::MO_TYPE::ALL);
 #endif
         // gather local rk to global r_mo
         for (int is = 0; is < nspin_tmp; ++is)
@@ -206,7 +206,7 @@ std::vector<std::complex<double>> cal_dipole_r_mo(const UnitCell& ucell,
         }
     }//id
     std::cout<<"Finish r-dipole matrix in KS presentation."<<std::endl;
-    ModuleBase::timer::tick("LR::LR_Util", "cal_dipole_r_mo");
+    ModuleBase::timer::tick("LR_Util", "cal_dipole_r_mo");
     return dipole_mo;
 }
 

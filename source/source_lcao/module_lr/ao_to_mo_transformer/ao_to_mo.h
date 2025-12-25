@@ -1,6 +1,7 @@
 #pragma once
 #include <ATen/core/tensor.h>
 #include "source_psi/psi.h"
+#include "source_lcao/module_lr/utils/mo_type.h"
 #include <vector>
 #include <cassert>
 #ifdef __MPI
@@ -8,44 +9,6 @@
 #endif
 namespace LR
 {
-#ifndef MO_TYPE_H
-#define MO_TYPE_H
-    enum MO_TYPE { OO, VO, OV, VV, ALL };
-#endif
-/* the first index is contiguous in memory
-MO_TYPE: OO   VO    OV    VV    ALL
-nmo1     nocc nocc  nvirt nvirt nocc+nvirt
-nmo2     nocc nvirt nocc  nvirt nocc+nvirt
-imo1     0    0     nocc  nocc  0
-imo2     0    nocc  0     nocc  0
-*/
-    inline void set_dim(const MO_TYPE type, const int& nocc, const int& nvirt,
-        int& nmo1, int& nmo2, int& imo1, int& imo2)
-    {
-        switch(type)
-        {
-        case MO_TYPE::OO:
-            nmo1 = nocc; nmo2 = nocc; imo1 = 0; imo2 = 0;
-            break;
-        case MO_TYPE::VO:
-            nmo1 = nocc; nmo2 = nvirt; imo1 = 0; imo2 = nocc;
-            break;
-        case MO_TYPE::OV:
-            nmo1 = nvirt; nmo2 = nocc; imo1 = nocc; imo2 = 0;
-            break;
-        case MO_TYPE::VV:
-            nmo1 = nvirt; nmo2 = nvirt; imo1 = nocc; imo2 = nocc;
-            break;
-        case MO_TYPE::ALL:
-            nmo1 = nocc + nvirt;
-            nmo2 = nocc + nvirt;
-            imo1 = 0;
-            imo2 = 0;
-            break;
-        default:
-            throw std::runtime_error("Error in LR::set_dim: unknown MO_TYPE");
-        }
-    }
     template<typename T>
     void ao_to_mo_forloop_serial(
         const std::vector<container::Tensor>& mat_ao,
@@ -53,7 +16,7 @@ imo2     0    nocc  0     nocc  0
         const int& nocc,
         const int& nvirt,
         T* const mat_mo,
-        const MO_TYPE type = VO);
+        const LR_Util::MO_TYPE type = LR_Util::VO);
     template<typename T>
     void ao_to_mo_blas(
         const std::vector<container::Tensor>& mat_ao,
@@ -62,7 +25,7 @@ imo2     0    nocc  0     nocc  0
         const int& nvirt,
         T* const mat_mo,
         const bool add_on = true,
-        const MO_TYPE type = VO);
+        const LR_Util::MO_TYPE type = LR_Util::VO);
 #ifdef __MPI
     template<typename T>
     void ao_to_mo_pblas(
@@ -76,6 +39,6 @@ imo2     0    nocc  0     nocc  0
         const Parallel_2D& pmat_mo,
         T* const mat_mo,
         const bool add_on = true,
-        const MO_TYPE type = VO);
+        const LR_Util::MO_TYPE type = LR_Util::VO);
 #endif
 }

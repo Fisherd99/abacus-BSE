@@ -11,15 +11,13 @@ namespace LR
         const int& nocc,
         const int& nvirt,
         double* mat_mo,
-        const MO_TYPE type)
+        const LR_Util::MO_TYPE type)
     {
         ModuleBase::TITLE("LR", "ao_to_mo_forloop_serial");
         const int nks = mat_ao.size();
         const int naos = coeff.get_nbasis();
-        const int nmo1 = type == MO_TYPE::VV ? nvirt : nocc;
-        const int nmo2 = type == MO_TYPE::OO ? nocc : nvirt;
-        const int imo1 = type == MO_TYPE::VV ? nocc : 0;
-        const int imo2 = type == MO_TYPE::OO ? 0 : nocc;
+        int nmo1, nmo2, imo1, imo2;
+        LR_Util::set_dim(type, nocc, nvirt, nmo1, nmo2, imo1, imo2);
 
         ModuleBase::GlobalFunc::ZEROS(mat_mo, nks * nmo1 * nmo2);
 
@@ -49,15 +47,13 @@ namespace LR
         const int& nocc,
         const int& nvirt,
         std::complex<double>* const mat_mo,
-        const MO_TYPE type)
+        const LR_Util::MO_TYPE type)
     {
         ModuleBase::TITLE("LR", "ao_to_mo_forloop_serial");
         const int nks = mat_ao.size();
         const int naos = coeff.get_nbasis();
-        const int nmo1 = type == MO_TYPE::VV ? nvirt : nocc;
-        const int nmo2 = type == MO_TYPE::OO ? nocc : nvirt;
-        const int imo1 = type == MO_TYPE::VV ? nocc : 0;
-        const int imo2 = type == MO_TYPE::OO ? 0 : nocc;
+        int nmo1, nmo2, imo1, imo2;
+        LR_Util::set_dim(type, nocc, nvirt, nmo1, nmo2, imo1, imo2);
 
         ModuleBase::GlobalFunc::ZEROS(mat_mo, nks * nmo1 * nmo2);
 
@@ -88,17 +84,13 @@ namespace LR
         const int& nvirt,
         double* mat_mo,
         const bool add_on,
-        const MO_TYPE type)
+        const LR_Util::MO_TYPE type)
     {
         ModuleBase::TITLE("LR", "ao_to_mo_blas");
         const int nks = mat_ao.size();
         const int naos = coeff.get_nbasis();        
-        int nmo1_set, nmo2_set, imo1_set, imo2_set;
-        set_dim(type, nocc, nvirt, nmo1_set, nmo2_set, imo1_set, imo2_set);
-        const int nmo1 = nmo1_set;
-        const int nmo2 = nmo2_set;
-        const int imo1 = imo1_set;
-        const int imo2 = imo2_set;
+        int nmo1, nmo2, imo1, imo2;
+        LR_Util::set_dim(type, nocc, nvirt, nmo1, nmo2, imo1, imo2);
 
         for (int isk = 0;isk < nks;++isk)
         {
@@ -131,17 +123,13 @@ namespace LR
         const int& nvirt,
         std::complex<double>* const mat_mo,
         const bool add_on,
-        const MO_TYPE type)
+        const LR_Util::MO_TYPE type)
     {
         ModuleBase::TITLE("LR", "ao_to_mo_blas");
         const int nks = mat_ao.size();
         const int naos = coeff.get_nbasis();
-        int nmo1_set, nmo2_set, imo1_set, imo2_set;
-        set_dim(type, nocc, nvirt, nmo1_set, nmo2_set, imo1_set, imo2_set);
-        const int nmo1 = nmo1_set;
-        const int nmo2 = nmo2_set;
-        const int imo1 = imo1_set;
-        const int imo2 = imo2_set;
+        int nmo1, nmo2, imo1, imo2;
+        LR_Util::set_dim(type, nocc, nvirt, nmo1, nmo2, imo1, imo2);
 
         for (int isk = 0;isk < nks;++isk)
         {

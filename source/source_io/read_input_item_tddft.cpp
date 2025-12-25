@@ -408,7 +408,7 @@ void ReadInput::item_lr_tddft()
     }
     {
         Input_Item item("bse_spin_types");
-        item.annotation = "which spin channel is calculated (can be 'singlet' and 'triplet')";
+        item.annotation = "which spin type is calculated (can be 'singlet', 'triplet', also for test 'rpa', 'ipa')";
 
         item.read_value = [](const Input_Item& item, Parameter& para) {
             size_t count = item.get_size();
@@ -417,7 +417,7 @@ void ReadInput::item_lr_tddft()
             for (int i = 0; i < count; i++) { ist.push_back(item.str_values[i]); }
             };
         item.reset_value = [](const Input_Item& item, Parameter& para) {
-            if (para.input.bse_spin_types.empty()) { para.input.bse_spin_types.push_back("singlet"); }
+            if (para.input.bse_spin_types.empty()) { para.input.bse_spin_types={"singlet","triplet"}; }
             };
         sync_stringvec(input.bse_spin_types, para.input.bse_spin_types.size(), "singlet");
         this->add_item(item);
@@ -432,6 +432,12 @@ void ReadInput::item_lr_tddft()
         Input_Item item("bse_continue");
         item.annotation = "which step to continue from previous BSE calculation";
         read_sync_int(input.bse_continue);
+        this->add_item(item);
+    }
+    {
+        Input_Item item("plot_istate");
+        item.annotation = "which state of exciton to be ploted";
+        read_sync_int(input.plot_istate);
         this->add_item(item);
     }
 }

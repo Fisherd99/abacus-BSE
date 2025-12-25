@@ -21,7 +21,7 @@ namespace LR
         const Parallel_2D& pmat_mo,
         double* mat_mo,
         const bool add_on,
-        const MO_TYPE type)
+        const LR_Util::MO_TYPE type)
     {
         ModuleBase::TITLE("LR", "ao_to_mo_pblas");
         assert(pmat_ao.comm() == pcoeff.comm() && pmat_ao.comm() == pmat_mo.comm());
@@ -30,7 +30,7 @@ namespace LR
 
         const int nks = mat_ao.size();
         int nmo1_set, nmo2_set, imo1_set, imo2_set;
-        set_dim(type, nocc, nvirt, nmo1_set, nmo2_set, imo1_set, imo2_set);
+        LR_Util::set_dim(type, nocc, nvirt, nmo1_set, nmo2_set, imo1_set, imo2_set);
         const int nmo1 = nmo1_set;
         const int nmo2 = nmo2_set;
         const int imo1 = imo1_set + 1;
@@ -80,7 +80,7 @@ namespace LR
         const Parallel_2D& pmat_mo,
         std::complex<double>* const mat_mo,
         const bool add_on,
-        const MO_TYPE type)
+        const LR_Util::MO_TYPE type)
     {
         ModuleBase::TITLE("LR", "ao_to_mo_pblas");
         assert(pmat_ao.comm() == pcoeff.comm() && pmat_ao.comm() == pmat_mo.comm());
@@ -89,7 +89,7 @@ namespace LR
 
         const int nks = mat_ao.size();
         int nmo1_set, nmo2_set, imo1_set, imo2_set;
-        set_dim(type, nocc, nvirt, nmo1_set, nmo2_set, imo1_set, imo2_set);
+        LR_Util::set_dim(type, nocc, nvirt, nmo1_set, nmo2_set, imo1_set, imo2_set);
         const int nmo1 = nmo1_set;
         const int nmo2 = nmo2_set;
         const int imo1 = imo1_set + 1;

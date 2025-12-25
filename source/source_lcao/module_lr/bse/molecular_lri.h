@@ -56,11 +56,11 @@ public:
     /// =============== calculation interface ====================
     void cal_W_for_A(std::vector<T>& m_global)
     {
-        //TCsk_mo<T> Csk_oo_k21 = slice_Csk_mo(nocc, nvirt, LR::MO_TYPE::OO, "OOk21", this->k2_list, this->k1_list, this->list_I);
-        //TCsk_mo<T> Csk_vv_k12 = slice_Csk_mo(nocc, nvirt, LR::MO_TYPE::VV, "VVk12", this->k1_list, this->k2_list, this->list_J);
+        //TCsk_mo<T> Csk_oo_k21 = slice_Csk_mo(nocc, nvirt, LR_Util::MO_TYPE::OO, "OOk21", this->k2_list, this->k1_list, this->list_I);
+        //TCsk_mo<T> Csk_vv_k12 = slice_Csk_mo(nocc, nvirt, LR_Util::MO_TYPE::VV, "VVk12", this->k1_list, this->k2_list, this->list_J);
     // check
-    // cal_Csk_mo_method2(ucell, Csk_ao, psi_ks, nocc, nvirt, LR::MO_TYPE::OO, "OO", this->k2_list, this->k1_list);
-    // cal_Csk_mo_method2(ucell, Csk_ao, psi_ks, nocc, nvirt, LR::MO_TYPE::VV, "VV", this->k1_list, this->k2_list);
+    // cal_Csk_mo_method2(ucell, Csk_ao, psi_ks, nocc, nvirt, LR_Util::MO_TYPE::OO, "OO", this->k2_list, this->k1_list);
+    // cal_Csk_mo_method2(ucell, Csk_ao, psi_ks, nocc, nvirt, LR_Util::MO_TYPE::VV, "VV", this->k1_list, this->k2_list);
         ModuleBase::TITLE("MolecularLRI", "cal_W_for_A");
         ModuleBase::timer::tick("MolecularLRI", "cal_W_for_A");
         std::map<Tk, std::map<Tk, RI::Tensor<T>>>
@@ -73,8 +73,8 @@ public:
     }
     void cal_W_for_B(std::vector<T>& m_global)
     {
-        //TCsk_mo<T> Csk_vo_k21 = slice_Csk_mo(nocc, nvirt, LR::MO_TYPE::OV, "VOk21", this->k2_list, this->k1_list, this->list_I);
-        //TCsk_mo<T> Csk_vo_k12 = slice_Csk_mo(nocc, nvirt, LR::MO_TYPE::OV, "VOk12", this->k1_list, this->k2_list, this->list_J);
+        //TCsk_mo<T> Csk_vo_k21 = slice_Csk_mo(nocc, nvirt, LR_Util::MO_TYPE::OV, "VOk21", this->k2_list, this->k1_list, this->list_I);
+        //TCsk_mo<T> Csk_vo_k12 = slice_Csk_mo(nocc, nvirt, LR_Util::MO_TYPE::OV, "VOk12", this->k1_list, this->k2_list, this->list_J);
 
         ModuleBase::TITLE("MolecularLRI", "cal_W_for_B");
         ModuleBase::timer::tick("MolecularLRI", "cal_W_for_B");
@@ -172,7 +172,7 @@ protected:
     // slice Csk_mo according to k1_list and k2_list
     TCsk_mo<T> slice_Csk_mo(const int nocc,
                             const int nvirt,
-                            const LR::MO_TYPE type,
+                            const LR_Util::MO_TYPE type,
                             const std::string type_str,
                             const std::vector<Tk>& kmo1_list,
                             const std::vector<Tk>& kmo2_list,
@@ -183,7 +183,7 @@ protected:
                                   const psi::Psi<T>& psi_ks,
                                   const int nocc,
                                   const int nvirt,
-                                  const LR::MO_TYPE type,
+                                  const LR_Util::MO_TYPE type,
                                   const std::string type_str,
                                   const std::vector<Tk>& kmo1_list,
                                   const std::vector<Tk>& kmo2_list);
@@ -251,12 +251,12 @@ public:
         // check Cs_ao
         LRI_CV_Tools::write_Cs_ao(Cs_ao, PARAM.globalv.global_out_dir + "Cs_ao_in_WR_" + std::to_string(GlobalV::MY_RANK));
 
-        this->CsR_oo_mo=cal_CsR_mo(ucell, Cs_ao, psi_ks_in, nocc, nvirt, LR::MO_TYPE::OO, "OO");
-        this->CsR_vv_mo=cal_CsR_mo(ucell, Cs_ao, psi_ks_in, nocc, nvirt, LR::MO_TYPE::VV, "VV");
+        this->CsR_oo_mo=cal_CsR_mo(ucell, Cs_ao, psi_ks_in, nocc, nvirt, LR_Util::MO_TYPE::OO, "OO");
+        this->CsR_vv_mo=cal_CsR_mo(ucell, Cs_ao, psi_ks_in, nocc, nvirt, LR_Util::MO_TYPE::VV, "VV");
 
         // check
-        //cal_CsR_mo_method2(ucell, Cs_ao, psi_ks_in, nocc, nvirt, LR::MO_TYPE::OO, "OO");
-        //cal_CsR_mo_method2(ucell, Cs_ao, psi_ks_in, nocc, nvirt, LR::MO_TYPE::VV, "VV");
+        //cal_CsR_mo_method2(ucell, Cs_ao, psi_ks_in, nocc, nvirt, LR_Util::MO_TYPE::OO, "OO");
+        //cal_CsR_mo_method2(ucell, Cs_ao, psi_ks_in, nocc, nvirt, LR_Util::MO_TYPE::VV, "VV");
         ModuleBase::timer::tick("MolecularWR", "MolecularWR");
     };
     ~MolecularWR() {}
@@ -288,7 +288,7 @@ public:
                           const psi::Psi<T>& psi_ks,
                           const int nocc,
                           const int nvirt,
-                          const LR::MO_TYPE type,
+                          const LR_Util::MO_TYPE type,
                           const std::string type_str);
 
     TCsR_mo<T> cal_CsR_mo_method2(const UnitCell& ucell,
@@ -296,7 +296,7 @@ public:
                                   const psi::Psi<T>& psi_ks,
                                   const int nocc,
                                   const int nvirt,
-                                  const LR::MO_TYPE type,
+                                  const LR_Util::MO_TYPE type,
                                   const std::string type_str);
 
     void print_CsR_mo_max(const TCsR_mo<T>& CsR_mo, const std::string file_name);

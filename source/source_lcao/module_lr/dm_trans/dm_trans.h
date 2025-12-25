@@ -2,6 +2,7 @@
 // use tensor or basematrix in the future
 #include <ATen/core/tensor.h>
 #include "source_psi/psi.h"
+#include "source_lcao/module_lr/utils/mo_type.h"
 #include <vector>
 #ifdef __MPI
 #include "source_base/parallel_2d.h"
@@ -9,17 +10,6 @@
 namespace LR
 {
 
-#ifndef MO_TYPE_H
-#define MO_TYPE_H
-    enum MO_TYPE { OO, VO, OV, VV, ALL };
-#endif
-/* the first index is contiguous in memory
-MO_TYPE: OO   VO    OV    VV    ALL(not used in dm_trans)
-nmo1     nocc nocc  nvirt nvirt nocc+nvirt
-nmo2     nocc nvirt nocc  nvirt nocc+nvirt
-imo1     0    0     nocc  nocc  0
-imo2     0    nocc  0     nocc  0
-*/
 #ifdef __MPI
 /// @brief calculate the 2d-block transition density matrix in AO basis using p?gemm
 /// \f[ \tilde{\rho}_{\mu_j\mu_b}=\sum_{jb}c_{j,\mu_j}X_{jb}c^*_{b,\mu_b} \f]
@@ -34,7 +24,7 @@ imo2     0    nocc  0     nocc  0
         const int nvirt,
         const Parallel_2D& pmat,
         const T factor = (T)1.0,
-        const MO_TYPE type = MO_TYPE::VO);
+        const LR_Util::MO_TYPE type = LR_Util::MO_TYPE::VO);
 #endif
 
     /// @brief calculate the 2d-block transition density matrix in AO basis using ?gemm
@@ -44,7 +34,7 @@ imo2     0    nocc  0     nocc  0
         const psi::Psi<T>& c,
         const int& nocc, const int& nvirt,
         const T factor = (T)1.0,
-        const MO_TYPE type = MO_TYPE::VO);
+        const LR_Util::MO_TYPE type = LR_Util::MO_TYPE::VO);
 
     // for test
     /// @brief calculate the 2d-block transition density matrix in AO basis using for loop (for test)
@@ -54,5 +44,5 @@ imo2     0    nocc  0     nocc  0
         const psi::Psi<T>& c,
         const int& nocc, const int& nvirt,
         const T factor = (T)1.0,
-        const MO_TYPE type = MO_TYPE::VO);
+        const LR_Util::MO_TYPE type = LR_Util::MO_TYPE::VO);
 }

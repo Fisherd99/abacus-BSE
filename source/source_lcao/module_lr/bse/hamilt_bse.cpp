@@ -157,7 +157,7 @@ void HamiltBSE<T>::cal_V_for_A(){
         #ifdef __MPI
                     std::vector<T> V_col_local( this->nk * this->pX[is].get_local_size(), 0.0); // V_col(bjk2)
                     LR::ao_to_mo_pblas(v_k_2d, this->pmat, psi_is, this->pc, this->naos,
-                                    nocc[is], nvirt[is], this->pX[is], V_col_local.data(), false, LR::MO_TYPE::VO);
+                                    nocc[is], nvirt[is], this->pX[is], V_col_local.data(), false, LR_Util::MO_TYPE::VO);
 
                     for (int ik1 = 0; ik1 < this->nk; ++ik1) {
                         LR_Util::gather_2d_to_full(this->pX[is],
@@ -166,7 +166,7 @@ void HamiltBSE<T>::cal_V_for_A(){
                             false, nvirt[is], nocc[is]);
                     }
         #else
-                    LR::ao_to_mo_blas(v_k_2d, psi_is, nocc[is], nvirt[is], this->VA_global.data()+bjk * this->ndim, false, LR::MO_TYPE::VO);
+                    LR::ao_to_mo_blas(v_k_2d, psi_is, nocc[is], nvirt[is], this->VA_global.data()+bjk * this->ndim, false, LR_Util::MO_TYPE::VO);
         #endif
                     ModuleBase::timer::tick("HamiltBSE", "cal_V_column_by_grid");
                 }
@@ -240,7 +240,7 @@ void HamiltBSE<T>::cal_V_for_B(){
         #ifdef __MPI
                     std::vector<T> V_col_local( this->nk * this->pX[is].get_local_size(), 0.0); // V_col(bjk2)
                     LR::ao_to_mo_pblas(v_k_2d, this->pmat, psi_is, this->pc, this->naos,
-                                    nocc[is], nvirt[is], this->pX[is], V_col_local.data(), false, LR::MO_TYPE::VO);
+                                    nocc[is], nvirt[is], this->pX[is], V_col_local.data(), false, LR_Util::MO_TYPE::VO);
 
                     for (int ik1 = 0; ik1 < this->nk; ++ik1) {
                         LR_Util::gather_2d_to_full(this->pX[is],
@@ -249,7 +249,7 @@ void HamiltBSE<T>::cal_V_for_B(){
                             false, nvirt[is], nocc[is]);
                     }
         #else
-                    LR::ao_to_mo_blas(v_k_2d, psi_is, nocc[is], nvirt[is], this->VB_global.data()+bjk * this->ndim, false, LR::MO_TYPE::VO);
+                    LR::ao_to_mo_blas(v_k_2d, psi_is, nocc[is], nvirt[is], this->VB_global.data()+bjk * this->ndim, false, LR_Util::MO_TYPE::VO);
         #endif
                     ModuleBase::timer::tick("HamiltBSE", "cal_V_column_by_grid");
                 }
@@ -415,12 +415,10 @@ void HamiltBSE<T>::tda_solver(const int & st_index, const int& nstates, double* 
 
     std::fill(this->BSE_A_global.begin(), this->BSE_A_global.end(), 0.0);
 
-    std::cout<<"solve tda for spin type: "<<this->spin_types[st_index]<<std::endl;
-    std::vector<T> global_X_tda(this->ndim * this->ndim, 0.0);
-    std::vector<double> ev(this->ndim, 0.0);
-
     this->init_bse_matrix(false, st_index);
 
+    std::vector<T> global_X_tda(this->ndim * this->ndim, 0.0);
+    std::vector<double> ev(this->ndim, 0.0);
     // this->pA.init(ndim, ndim, 1/*nb*/, MPI_COMM_WORLD, false/*dim0<dim1*/);
     LR_Util::setup_2d_division(this->pA, 1/*nb*/, ndim, ndim
         #ifdef __MPI

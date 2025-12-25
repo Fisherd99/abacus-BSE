@@ -10,6 +10,7 @@ if(ENABLE_LCAO)
     utils/lr_util_hcontainer.cpp
     utils/lr_util_rR_reader.cpp
     utils/lr_io.cpp
+    utils/exciton_plotter.cpp
     ao_to_mo_transformer/ao_to_mo_parallel.cpp
     ao_to_mo_transformer/ao_to_mo_serial.cpp
     dm_trans/dm_trans_parallel.cpp

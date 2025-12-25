@@ -353,17 +353,18 @@ struct Input_para
     std::vector<double> abs_wavelen_range = {}; ///< the range of wavelength(nm) to output the absorption spectrum
     double abs_broadening = 0.01;               ///< the broadening (eta) for LR-TDDFT absorption spectrum
     std::string abs_gauge
-        = "length"; ///< whether to use length or velocity gauge to calculate the absorption spectrum in LR-TDDFT
+        = "velocity"; ///< whether to use length or velocity gauge to calculate the absorption spectrum in LR-TDDFT
     std::string ri_hartree_benchmark = "none"; ///< whether to use the RI approximation for the Hartree potential in
                                                ///< LR-TDDFT for benchmark (with FHI-aims/ABACUS read-in style)
     std::vector<int> aims_nbasis
         = {}; ///< the number of basis functions for each atom type used in FHI-aims (for benchmark)
     std::string bse_tda = "tda"; ///< TDA type can be: "tda", "full", "both"
-    std::vector<std::string> bse_spin_types = {"singlet", "triplet"}; ///< spin type for close-shell case to be calculated
+    std::vector<std::string> bse_spin_types = {"singlet", "triplet"}; ///< spin types for close-shell case to be calculated
     bool bse_ri_hartree = true; ///< whether to use RI approximation for Hartree term in BSE
     int bse_continue = 0; ///< which step to continue from previous BSE calculation
-                          ///< 0: new; 1: continue from A_V; 2: continue from A_V and A_W
-
+                          ///< 0: new; 1: continue from A_V; 2: A_V and A_W; 3: A_V, A_W and B_V; 4: A_V, A_W, B_V and B_W
+    int plot_istate = 0; ///< the index of excited state to be plotted (starting from 0)
+    
     // ==============   #Parameters (11.Output) ===========================
     bool out_stru = false;                ///< outut stru file each ion step
     int out_freq_elec = 0;                ///< the frequency of electronic iter to output charge and wavefunction

@@ -433,19 +433,19 @@ TEST_F(InputParaTest, ParaRead)
     EXPECT_EQ(param.inp.xc_kernel, "LDA");
     EXPECT_EQ(param.inp.lr_init_xc_kernel[0], "default");
     EXPECT_EQ(param.inp.lr_solver, "dav");
-    EXPECT_EQ(param.inp.bse_tda, "tda");
-    EXPECT_EQ(param.inp.bse_spin_types[0], "singlet");
-    EXPECT_EQ(param.inp.bse_spin_types[1], "triplet");
-    EXPECT_TRUE(param.inp.bse_ri_hartree);
-    EXPECT_EQ(param.inp.bse_continue, 0);
-
     EXPECT_DOUBLE_EQ(param.inp.lr_thr, 1e-2);
     EXPECT_FALSE(param.inp.lr_unrestricted);
     EXPECT_FALSE(param.inp.out_wfc_lr);
     EXPECT_EQ(param.inp.abs_wavelen_range.size(), 2);
     EXPECT_DOUBLE_EQ(param.inp.abs_wavelen_range[0], 0.0);
     EXPECT_DOUBLE_EQ(param.inp.abs_broadening, 0.01);
-    EXPECT_EQ(param.inp.abs_gauge, "length");
+    EXPECT_EQ(param.inp.abs_gauge, "velocity");
+    EXPECT_EQ(param.inp.bse_tda, "tda");
+    EXPECT_EQ(param.inp.bse_spin_types[0], "singlet");
+    EXPECT_EQ(param.inp.bse_spin_types[1], "triplet");
+    EXPECT_TRUE(param.inp.bse_ri_hartree);
+    EXPECT_EQ(param.inp.bse_continue, 0);
+    EXPECT_EQ(param.inp.plot_istate, 0);
     EXPECT_EQ(param.inp.rdmft, 0);
     EXPECT_DOUBLE_EQ(param.inp.rdmft_power_alpha, 0.656);
 }

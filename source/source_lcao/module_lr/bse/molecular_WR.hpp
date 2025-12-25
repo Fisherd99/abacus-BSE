@@ -4,7 +4,7 @@ namespace BSE
 {
 
 /*
-LR::MO_TYPE: OO   VO    VV  
+    MO_TYPE: OO   VO    VV  
     nmo1    nocc nocc  nvirt 
     nmo2    nocc nvirt nvirt 
     imo1    0    0     nocc  
@@ -90,7 +90,7 @@ TCsR_mo<T> MolecularWR<T>::cal_CsR_mo(const UnitCell& ucell,
                                       const psi::Psi<T>& psi_ks,
                                       const int nocc,
                                       const int nvirt,
-                                      const LR::MO_TYPE type,
+                                      const LR_Util::MO_TYPE type,
                                       const std::string type_str)
 {
     ModuleBase::TITLE("MolecularWR", "cal_CsR_mo");
@@ -98,13 +98,13 @@ TCsR_mo<T> MolecularWR<T>::cal_CsR_mo(const UnitCell& ucell,
     int nmo1, nmo2, imo1, imo2;
     switch(type)
     {
-        case LR::MO_TYPE::OO:
+        case LR_Util::MO_TYPE::OO:
             nmo1 = nocc; nmo2 = nocc; imo1 = 0; imo2 = 0;
             break;
-        // case LR::MO_TYPE::VO:
+        // case LR_Util::MO_TYPE::VO:
         //     nmo1 = nocc; nmo2 = nvirt; imo1 = 0; imo2 = nocc;
         //     break;
-        case LR::MO_TYPE::VV:
+        case LR_Util::MO_TYPE::VV:
             nmo1 = nvirt; nmo2 = nvirt; imo1 = nocc; imo2 = nocc;
             break;
         default:
@@ -229,7 +229,7 @@ TCsR_mo<T> MolecularWR<T>::cal_CsR_mo_method2(const UnitCell& ucell,
                                               const psi::Psi<T>& psi_ks,
                                               const int nocc,
                                               const int nvirt,
-                                              const LR::MO_TYPE type,
+                                              const LR_Util::MO_TYPE type,
                                               const std::string type_str)
 {
     ModuleBase::TITLE("MolecularWR", "cal_CsR_mo_method2");
@@ -238,13 +238,13 @@ TCsR_mo<T> MolecularWR<T>::cal_CsR_mo_method2(const UnitCell& ucell,
     int nmo1, nmo2, imo1, imo2;
     switch(type)
     {
-    case LR::MO_TYPE::OO:
+    case LR_Util::MO_TYPE::OO:
         nmo1 = nocc; nmo2 = nocc; imo1 = 0; imo2 = 0;
         break;
-    case LR::MO_TYPE::VO:
+    case LR_Util::MO_TYPE::VO:
         nmo1 = nocc; nmo2 = nvirt; imo1 = 0; imo2 = nocc;
         break;
-    case LR::MO_TYPE::VV:
+    case LR_Util::MO_TYPE::VV:
         nmo1 = nvirt; nmo2 = nvirt; imo1 = nocc; imo2 = nocc;
         break;
     default:

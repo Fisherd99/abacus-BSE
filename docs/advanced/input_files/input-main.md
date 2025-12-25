@@ -4486,10 +4486,11 @@ Currently supported: `RPA`, `LDA`, `PBE`, `HSE`, `HF`, `BSE`.
 - **Description**: The method to solve the Casida equation $AX=\Omega X$ in LR-TDDFT under Tamm-Dancoff approximation (TDA), where $A_{ai,bj}=(\epsilon_a-\epsilon_i)\delta_{ij}\delta_{ab}+(ai|f_{Hxc}|bj)+\alpha_{EX}(ab|ij)$ is the particle-hole excitation matrix and $X$ is the transition amplitude.
   - `dav`/`dav_subspace`/ `cg`: Construct $AX$ and diagonalize the Hamiltonian matrix iteratively with Davidson/Non-ortho-Davidson/CG algorithm.
   - `lapack`: Construct the full $A$ matrix and directly diagonalize with LAPACK.
-  - `elpa`: Construct the full $A$ and $B$ matrix and diagonalize with ELPA.
+  - `elpa`: Construct the $A$ (and $B$) matrix and diagonalize with ELPA.
   - `spectrum`: Calculate absorption spectrum only without solving Casida equation. The `OUT.${suffix}/` directory should contain the
   files for LR-TDDFT eigenstates and eigenvalues, i.e. `Excitation_Energy.dat` and `Excitation_Amplitude_${processor_rank}.dat`
    output by setting `out_wfc_lr` to true.
+  - `plot`: Plot the exciton wave function, should identify `plot_istate`.
 - **Default**: dav
 
 ### lr_thr (Under Development Feature)
@@ -4518,23 +4519,30 @@ Currently supported: `RPA`, `LDA`, `PBE`, `HSE`, `HF`, `BSE`.
 - **Default**: 0
 
 ### lr_unrestricted (Under Development Feature)
+
 - **Type**: Boolean
 - **Description**: Whether to use unrestricted construction for LR-TDDFT (the matrix size will be doubled).
   - True:  Always use unrestricted LR-TDDFT. 
   - False: Use unrestricted LR-TDDFT only when the system is open-shell.
 - **Default**: False
 
-### lr_tda (Under Development Feature)
-
-- **Type**: String
-- **Description**:  Whether Tamm-Dancoff Approximation is used (can be 'tda', 'full' or 'both')
-- **Default**: tda
-
 ### abs_wavelen_range (Under Development Feature)
 
 - **Type**: Real Real
 - **Description**: The range of the wavelength for the absorption spectrum calculation.
 - **Default**: 0.0 0.0
+
+### abs_broadening (Under Development Feature)
+
+- **Type**: Real
+- **Description**: The broadening factor $\eta$ for the absorption spectrum calculation.
+- **Default**: 0.01
+
+### abs_gauge (Under Development Feature)
+
+- **Type**: String
+- **Description**: 
+- **Default**: velocity
 
 ### out_wfc_lr (Under Development Feature)
 
@@ -4543,25 +4551,59 @@ Currently supported: `RPA`, `LDA`, `PBE`, `HSE`, `HF`, `BSE`.
 The output files are `OUT.${suffix}/Excitation_Energy.dat` and `OUT.${suffix}/Excitation_Amplitude_${processor_rank}.dat`.
 - **Default**: False
 
-### abs_broadening (Under Development Feature)
-- **Type**: Real
-- **Description**: The broadening factor $\eta$ for the absorption spectrum calculation.
-- **Default**: 0.01
+### bse_tda (Under Development Feature)
+
+- **Type**: String
+- **Description**: Whether Tamm-Dancoff Approximation is used (can be 'tda', 'full' or 'both').
+- **Default**: tda
+
+### bse_spin_types
+
+- **Type**: Vector of String
+- **Description**: spin types for close-shell case to be calculated in one task (can be 'singlet', 'triplet', and for test 'rpa', 'ipa').
+- **Defalut**: \{singlet, triplet\}
+
+### bse_ri_hartree
+
+- **Type**: Boolean
+- **Description**: Whether to use RI approximation for Hartree term in BSE.
+- **Default**: true
+
+### bse_continue
+
+- **Type**: Integer
+- **Description**: Which step to continue from previous BSE calculation.
+  - 0: new;
+  - 1: continue from A_V;
+  - 2: continue from A_V and A_W;
+  - 3: continue from A_V, A_W and B_V;
+  - 4: continue from A_V, A_W, B_V and B_W
+- **Default**: 0
+
+### plot_istate
+
+- **Type**: Integer
+- **Description**: The index of excited state to be plotted (starting from 0)
+- **Default**: 0
 
 ### ri_hartree_benchmark (Under Development Feature)
+
 - **Type**: String
-- **Description**: Whether to use the localized resolution-of-identity (LRI) approximation for the **Hartree** term of kernel in the $A$ matrix of LR-TDDFT for benchmark (with FHI-aims or another ABACUS calculation). Now it only supports molecular systems running with a single processor, and a large enough supercell should be used to make LRI C, V tensors contain only the R=(0 0 0) cell. 
-  - `aims`: The `OUT.${suffix}`directory should contain the FHI-aims output files: RI-LVL tensors`Cs_data_0.txt` and `coulomb_mat_0.txt`, and KS eigenstates from FHI-aims: `band_out`and `KS_eigenvectors.out`. The Casida equation will be constructed under FHI-aims' KS eigenpairs.
+- **Description**: Whether to use the localized resolution-of-identity (LRI) approximation for the **Hartree** term of kernel in the $A$ matrix of LR-TDDFT for benchmark (with FHI-aims or another ABACUS calculation). 
+  - `aims`: The `read_file_dir` directory should contain the FHI-aims output files: RI-LVL tensors `Cs_data_0.txt` and `coulomb_mat_0.txt`, and KS eigenstates from FHI-aims: `band_out`and `KS_eigenvectors.out`. The Casida equation will be constructed under FHI-aims' KS eigenpairs.
     - LRI tensor files (`Cs_data_0.txt` and `coulomb_mat_0.txt`)and Kohn-Sham eigenvalues (`bands_out`): run FHI-aims with periodic boundary conditions and with `total_energy_method rpa` and `output librpa`.
     - Kohn-Sham eigenstates under aims NAOs (`KS_eigenvectors.out`): run FHI-aims with `output eigenvectors`.
     - If the number of atomic orbitals of any atom type in FHI-aims is different from that in ABACUS, the `aims_nbasis` should be set.
-  - `abacus`: The `OUT.${suffix}`directory should contain the RI-LVL tensors `Cs` and `Vs` (written by setting `out_ri_cv` to 1). The Casida equation will be constructed under ABACUS' KS eigenpairs, with the only difference that the Hartree term is constructed with RI approximation.
+  - `abacus`: The `read_file_dir` directory should contain the RI-LVL tensors `Cs` and `Vs` (written by setting `out_ri_cv` to 1). The Casida equation will be constructed under ABACUS' KS eigenpairs, with the only difference that the Hartree term is constructed with RI approximation.
+  - `aims-librpa`: The current directory where you are running task should contain the the LRI tensors `Cs_data_${processor_rank}.txt`, `coulomb_mat${processor_rank}.txt`, and KS eigenstates `band_out`, `KS_eigenvector_${processor_rank}.dat`. All these files can get from FHI-aims task with periodic boundary conditions and with `total_energy_method rpa` and `output librpa`. The `aims_nbasis` should also 0be set.
+  - `abacus-librpa`: The current directory where you are running task should contain the the LRI tensors `Cs_data_${processor_rank}.txt`, `coulomb_mat_${processor_rank}.txt`, and KS eigenstates `band_out`, `KS_eigenvector_${kpoint}.dat`. All these files can get from ABACUS task with `RPA 1`.
   - `none`: Construct the Hartree term by Poisson equation and grid integration as usual.
 - **Default**: none
 
 ### aims_nbasis (Under Development Feature)
+
 - **Type**: A number(ntype) of Integers
-- **Availability**: `ri_hartree_benchmark` = `aims`
+- **Availability**: `ri_hartree_benchmark` = `aims` or `aims-librpa`
 - **Description**: Atomic basis set size for each atom type (with the same order as in `STRU`) in FHI-aims.
 - **Default**: {} (empty list, where ABACUS use its own basis set size)
 

@@ -81,10 +81,10 @@ TEST_F(AO2MOTest, DoubleSerial)
             for (auto& v : V) { set_rand(v.data<double>(), size_v); }
             LR::ao_to_mo_forloop_serial(V, c, s.nocc, s.nvirt, &vo_for(istate, 0, 0));
             LR::ao_to_mo_blas(V, c, s.nocc, s.nvirt, &vo_blas(istate, 0, 0), false);
-            LR::ao_to_mo_forloop_serial(V, c, s.nocc, s.nvirt, &oo_for(istate, 0, 0), LR::MO_TYPE::OO);
-            LR::ao_to_mo_blas(V, c, s.nocc, s.nvirt, &oo_blas(istate, 0, 0), false, LR::MO_TYPE::OO);
-            LR::ao_to_mo_forloop_serial(V, c, s.nocc, s.nvirt, &vv_for(istate, 0, 0), LR::MO_TYPE::VV);
-            LR::ao_to_mo_blas(V, c, s.nocc, s.nvirt, &vv_blas(istate, 0, 0), false, LR::MO_TYPE::VV);
+            LR::ao_to_mo_forloop_serial(V, c, s.nocc, s.nvirt, &oo_for(istate, 0, 0), LR_Util::MO_TYPE::OO);
+            LR::ao_to_mo_blas(V, c, s.nocc, s.nvirt, &oo_blas(istate, 0, 0), false, LR_Util::MO_TYPE::OO);
+            LR::ao_to_mo_forloop_serial(V, c, s.nocc, s.nvirt, &vv_for(istate, 0, 0), LR_Util::MO_TYPE::VV);
+            LR::ao_to_mo_blas(V, c, s.nocc, s.nvirt, &vv_blas(istate, 0, 0), false, LR_Util::MO_TYPE::VV);
         }
         check_eq(&vo_for(0, 0, 0), &vo_blas(0, 0, 0), nstate * s.nks * s.nocc * s.nvirt);
         check_eq(&oo_for(0, 0, 0), &oo_blas(0, 0, 0), nstate * s.nks * s.nocc * s.nocc);
@@ -113,10 +113,10 @@ TEST_F(AO2MOTest, ComplexSerial)
             for (auto& v : V) { set_rand(v.data<std::complex<double>>(), size_v); }
             LR::ao_to_mo_forloop_serial(V, c, s.nocc, s.nvirt, &vo_for(istate, 0, 0));
             LR::ao_to_mo_blas(V, c, s.nocc, s.nvirt, &vo_blas(istate, 0, 0), false);
-            LR::ao_to_mo_forloop_serial(V, c, s.nocc, s.nvirt, &oo_for(istate, 0, 0), LR::MO_TYPE::OO);
-            LR::ao_to_mo_blas(V, c, s.nocc, s.nvirt, &oo_blas(istate, 0, 0), false, LR::MO_TYPE::OO);
-            LR::ao_to_mo_forloop_serial(V, c, s.nocc, s.nvirt, &vv_for(istate, 0, 0), LR::MO_TYPE::VV);
-            LR::ao_to_mo_blas(V, c, s.nocc, s.nvirt, &vv_blas(istate, 0, 0), false, LR::MO_TYPE::VV);
+            LR::ao_to_mo_forloop_serial(V, c, s.nocc, s.nvirt, &oo_for(istate, 0, 0), LR_Util::MO_TYPE::OO);
+            LR::ao_to_mo_blas(V, c, s.nocc, s.nvirt, &oo_blas(istate, 0, 0), false, LR_Util::MO_TYPE::OO);
+            LR::ao_to_mo_forloop_serial(V, c, s.nocc, s.nvirt, &vv_for(istate, 0, 0), LR_Util::MO_TYPE::VV);
+            LR::ao_to_mo_blas(V, c, s.nocc, s.nvirt, &vv_blas(istate, 0, 0), false, LR_Util::MO_TYPE::VV);
         }
         check_eq(&vo_for(0, 0, 0), &vo_blas(0, 0, 0), nstate * s.nks * s.nocc * s.nvirt);
         check_eq(&oo_for(0, 0, 0), &oo_blas(0, 0, 0), nstate * s.nks * s.nocc * s.nocc);
@@ -162,8 +162,8 @@ TEST_F(AO2MOTest, DoubleParallel)
                 set_rand(&c(isk, 0, 0), pc.get_local_size());
             }
             LR::ao_to_mo_pblas(V, pV, c, pc, s.naos, s.nocc, s.nvirt, pvo, &vo_pblas_loc(istate, 0, 0), false);
-            LR::ao_to_mo_pblas(V, pV, c, pc, s.naos, s.nocc, s.nvirt, poo, &oo_pblas_loc(istate, 0, 0), false, LR::MO_TYPE::OO);
-            LR::ao_to_mo_pblas(V, pV, c, pc, s.naos, s.nocc, s.nvirt, pvv, &vv_pblas_loc(istate, 0, 0), false, LR::MO_TYPE::VV);
+            LR::ao_to_mo_pblas(V, pV, c, pc, s.naos, s.nocc, s.nvirt, poo, &oo_pblas_loc(istate, 0, 0), false, LR_Util::MO_TYPE::OO);
+            LR::ao_to_mo_pblas(V, pV, c, pc, s.naos, s.nocc, s.nvirt, pvv, &vv_pblas_loc(istate, 0, 0), false, LR_Util::MO_TYPE::VV);
             // gather AX and output
             for (int isk = 0;isk < s.nks;++isk)
             {
@@ -186,10 +186,10 @@ TEST_F(AO2MOTest, DoubleParallel)
                 LR::ao_to_mo_blas(V_full, c_full, s.nocc, s.nvirt, &vo_full_istate(0, 0, 0), false);
                 check_eq(&vo_full_istate(0, 0, 0), &vo_gather(istate, 0, 0), s.nks * s.nocc * s.nvirt);
                 psi::Psi<double> oo_full_istate(s.nks, 1, s.nocc * s.nocc, s.nocc * s.nocc, false);
-                LR::ao_to_mo_blas(V_full, c_full, s.nocc, s.nvirt, &oo_full_istate(0, 0, 0), false, LR::MO_TYPE::OO);
+                LR::ao_to_mo_blas(V_full, c_full, s.nocc, s.nvirt, &oo_full_istate(0, 0, 0), false, LR_Util::MO_TYPE::OO);
                 check_eq(&oo_full_istate(0, 0, 0), &oo_gather(istate, 0, 0), s.nks * s.nocc * s.nocc);
                 psi::Psi<double> vv_full_istate(s.nks, 1, s.nvirt * s.nvirt, s.nvirt * s.nvirt, false);
-                LR::ao_to_mo_blas(V_full, c_full, s.nocc, s.nvirt, &vv_full_istate(0, 0, 0), false, LR::MO_TYPE::VV);
+                LR::ao_to_mo_blas(V_full, c_full, s.nocc, s.nvirt, &vv_full_istate(0, 0, 0), false, LR_Util::MO_TYPE::VV);
                 check_eq(&vv_full_istate(0, 0, 0), &vv_gather(istate, 0, 0), s.nks * s.nvirt * s.nvirt);
             }
         }
@@ -228,8 +228,8 @@ TEST_F(AO2MOTest, ComplexParallel)
                 set_rand(&c(isk, 0, 0), pc.get_local_size());
             }
             LR::ao_to_mo_pblas(V, pV, c, pc, s.naos, s.nocc, s.nvirt, pvo, &vo_pblas_loc(istate, 0, 0), false);
-            LR::ao_to_mo_pblas(V, pV, c, pc, s.naos, s.nocc, s.nvirt, poo, &oo_pblas_loc(istate, 0, 0), false, LR::MO_TYPE::OO);
-            LR::ao_to_mo_pblas(V, pV, c, pc, s.naos, s.nocc, s.nvirt, pvv, &vv_pblas_loc(istate, 0, 0), false, LR::MO_TYPE::VV);
+            LR::ao_to_mo_pblas(V, pV, c, pc, s.naos, s.nocc, s.nvirt, poo, &oo_pblas_loc(istate, 0, 0), false, LR_Util::MO_TYPE::OO);
+            LR::ao_to_mo_pblas(V, pV, c, pc, s.naos, s.nocc, s.nvirt, pvv, &vv_pblas_loc(istate, 0, 0), false, LR_Util::MO_TYPE::VV);
 
             // gather AX and output
             for (int isk = 0;isk < s.nks;++isk)
@@ -253,10 +253,10 @@ TEST_F(AO2MOTest, ComplexParallel)
                 LR::ao_to_mo_blas(V_full, c_full, s.nocc, s.nvirt, &vo_full_istate(0, 0, 0), false);
                 check_eq(&vo_full_istate(0, 0, 0), &vo_gather(istate, 0, 0), s.nks * s.nocc * s.nvirt);
                 psi::Psi<std::complex<double>>  oo_full_istate(s.nks, 1, s.nocc * s.nocc, s.nocc * s.nvirt, false);
-                LR::ao_to_mo_blas(V_full, c_full, s.nocc, s.nocc, &oo_full_istate(0, 0, 0), false, LR::MO_TYPE::OO);
+                LR::ao_to_mo_blas(V_full, c_full, s.nocc, s.nocc, &oo_full_istate(0, 0, 0), false, LR_Util::MO_TYPE::OO);
                 check_eq(&oo_full_istate(0, 0, 0), &oo_gather(istate, 0, 0), s.nks * s.nocc * s.nocc);
                 psi::Psi<std::complex<double>>  vv_full_istate(s.nks, 1, s.nvirt * s.nvirt, s.nocc * s.nvirt, false);
-                LR::ao_to_mo_blas(V_full, c_full, s.nocc, s.nvirt, &vv_full_istate(0, 0, 0), false, LR::MO_TYPE::VV);
+                LR::ao_to_mo_blas(V_full, c_full, s.nocc, s.nvirt, &vv_full_istate(0, 0, 0), false, LR_Util::MO_TYPE::VV);
                 check_eq(&vv_full_istate(0, 0, 0), &vv_gather(istate, 0, 0), s.nks * s.nvirt * s.nvirt);
             }
         }

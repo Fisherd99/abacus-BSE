@@ -22,7 +22,7 @@ namespace LR
             const std::vector<Parallel_2D>& pX_in, const Parallel_2D& pc_in, const Parallel_Orbitals& pmat_in,
             const double* eig, const T* X, const int& nstate, const bool& openshell,
             const std::string& gauge) :
-            nspin_x(openshell ? 2 : 1), naos(naos), nocc(nocc), nvirt(nvirt), psi_ks(psi_ks_in), 
+            nspin_x(openshell ? 2 : 1), naos(naos), nocc(nocc), nvirt(nvirt),
             nk(nspin_global == 2 ? kv_in.get_nks() / 2 : kv_in.get_nks()),
             gint(gint), rho_basis(rho_basis), ucell(ucell), kv(kv_in), gd_(gd),
             orb_cutoff_(orb_cutoff), two_center_bundle_(two_center_bundle_),
@@ -89,10 +89,9 @@ namespace LR
         const double ana_thr = 0.3;     ///< {abs(X) > thr} will appear in the transition analysis log
         const double* eig;
         const T* X;
-        T* Y; ///< the deexcitation part of amplitudes
+        T* Y = nullptr; ///< the deexcitation part of amplitudes
         bool is_full = false;
         const K_Vectors& kv;
-        psi::Psi<T>& psi_ks;
         std::vector<psi::Psi<T>> psi_ks_vec;
         const std::vector<Parallel_2D>& pX;
         const Parallel_2D& pc;

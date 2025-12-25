@@ -59,7 +59,7 @@ ModuleBase::Vector3<double> LR::LR_Spectrum<double>::cal_transition_dipole_istat
 {
     ModuleBase::Vector3<double> trans_dipole(0.0, 0.0, 0.0);
     // 1. transition density matrix
-    const elecstate::DensityMatrix<double, double>& DM_trans = this->cal_transition_density_matrix(istate);
+    const elecstate::DensityMatrix<double, double> DM_trans = this->cal_transition_density_matrix(istate);
     for (int is = 0;is < this->nspin_x;++is)
     {
         // 2. transition density
@@ -101,7 +101,7 @@ ModuleBase::Vector3<std::complex<double>> LR::LR_Spectrum<std::complex<double>>:
 
     //1. transition density matrix
     ModuleBase::Vector3<std::complex<double>> trans_dipole(0.0, 0.0, 0.0);
-    const elecstate::DensityMatrix<std::complex<double>, std::complex<double>>& DM_trans = this->cal_transition_density_matrix(istate);
+    const elecstate::DensityMatrix<std::complex<double>, std::complex<double>> DM_trans = this->cal_transition_density_matrix(istate);
     for (int is = 0;is < this->nspin_x;++is)
     {
         // 2. transition density
@@ -164,7 +164,7 @@ ModuleBase::Vector3<T> LR::LR_Spectrum<T>::cal_transition_dipole_istate_length_f
 {
     ModuleBase::Vector3<T> trans_dipole(0.0, 0.0, 0.0);
     // 1. transition density matrix
-    const elecstate::DensityMatrix<T, T>& DM_trans= this->cal_transition_density_matrix(istate);
+    const elecstate::DensityMatrix<T, T> DM_trans= this->cal_transition_density_matrix(istate);
 
     // 2. fold r(R) to r(k) and transition dipole moment = sum_k r(k)D(k)
     // ATTENTION: Since r_\mu\nu(R1,R1+R) = r_\mu\nu(R) + R1 S_\mu\nu(R), R1 should be considered carefully.

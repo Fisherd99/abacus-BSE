@@ -86,13 +86,13 @@ void MolecularLRI<T>::init(TLRI<T>& Cs_in, TLRI<T>& Vs_in, TLRI<T>& Ws_in, const
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "distribute_atom_and_k");
     ModuleBase::timer::tick("MolecularLRI", "distribute_atom_and_k");
 
-    // 2. calculate Csk_mo
+    // 2. calculate Csk_ao_mo
     this->map_psi = this->transform_psi_k(this->psi_ks, this->k_list);
     TLRI<T>& Cs_ao = this->LR_lri.lri.data_pool.at("Cs_").Ds_ab;
     TLRIk<T> Csk_ao = cal_Csk_ao(Cs_ao, this->k_list, this->list_IJ);
+    this->LR_lri.free_Cs(); // free Cs_ao to save memory
     this->Csk_ao_mo = cal_Csk_ao_mo(ucell, Csk_ao, this->k_list, this->list_IJ);
     //this->Csk_mo = cal_Csk_mo(ucell, Csk_ao, this->psi_ks, this->k_list, this->list_IJ);
-    this->LR_lri.free_Cs(); // free Cs_ao to save memory
 }
 
 /// @brief W[k_AI][k_BJ] to global matrix WA[aik1, bjk2]
@@ -497,7 +497,7 @@ imo2     0    nocc  0     nocc  0
 template <typename T>
 TCsk_mo<T> MolecularLRI<T>::slice_Csk_mo(const int nocc,
                                          const int nvirt,
-                                         const LR::MO_TYPE type,
+                                         const LR_Util::MO_TYPE type,
                                          const std::string type_str,
                                          const std::vector<Tk>& kmo1_list,
                                          const std::vector<Tk>& kmo2_list,
@@ -509,16 +509,16 @@ TCsk_mo<T> MolecularLRI<T>::slice_Csk_mo(const int nocc,
     std::size_t nmo1, nmo2, imo1, imo2;
     switch(type)
     {
-    case LR::MO_TYPE::OO:
+    case LR_Util::MO_TYPE::OO:
         nmo1 = nocc; nmo2 = nocc; imo1 = 0; imo2 = 0;
         break;
-    case LR::MO_TYPE::VO:
+    case LR_Util::MO_TYPE::VO:
         nmo1 = nocc; nmo2 = nvirt; imo1 = 0; imo2 = nocc;
         break;
-    case LR::MO_TYPE::OV:
+    case LR_Util::MO_TYPE::OV:
         nmo1 = nvirt; nmo2 = nocc; imo1 = nocc; imo2 = 0;
         break;
-    case LR::MO_TYPE::VV:
+    case LR_Util::MO_TYPE::VV:
         nmo1 = nvirt; nmo2 = nvirt; imo1 = nocc; imo2 = nocc;
         break;
     default:
@@ -581,7 +581,7 @@ TCsk_mo<T> MolecularLRI<T>::cal_Csk_mo_method2(const UnitCell& ucell,
                                                const psi::Psi<T>& psi_ks,
                                                const int nocc,
                                                const int nvirt,
-                                               const LR::MO_TYPE type,
+                                               const LR_Util::MO_TYPE type,
                                                const std::string type_str,
                                                const std::vector<Tk>& kmo1_list,
                                                const std::vector<Tk>& kmo2_list)
@@ -592,13 +592,13 @@ TCsk_mo<T> MolecularLRI<T>::cal_Csk_mo_method2(const UnitCell& ucell,
     int nmo1, nmo2, imo1, imo2;
     switch(type)
     {
-    case LR::MO_TYPE::OO:
+    case LR_Util::MO_TYPE::OO:
         nmo1 = nocc; nmo2 = nocc; imo1 = 0; imo2 = 0;
         break;
-    case LR::MO_TYPE::VO:
+    case LR_Util::MO_TYPE::VO:
         nmo1 = nocc; nmo2 = nvirt; imo1 = 0; imo2 = nocc;
         break;
-    case LR::MO_TYPE::VV:
+    case LR_Util::MO_TYPE::VV:
         nmo1 = nvirt; nmo2 = nvirt; imo1 = nocc; imo2 = nocc;
         break;
     default:

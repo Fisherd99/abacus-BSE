@@ -260,8 +260,26 @@ TLRI<TVs> read_coulomb_mat_k(const std::string& path, const TLRI<TCs>& Cs, const
 {
     struct dirent *ptr;
     DIR *dir;
+    bool has_unshrinked = false;
     dir = opendir(path.c_str());
+    if (!dir)
+    {
+        throw std::runtime_error("Cannot open directory: " + path);
+    }
+    while ((ptr = readdir(dir)) != nullptr)
+    {
+        std::string fm(ptr->d_name);
+        if (fm.find("coulomb_unshrinked_cut_") == 0)
+        {
+            has_unshrinked = true;
+            break;
+        }
+    }
+    closedir(dir);
 
+    const std::string prefix = has_unshrinked ? "coulomb_unshrinked_cut_" : "coulomb_cut_";
+    std::cout << "read_coulomb_mat_k: using prefix \"" << prefix << "\" in directory " << path << std::endl;
+    dir = opendir(path.c_str());
     size_t nk = 0, nabf = 0, istart = 0, jstart = 0, iend = 0, jend = 0;
     std::string tmp;
     K_Vectors* const klist = kRlist.klist;
@@ -292,8 +310,7 @@ TLRI<TVs> read_coulomb_mat_k(const std::string& path, const TLRI<TCs>& Cs, const
 
     while ((ptr = readdir(dir)) != NULL){// read all the files in the directory
         std::string fm(ptr->d_name);
-        
-        if (fm.find("coulomb_cut_") == 0)// find file coulomb_cut_xxx
+        if (fm.find(prefix) == 0)// find file coulomb_cut_xxx
         {
             std::cout << "found coulomb file:" << fm << std::endl;
             std::ifstream ifs(path  + fm);
@@ -375,6 +392,25 @@ TLRI<TVs> read_coulomb_mat_general_k(const std::string& path, const TLRI<TCs>& C
 {
     struct dirent *ptr;
     DIR *dir;
+    bool has_unshrinked = false;
+    dir = opendir(path.c_str());
+    if (!dir)
+    {
+        throw std::runtime_error("Cannot open directory: " + path);
+    }
+    while ((ptr = readdir(dir)) != nullptr)
+    {
+        std::string fm(ptr->d_name);
+        if (fm.find("coulomb_unshrinked_cut_") == 0)
+        {
+            has_unshrinked = true;
+            break;
+        }
+    }
+    closedir(dir);
+
+    const std::string prefix = has_unshrinked ? "coulomb_unshrinked_cut_" : "coulomb_cut_";
+    std::cout << "read_coulomb_mat_k: using prefix \"" << prefix << "\" in directory " << path << std::endl;
     dir = opendir(path.c_str());
     TLRI<TVs> Vs;
     std::map<int, std::map<std::pair<int,int>, RI::Tensor<std::complex<double>>>> Vq; // <iat1, <<iat2,ik>, T>>
@@ -388,7 +424,7 @@ TLRI<TVs> read_coulomb_mat_general_k(const std::string& path, const TLRI<TCs>& C
 
     while ((ptr = readdir(dir)) != NULL){// read all the files in the directory
         std::string fm(ptr->d_name);
-        if (fm.find("coulomb_cut_") == 0)// find file coulomb_cut_xxx
+        if (fm.find(prefix) == 0)// find file coulomb_cut_xxx
         {
             std::cout << "found coulomb file:" << fm << std::endl;
             std::ifstream ifs(path  + fm);
