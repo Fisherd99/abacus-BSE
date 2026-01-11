@@ -2,14 +2,6 @@
 
 namespace BSE
 {
-using TA = int;
-using Tcell = int;
-using TC = std::array<Tcell, 3>;
-using TAC = std::pair<TA, TC>;
-using TatomR = std::array<double, 3>;
-template <typename T>
-using TLRI = std::map<int, std::map<TAC, RI::Tensor<T>>>;
-
 template <typename T, typename TR>
 ESolver_BSE<T, TR>::ESolver_BSE(const Input_para& inp, UnitCell& ucell) :
     LR::ESolver_LR<T, TR>(inp, ucell, GlobalC::exx_info)
@@ -31,7 +23,7 @@ ESolver_BSE<T, TR>::ESolver_BSE(const Input_para& inp, UnitCell& ucell) :
     }
     this->kv.set(ucell, ucell.symm, PARAM.inp.kpoint_file, PARAM.inp.nspin, ucell.G, ucell.latvec, GlobalV::ofs_running);
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "INIT K-POINTS");
-    this->kRlist = LR_IO::RI_kRlist("stru_out", this->ucell, &this->kv);
+    this->kRlist = LR_IO::RI_kRlist("stru_out", "band_kpath_info", this->ucell, &this->kv);
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "Reset K-POINTS and R-list for RI");
     ModuleIO::setup_parameters(ucell, this->kv);
 
@@ -144,10 +136,11 @@ ESolver_BSE<T, TR>::ESolver_BSE(const Input_para& inp, UnitCell& ucell) :
         }
         this->init_pot(chg_gs);
 
-        this->exx_info.info_global.ccp_type = Conv_Coulomb_Pot_K::Ccp_Type::Hf;
-        this->exx_info.info_global.hybrid_alpha = 1;
-        this->exx_info.info_ri.ccp_rmesh_times = 10;
-        // code below is for origianl `cal_exx_ions`
+        // this->exx_info.info_global.ccp_type = Conv_Coulomb_Pot_K::Ccp_Type::Hf;
+        // this->exx_info.info_global.hybrid_alpha = 1;
+        // this->exx_info.info_ri.ccp_rmesh_times = 10;
+        // code below is for origianl `cal_exx_ions`, actually not used in BSE, just reserve for reference
+
         // this->exx_info.info_global.coulomb_param[Conv_Coulomb_Pot_K::Coulomb_Type::Fock].resize(1);
         // this->exx_info.info_global.coulomb_param[Conv_Coulomb_Pot_K::Coulomb_Type::Fock]
         //     = {{{"alpha", "1"}, {"singularity_correction", "spencer"}}};
@@ -157,36 +150,17 @@ ESolver_BSE<T, TR>::ESolver_BSE(const Input_para& inp, UnitCell& ucell) :
         std::cout << "check bse_ri_ccp_rmesh_times: " << this->exx_info.info_ri.ccp_rmesh_times << std::endl;
         std::cout << "check bse_ri_C_threshold: " << this->exx_info.info_ri.C_threshold << std::endl;
         std::cout << "check bse_ri_V_threshold: " << this->exx_info.info_ri.V_threshold << std::endl;
-        this->exx_init();
+        this->lri_init();
     }
     ModuleBase::timer::tick("ESolver_BSE", "constructor");
 }
 
 template<typename T, typename TR>
-void ESolver_BSE<T, TR>::exx_init()
+void ESolver_BSE<T, TR>::lri_init()
 {
-    // do things similar to `cal_exx_ions` but read Ws and Cs from file
-    // std::vector<TA> atoms(this->ucell.nat);
-    // for (int iat = 0; iat < this->ucell.nat; ++iat)
-    // {
-    //     atoms[iat] = iat;
-    // }
-    std::map<TA, TatomR> atoms_pos;
-    for (int iat = 0; iat < this->ucell.nat; ++iat)
-    {
-        atoms_pos[iat] = RI_Util::Vector3_to_array3(this->ucell.atoms[this->ucell.iat2it[iat]].tau[this->ucell.iat2ia[iat]]);
-    }
-    const std::array<TatomR, 3> latvec = {RI_Util::Vector3_to_array3(this->ucell.a1),
-                                          RI_Util::Vector3_to_array3(this->ucell.a2),
-                                          RI_Util::Vector3_to_array3(this->ucell.a3)};
-    const std::array<Tcell, 3> period = {this->kv.nmp[0], this->kv.nmp[1], this->kv.nmp[2]};
-    this->mo_lri->LR_lri.set_parallel(MPI_COMM_WORLD, atoms_pos, latvec, period);
-
-    // const std::array<Tcell,Ndim> period_Vs = LRI_CV_Tools::cal_latvec_range<Tcell>(1+this->info.ccp_rmesh_times,
-    // ucell, orb_cutoff_); 
-    // const std::pair<std::vector<TA>, std::vector<std::vector<std::pair<TA,std::array<Tcell,Ndim>>>>>
-    //     list_As_Vs = RI::Distribute_Equally::distribute_atoms_periods(this->mpi_comm, atoms, period_Vs, 2, false);
-
+    using TA = int;
+    using TC = std::array<int, 3>;
+    using TAC = std::pair<TA, TC>;
     // start reading Ws and Cs
     std::map<TA, std::map<TAC, RI::Tensor<T>>> Cs_in;
     std::map<TA, std::map<TAC, RI::Tensor<T>>> Vs_in;
@@ -194,10 +168,12 @@ void ESolver_BSE<T, TR>::exx_init()
     if (GlobalV::MY_RANK == 0)
     {
         Cs_in = LRI_CV_Tools::read_Cs_ao_all<T>( "./");
-        if (this->input.ri_hartree_benchmark == "aims-librpa" ){
+        if (this->input.ri_hartree_benchmark == "aims-librpa" )
+        {
             Vs_in = LR_IO::read_coulomb_mat_general_k<T, T>("./", Cs_in, this->kRlist);
         }
-        else if (this->input.ri_hartree_benchmark == "none" || this->input.ri_hartree_benchmark == "abacus-librpa" ){
+        else if (this->input.ri_hartree_benchmark == "none" || this->input.ri_hartree_benchmark == "abacus-librpa" )
+        {
             Vs_in = LR_IO::read_coulomb_mat_k<T, T>("./", Cs_in, this->kRlist);
         }
         Ws_in = LR_IO::read_Ws<T, T>(Vs_in, this->kRlist.Rlist);
@@ -206,7 +182,6 @@ void ESolver_BSE<T, TR>::exx_init()
     MPI_Barrier(MPI_COMM_WORLD);
 #endif
     this->mo_lri->init(Cs_in, Vs_in, Ws_in, this->exx_info.info_ri);
-
 }
 
 template <typename T, typename TR>
@@ -469,10 +444,28 @@ void ESolver_BSE<T, TR>::read_ks_wfc()
     int nspin_tmp = PARAM.inp.nspin == 2 ? 2 : 1;
     LR_IO::parse_band_out_file("band_out", nbands_file, nk_file, nspin_file, nocc_file);
     if (nk_file != this->nk) {
-        std::cout << "nk in `band_out`: " << nk_file << ", nk in BSE: " << this->nk << std::endl;
-        ModuleBase::WARNING_QUIT("ESolver_BSE", "The nk in band_out is not consistent with BSE::nk.");
+        std::cout << "nk in `band_out`: " << nk_file << ", nk in BSE: " << this->nk;
+        if (PARAM.inp.bse_use_fine_kgrid)
+            std::cout << ". BSE will use fine kgrid." << std::endl;
+        else
+            ModuleBase::WARNING_QUIT("ESolver_BSE", "The nk in band_out is not consistent with BSE::nk.");
     }
-    auto eig_gw_info = LR_IO::read_energy_qp("energy_qp", this->nocc[0], this->nvirt[0], ncore, this->nk, nspin_tmp, nspin_file);
+    std::vector<double> eig_gw_info;
+    if (PARAM.inp.bse_use_fine_kgrid)
+    {
+        eig_gw_info = LR_IO::read_energy_qp_from_band_files("KS_band_spin_", "GW_band_spin_",
+                                                            this->kv, this->nocc[0], this->nvirt[0], ncore,
+                                                            this->nk, nspin_tmp, nspin_file);
+        LR_IO::read_librpa_eigenvectors_from_band_files<T>(*this->psi_ks, *this->psi_ks_global, "./",
+                                        ncore, nbands_file, nspin_tmp, nspin_file, this->paraMat_);
+    }
+    else
+    {
+        eig_gw_info = LR_IO::read_energy_qp("energy_qp", this->nocc[0], this->nvirt[0],
+                                            ncore, this->nk, nspin_tmp, nspin_file);
+        LR_IO::read_librpa_eigenvectors<T>(*this->psi_ks, *this->psi_ks_global, "./",
+                                        ncore, nbands_file, nspin_tmp, nspin_file, this->paraMat_);
+    }
     int cbm_k(0), vbm_k(0), direct_k(0);
     for (int iks = 0; iks < this->kv.get_nks(); ++iks) {
         for (int ib = 0; ib < this->nbands; ++ib) {
@@ -514,7 +507,6 @@ void ESolver_BSE<T, TR>::read_ks_wfc()
     std::cout << "CBM energy (eV): " << this->cbm_energy * ModuleBase::Ry_to_eV << " at k " << cbm_k << std::endl;
     std::cout << "Indirect gap (eV): " << (this->cbm_energy - this->vbm_energy) * ModuleBase::Ry_to_eV << std::endl;
     std::cout << "Direct gap (eV): " << this->direct_gap * ModuleBase::Ry_to_eV << " at k " << direct_k << std::endl;
-    LR_IO::read_librpa_eigenvectors<T>(*this->psi_ks, *this->psi_ks_global, "./", ncore, nbands_file, nspin_tmp, nspin_file, this->paraMat_);
 
     this->eig_ks = std::move(this->pelec->ekb);
 }

@@ -18,7 +18,8 @@ using TA = int;
 using TC = std::array<int, 3>;
 using Tk = std::array<double, 3>;
 using TAC = std::pair<int, TC>;
-using TAk = std::pair<int, Tk>;
+using TatomR = std::array<double, 3>;
+
 template <typename T>
 using TLRI = std::map<TA, std::map<TAC, RI::Tensor<T>>>;
 template <typename T>
@@ -33,7 +34,7 @@ class MolecularLRI
 {
 public:
     RI::LR<int,int,3,T> LR_lri;
-
+    RI::Cell_Nearest<int, int, 3, double, 3> cell_nearest;
     /// @brief calculate V[k_ai][k_bj](j,b,i,a) and W[k_ai][k_bj](j,b,i,a) with RI method
     MolecularLRI(const UnitCell& ucell,
         const int nk,
@@ -42,13 +43,25 @@ public:
         const int nvirt,
         const psi::Psi<T>& psi_ks_in) // < ATTENTION: psi_ks should be global
     : ucell(ucell), nk(nk), kv(kv_in), nocc(nocc), nvirt(nvirt), ndim(nk*nocc*nvirt),
-    psi_ks(psi_ks_in)
-    { 
+    psi_ks(psi_ks_in), period({kv_in.nmp[0], kv_in.nmp[1], kv_in.nmp[2]})
+    {
         for (int i = 0; i < nk; ++i) // nk without spin, ignore nspin2 temporarily
         {
             Tk k_d = RI_Util::Vector3_to_array3(this->kv.kvec_d.at(i));
             this->kpoint_index_map[k_d] = i;
         }
+
+        std::map<TA, TatomR> atoms_pos;
+        for (int iat = 0; iat < this->ucell.nat; ++iat)
+        {
+            atoms_pos[iat] = RI_Util::Vector3_to_array3(
+                this->ucell.atoms[this->ucell.iat2it[iat]].tau[this->ucell.iat2ia[iat]]);
+        }
+        const std::array<TatomR, 3> latvec = {RI_Util::Vector3_to_array3(this->ucell.a1),
+                                              RI_Util::Vector3_to_array3(this->ucell.a2),
+                                              RI_Util::Vector3_to_array3(this->ucell.a3)};
+        this->LR_lri.set_parallel(MPI_COMM_WORLD, atoms_pos, latvec, period);
+        this->cell_nearest.init(atoms_pos, latvec, period);
     };
     
     ~MolecularLRI() {}
@@ -64,25 +77,18 @@ public:
         ModuleBase::TITLE("MolecularLRI", "cal_W_for_A");
         ModuleBase::timer::tick("MolecularLRI", "cal_W_for_A");
         std::map<Tk, std::map<Tk, RI::Tensor<T>>>
-            Wk = LR_lri.lri.cal_cvc_mo_k_onthefly(this->Csk_ao_mo, this->map_psi, k1_list, k2_list, list_I, list_J,
+            Wk = LR_lri.lri.cal_cvc_mo_k_onthefly(this->Csk_ao_mo, this->map_psi, k1_list, k2_list, list_I, list_J, cell_nearest,
                 {"O","O","V","V"}, (std::size_t)nocc, (std::size_t)nvirt, "Ws_", GlobalV::ofs_running, { 0,2,1,3 }); // (jiba) -> (jbia)
-        //    Wk = LR_lri.lri.cal_cvc_mo_k(Csk_oo_k21, Csk_vv_k12, k1_list, k2_list, list_I, list_J,
-        //                                 "Ws_", { 0,3,1,2 }); // (jiab) -> (jbia)
         ModuleBase::timer::tick("MolecularLRI", "cal_W_for_A");
         this->transform_k_global(m_global, Wk);
     }
     void cal_W_for_B(std::vector<T>& m_global)
     {
-        //TCsk_mo<T> Csk_vo_k21 = slice_Csk_mo(nocc, nvirt, LR_Util::MO_TYPE::OV, "VOk21", this->k2_list, this->k1_list, this->list_I);
-        //TCsk_mo<T> Csk_vo_k12 = slice_Csk_mo(nocc, nvirt, LR_Util::MO_TYPE::OV, "VOk12", this->k1_list, this->k2_list, this->list_J);
-
         ModuleBase::TITLE("MolecularLRI", "cal_W_for_B");
         ModuleBase::timer::tick("MolecularLRI", "cal_W_for_B");
         std::map<Tk, std::map<Tk, RI::Tensor<T>>>
-            Wk = LR_lri.lri.cal_cvc_mo_k_onthefly(this->Csk_ao_mo, this->map_psi, k1_list, k2_list, list_I, list_J,
+            Wk = LR_lri.lri.cal_cvc_mo_k_onthefly(this->Csk_ao_mo, this->map_psi, k1_list, k2_list, list_I, list_J, cell_nearest,
                 {"V","O","O","V"}, (std::size_t)nocc, (std::size_t)nvirt, "Ws_", GlobalV::ofs_running, { 2,0,1,3 }); // (bija) -> (jbia)
-        //    Wk = LR_lri.lri.cal_cvc_mo_k(Csk_vo_k21, Csk_vo_k12, k1_list, k2_list, list_I, list_J,
-        //                                 "Ws_", { 3,0,1,2 }); // (biaj) -> (jbia)
         ModuleBase::timer::tick("MolecularLRI", "cal_W_for_B");
         this->transform_k_global(m_global, Wk);
     }
@@ -193,6 +199,7 @@ protected:
     const UnitCell& ucell;
     const int nk;
     const K_Vectors& kv;
+    const TC period;
     const int nocc;
     const int nvirt;
     const int ndim;

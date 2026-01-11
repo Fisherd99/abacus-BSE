@@ -444,6 +444,7 @@ TEST_F(InputParaTest, ParaRead)
     EXPECT_EQ(param.inp.bse_spin_types[0], "singlet");
     EXPECT_EQ(param.inp.bse_spin_types[1], "triplet");
     EXPECT_TRUE(param.inp.bse_ri_hartree);
+    EXPECT_FALSE(param.inp.bse_use_fine_kgrid);
     EXPECT_EQ(param.inp.bse_continue, 0);
     EXPECT_EQ(param.inp.plot_istate, 0);
     EXPECT_EQ(param.inp.rdmft, 0);

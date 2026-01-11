@@ -4569,6 +4569,12 @@ The output files are `OUT.${suffix}/Excitation_Energy.dat` and `OUT.${suffix}/Ex
 - **Description**: Whether to use RI approximation for Hartree term in BSE.
 - **Default**: true
 
+### bse_use_fine_kgrid
+
+- **Type**: Boolean
+- **Description**: Whether to use a finer k-grid for BSE. If you want to turn it on, file `band_kpath_info`, `band_KS_eigenvector_k_{index}.txt`, `KS_band_spin_{index}.txt` and `GW_band_spin_{index}.txt` should be prepared.
+- **Default**: false
+
 ### bse_continue
 
 - **Type**: Integer

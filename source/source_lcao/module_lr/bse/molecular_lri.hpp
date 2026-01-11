@@ -168,7 +168,20 @@ TLRIk<T> MolecularLRI<T>::cal_Csk_ao(const TLRI<T>& CsR_ao,
             for (const auto& CI_JR: CR_I)
             {
                 const int iat2 = CI_JR.first.first;
-                const TC& R = CI_JR.first.second;
+                const TC& R_original = CI_JR.first.second;
+                double dist;
+                const TC R = this->cell_nearest.cell_nearest_check(iat1, iat2, R_original, dist);
+                // if (R != R_original)
+                // {
+                // #ifdef _OPENMP
+                // #pragma omp critical
+                // #endif
+                //     std::cout << "in cal_Csk_ao: cell_nearest_check gives different R from ("
+                //         << R_original[0] << "," << R_original[1] << "," << R_original[2] << ") to ("
+                //         << R[0] << "," << R[1] << "," << R[2] 
+                //         << ") for I=" << iat1 << ", J=" << iat2 << ", dist=" << dist << std::endl;
+                // }
+
                 double arg = 2.0 * M_PI * (k[0] * R[0] + k[1] * R[1] + k[2] * R[2]);
                 std::complex<double> phase(cos(arg), sin(arg));
 
@@ -309,7 +322,7 @@ MolecularLRI<T>::transform_psi_k(const psi::Psi<T>& psi_ks, const std::vector<Tk
 }
 
 
-/// ===== Below are functions not used, and reserver for reference =====
+/// ===== Below are functions not used, just reserve for reference =====
 
 /// @brief transform psi to <k, <iat, tensor{nmo, iat.nw}>>, mo is sliced according to imo and nmo
 template <typename T>

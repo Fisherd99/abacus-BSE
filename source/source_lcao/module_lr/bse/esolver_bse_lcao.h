@@ -37,7 +37,7 @@ namespace BSE
 
         std::unique_ptr<MolecularLRI<T>> mo_lri;
 
-        void exx_init();
+        void lri_init();
 
         virtual void runner(UnitCell& ucell, int istep) override;
         virtual void after_all_runners(UnitCell& ucell) override;

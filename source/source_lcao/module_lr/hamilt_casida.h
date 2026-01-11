@@ -73,7 +73,7 @@ namespace LR
                 {
                     if (ri_hartree_benchmark == "aims" || ri_hartree_benchmark == "aims-librpa") 
                     { 
-                        LR_IO::RI_kRlist kRlist (dir + "stru_out", ucell_in, const_cast<K_Vectors*>(&kv_in));
+                        LR_IO::RI_kRlist kRlist (dir + "stru_out", dir + "band_kpath_info", ucell_in, const_cast<K_Vectors*>(&kv_in));
                         // though C and V are real, here still use <T> to multiply with psi
                         Cs_read = LRI_CV_Tools::read_Cs_ao_all<T>(dir);
                         Vs_read = LR_IO::read_coulomb_mat_general_k<T,T>(dir, Cs_read, kRlist);
@@ -85,7 +85,7 @@ namespace LR
                     }
                     else if (ri_hartree_benchmark == "abacus-librpa")// files in running directory
                     {
-                        LR_IO::RI_kRlist kRlist ("stru_out", ucell_in, const_cast<K_Vectors*>(&kv_in));
+                        LR_IO::RI_kRlist kRlist ("stru_out", "band_kpath_info", ucell_in, const_cast<K_Vectors*>(&kv_in));
                         Cs_read = LRI_CV_Tools::read_Cs_ao_all<T>("./");
                         Vs_read = LR_IO::read_coulomb_mat_k<T,T>("./", Cs_read, kRlist);
                     }

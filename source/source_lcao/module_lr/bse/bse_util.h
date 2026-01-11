@@ -7,7 +7,7 @@
 #include "source_base/module_external/scalapack_connector.h"
 #include "source_base/parallel_2d.h"
 #include "source_basis/module_ao/parallel_orbitals.h"
-#include <RI/global/Tensor.h>
+
 namespace BSE_Util
 {
 /// ================ Container ===============

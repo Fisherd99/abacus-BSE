@@ -429,6 +429,12 @@ void ReadInput::item_lr_tddft()
         this->add_item(item);
     }
     {
+        Input_Item item("bse_use_fine_kgrid");
+        item.annotation = "whether to use a finer k-grid for BSE";
+        read_sync_bool(input.bse_use_fine_kgrid);
+        this->add_item(item);
+    }
+    {
         Input_Item item("bse_continue");
         item.annotation = "which step to continue from previous BSE calculation";
         read_sync_int(input.bse_continue);
