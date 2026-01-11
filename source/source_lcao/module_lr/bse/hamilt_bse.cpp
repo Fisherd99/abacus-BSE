@@ -173,7 +173,7 @@ void HamiltBSE<T>::cal_V_for_A(){
             }
         }
     }
-    if (GlobalV::MY_RANK == 0){
+    if (PARAM.inp.bse_write_ab && GlobalV::MY_RANK == 0){
         this->write_AB_matrix("A_V_matrix.dat", 6, this->VA_global.data(), this->ndim, this->ndim);
     }
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "cal_V_for_A");
@@ -256,7 +256,7 @@ void HamiltBSE<T>::cal_V_for_B(){
             }
         }
     }
-    if (GlobalV::MY_RANK == 0){
+    if (PARAM.inp.bse_write_ab && GlobalV::MY_RANK == 0){
         this->write_AB_matrix("B_V_matrix.dat", 6, this->VB_global.data(), this->ndim, this->ndim);
     }
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "cal_V_for_B");
@@ -279,7 +279,7 @@ void HamiltBSE<T>::cal_W_for_A(){
     // WR.cal_W_global(this->WA_global);
 
     this->mo_lri.cal_W_for_A(this->WA_global);    
-    if (GlobalV::MY_RANK == 0){
+    if (PARAM.inp.bse_write_ab && GlobalV::MY_RANK == 0){
         this->write_AB_matrix("A_W_matrix.dat", 6, this->WA_global.data(), this->ndim, this->ndim);
     }
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "cal_W_for_A");
@@ -298,7 +298,7 @@ void HamiltBSE<T>::cal_W_for_B(){
     this->WB_global.resize( this->ndim * this->ndim, 0.0);
     this->mo_lri.cal_W_for_B(this->WB_global);
     
-    if (GlobalV::MY_RANK == 0){
+    if (PARAM.inp.bse_write_ab && GlobalV::MY_RANK == 0){
         this->write_AB_matrix("B_W_matrix.dat", 6, this->WB_global.data(), this->ndim, this->ndim);
     }
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "cal_W_for_B");

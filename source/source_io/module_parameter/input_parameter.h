@@ -362,6 +362,7 @@ struct Input_para
     std::vector<std::string> bse_spin_types = {"singlet", "triplet"}; ///< spin types for close-shell case to be calculated
     bool bse_ri_hartree = true; ///< whether to use RI approximation for Hartree term in BSE
     bool bse_use_fine_kgrid = false; ///< whether to use a finer k-grid for BSE
+    bool bse_write_ab = false;    ///< whether to write the AB matrix to file
     int bse_continue = 0; ///< which step to continue from previous BSE calculation
                           ///< 0: new; 1: continue from A_V; 2: A_V and A_W; 3: A_V, A_W and B_V; 4: A_V, A_W, B_V and B_W
     int plot_istate = 0; ///< the index of excited state to be plotted (starting from 0)

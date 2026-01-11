@@ -435,6 +435,12 @@ void ReadInput::item_lr_tddft()
         this->add_item(item);
     }
     {
+        Input_Item item("bse_write_ab");
+        item.annotation = "whether to write the AB matrix to file";
+        read_sync_bool(input.bse_write_ab);
+        this->add_item(item);
+    }
+    {
         Input_Item item("bse_continue");
         item.annotation = "which step to continue from previous BSE calculation";
         read_sync_int(input.bse_continue);
