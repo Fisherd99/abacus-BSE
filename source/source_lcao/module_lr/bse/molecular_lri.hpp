@@ -1,5 +1,6 @@
 #include "molecular_lri.h"
 #include <RI/distribute/Distribute_Equally.h>
+#include <cstddef>
 #ifdef _OPENMP
 #include <omp.h>
 #endif
@@ -18,7 +19,6 @@ void MolecularLRI<T>::init(TLRI<T>& Cs_in, TLRI<T>& Vs_in, TLRI<T>& Ws_in, const
     ModuleBase::timer::tick("MolecularLRI", "distribute_atom_and_k");
     int nproc = GlobalV::NPROC;
     std::set<int> set_I, set_J, set_IJ, set_k;
-    std::vector<int> list_k1_index, list_k2_index;
     int task_sizes = this->ucell.nat * this->ucell.nat * this->nk * this->nk;
     std::cout << "Total Molecular LRI tasks: " << task_sizes << ", number of MPI processes: " << nproc << std::endl;
     RI::Distribute_Equally::distribute_atom_and_k_pair(MPI_COMM_WORLD,
@@ -26,8 +26,8 @@ void MolecularLRI<T>::init(TLRI<T>& Cs_in, TLRI<T>& Vs_in, TLRI<T>& Ws_in, const
                                                        (std::size_t)this->nk,
                                                        this->list_I,
                                                        this->list_J,
-                                                       list_k1_index,
-                                                       list_k2_index,
+                                                       this->list_k1_index,
+                                                       this->list_k2_index,
                                                        false);
 
     set_I.insert(this->list_I.begin(), this->list_I.end());
@@ -63,12 +63,27 @@ void MolecularLRI<T>::init(TLRI<T>& Cs_in, TLRI<T>& Vs_in, TLRI<T>& Ws_in, const
     // LRI_CV_Tools::write_Vs_abf(Vs_in, PARAM.globalv.global_out_dir + "Vs_in_test_" + std::to_string(GlobalV::MY_RANK));
     // LRI_CV_Tools::write_Vs_abf(Ws_in, PARAM.globalv.global_out_dir + "Ws_in_test_" + std::to_string(GlobalV::MY_RANK));
     
+    // 1-2. move R tensors to nearest image
+    double dist;
     std::set<int> all_atoms;
     for (int i = 0; i < this->ucell.nat; ++i)
     {
         all_atoms.insert(i);
+        for (int j = 0; j < this->ucell.nat; ++j)
+        {
+            for (const TC R_original : this->kRlist.Rlist)
+            {
+				const TC R = cell_nearest.cell_nearest_check(i, j, R_original, dist);
+                if (R != R_original)
+                {
+                    BSE_Util::move_R_tensor(Cs_in, i, j, R_original, R);
+                    BSE_Util::move_R_tensor(Vs_in, i, j, R_original, R);
+                    BSE_Util::move_R_tensor(Ws_in, i, j, R_original, R);
+                }
+            }
+        }
     }
-    // 1-2. set tensors, in these functions MPI distribution will be performed
+    // 1-3. set tensors, in these functions MPI distribution will be performed
     this->LR_lri.set_Cs(Cs_in, info_ri.C_threshold, set_IJ, all_atoms);
     this->LR_lri.set_Vs(Vs_in, info_ri.V_threshold, set_I, set_J);
     this->LR_lri.set_Ws(Ws_in, info_ri.V_threshold, set_I, set_J);
@@ -95,57 +110,12 @@ void MolecularLRI<T>::init(TLRI<T>& Cs_in, TLRI<T>& Vs_in, TLRI<T>& Ws_in, const
     //this->Csk_mo = cal_Csk_mo(ucell, Csk_ao, this->psi_ks, this->k_list, this->list_IJ);
 }
 
-/// @brief W[k_AI][k_BJ] to global matrix WA[aik1, bjk2]
-template <typename T>
-void MolecularLRI<T>::transform_k_global(std::vector<T>& m_global, std::map<Tk, std::map<Tk, RI::Tensor<T>>>& m_lri)
-{
-    ModuleBase::TITLE("MolecularLRI", "transform_k_global");
-    ModuleBase::timer::tick("MolecularLRI", "transform_k_global");
-
-    // gather all Wk
-    auto gather_matrix = [&](std::vector<T>& target,
-        const std::valarray<T>& value,
-        int k1_step,
-        int k2_step,
-        double factor) -> void
-    {
-        const int npair = nocc * nvirt;
-        for (int j = 0; j < npair; ++j)
-        {
-            for (int i = 0; i < npair; ++i)
-            {
-                const int idx_target = (k1_step + i) + (k2_step + j) * this->ndim;
-                const int idx_value = i + j * npair;
-                target[idx_target] = value[idx_value] * factor;
-            }
-        }
-    };
-
-#ifdef _OPENMP
-#pragma omp parallel for schedule(static) collapse(2)
-#endif
-    for (const Tk k1 : this->k1_list)
-    {
-        const int kai = this->kpoint_index_map.at(k1);
-        const int k1_step = kai * this->nocc * this->nvirt;
-        for (const Tk k2 : this->k2_list)
-        {
-            const int kbj = this->kpoint_index_map.at(k2);
-            const int k2_step = kbj * this->nocc * this->nvirt;
-            const RI::Tensor<T>& m_kai_kbj = m_lri.at(k1).at(k2);
-            const double fac = 2.0 / static_cast<double>(this->nk); // factor 2 for Ha → Ry
-            gather_matrix(m_global, *m_kai_kbj.data, k1_step, k2_step, fac);
-        }
-    }
-    Parallel_Reduce::reduce_all(m_global.data(), m_global.size());
-    ModuleBase::timer::tick("MolecularLRI", "transform_k_global");
-}
-
 template <typename T>
 TLRIk<T> MolecularLRI<T>::cal_Csk_ao(const TLRI<T>& CsR_ao,
                                     const std::vector<Tk>& k_list,
                                     const std::vector<TA>& list_IJ)
 {
+    ModuleBase::TITLE("MolecularLRI", "cal_Csk_ao");
     ModuleBase::timer::tick("MolecularLRI", "cal_Csk_ao");
     TLRIk<T> Csk_ao; // <k, <I, <J, tensor{nabf, nwt1, nwt2}>>>
     for (const auto& k : k_list)
@@ -168,20 +138,7 @@ TLRIk<T> MolecularLRI<T>::cal_Csk_ao(const TLRI<T>& CsR_ao,
             for (const auto& CI_JR: CR_I)
             {
                 const int iat2 = CI_JR.first.first;
-                const TC& R_original = CI_JR.first.second;
-                double dist;
-                const TC R = this->cell_nearest.cell_nearest_check(iat1, iat2, R_original, dist);
-                // if (R != R_original)
-                // {
-                // #ifdef _OPENMP
-                // #pragma omp critical
-                // #endif
-                //     std::cout << "in cal_Csk_ao: cell_nearest_check gives different R from ("
-                //         << R_original[0] << "," << R_original[1] << "," << R_original[2] << ") to ("
-                //         << R[0] << "," << R[1] << "," << R[2] 
-                //         << ") for I=" << iat1 << ", J=" << iat2 << ", dist=" << dist << std::endl;
-                // }
-
+                const TC& R = CI_JR.first.second;
                 double arg = 2.0 * M_PI * (k[0] * R[0] + k[1] * R[1] + k[2] * R[2]);
                 std::complex<double> phase(cos(arg), sin(arg));
 

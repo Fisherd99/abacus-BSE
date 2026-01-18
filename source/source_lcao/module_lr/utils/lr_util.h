@@ -75,10 +75,10 @@ namespace LR_Util
     void matsym(T* inout, const int n, const Parallel_2D& pmat);
 #endif
     template<typename T>
-    bool is_hermitian(const T* mat, const int n, const double threshold = 1.0e-8);
+    bool is_hermitian(const T* mat, const Parallel_2D& pmat, const double threshold = 1.0e-6);
 
     template<typename T>
-    bool is_symmetric(const T* mat, const int n, const double threshold = 1.0e-8);
+    bool is_symmetric(const T* mat, const Parallel_2D& pmat, const double threshold = 1.0e-6);
 
     ///===================Psi wrapper=================
     /// psi(nk=1, nbands=nb, nk * nbasis) -> psi(nb, nk, nbasis) without memory copy
@@ -99,9 +99,16 @@ namespace LR_Util
     /// @brief assign global X to 2d-matrix, its col is band(excition state), and row is { spin, k-point, occ, virt }
     /// @attention pX is 2d-blocked as {occ, virt}, this assignment is used to calculate transition density matrix c_b X_{bj} c_j
     template <typename T>
-    void global2local_X(T* local_X, T* global_X, const int& nband, const int& nk, 
+    void global2local_X(T* local_X, const T* global_X, const int nband, const int nk, 
         const std::vector<int>& nocc, const std::vector<int>& nvirt, const std::vector<Parallel_2D>& pX,
         const bool openshell);
+    
+    /// @brief assign X in pA to X in pX
+    template <typename T>
+    void trans2pX(T* X_pX, const T* X_pA, const int nband, const int nk, 
+        const std::vector<int>& nocc, const std::vector<int>& nvirt,
+        const std::vector<Parallel_2D>& pX, const Parallel_2D& pA,
+        const int row_offset, const int col_offset, const bool openshell);
 
     /// @brief  gather 2d matrix to full matrix
     /// the defination of row and col is consistent with setup_2d_division

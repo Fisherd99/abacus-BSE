@@ -63,7 +63,7 @@ ESolver_BSE<T, TR>::ESolver_BSE(const Input_para& inp, UnitCell& ucell) :
                                           this->kv.ngk,
                                           true);
     this->read_ks_wfc();
-    // FISH_NOTE: openshell is not implemented in BSE
+    // NOTE: openshell is not implemented in BSE
     if (this->nspin == 2)
     {
         this->nupdown = this->cal_nupdown_form_occ(this->pelec->wg);
@@ -123,7 +123,7 @@ ESolver_BSE<T, TR>::ESolver_BSE(const Input_para& inp, UnitCell& ucell) :
 
     this->mo_lri = LR_Util::make_unique<MolecularLRI<T>>(this->ucell,
                                                         this->nk,
-                                                        this->kv,
+                                                        this->kRlist,
                                                         this->nocc[0],
                                                         this->nvirt[0],
                                                         *this->psi_ks_global);
@@ -250,6 +250,7 @@ void ESolver_BSE<T, TR>::runner(UnitCell& ucell, const int istep)
                     write_tda_states(this->input.bse_spin_types[is], &this->tda_ene[is * this->nstates],
                         this->X[is].template data<T>(), this->nloc_per_state, this->nstates);
                 }
+                malloc_trim(0);
             }
         }
         if ((this->input.bse_tda == "both" || this->input.bse_tda == "full")) {
@@ -271,6 +272,7 @@ void ESolver_BSE<T, TR>::runner(UnitCell& ucell, const int istep)
                     write_full_states(this->input.bse_spin_types[is], &this->full_ene[is * this->nstates],
                         this->full_X[is].template data<T>(), this->full_Y[is].template data<T>(), this->nloc_per_state, this->nstates);
                 }
+                malloc_trim(0);
             }
         }
     }
@@ -335,7 +337,6 @@ void ESolver_BSE<T, TR>::runner(UnitCell& ucell, const int istep)
     {
         ModuleBase::WARNING_QUIT("ESolver_BSE", "lr_solver must be elpa, plot or spectrum");
     }
-    malloc_trim(0);
     ModuleBase::timer::tick("ESolver_BSE", "runner");
     return;
 }

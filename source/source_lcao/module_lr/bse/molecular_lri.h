@@ -10,7 +10,7 @@
 #include "source_lcao/module_lr/utils/lr_util_print.h"
 #include "source_lcao/module_lr/ao_to_mo_transformer/ao_to_mo.h"
 #include "source_lcao/module_ri/LRI_CV_Tools.h"
-
+#include "source_lcao/module_lr/utils/lr_io.h"
 namespace BSE
 {
 
@@ -38,12 +38,12 @@ public:
     /// @brief calculate V[k_ai][k_bj](j,b,i,a) and W[k_ai][k_bj](j,b,i,a) with RI method
     MolecularLRI(const UnitCell& ucell,
         const int nk,
-        const K_Vectors& kv_in,
+        const LR_IO::RI_kRlist& kRlist_in,
         const int nocc,
         const int nvirt,
         const psi::Psi<T>& psi_ks_in) // < ATTENTION: psi_ks should be global
-    : ucell(ucell), nk(nk), kv(kv_in), nocc(nocc), nvirt(nvirt), ndim(nk*nocc*nvirt),
-    psi_ks(psi_ks_in), period({kv_in.nmp[0], kv_in.nmp[1], kv_in.nmp[2]})
+    : ucell(ucell), nk(nk), kRlist(kRlist_in), kv(*kRlist_in.klist), nocc(nocc), nvirt(nvirt),
+    ndim(nk*nocc*nvirt), psi_ks(psi_ks_in)
     {
         for (int i = 0; i < nk; ++i) // nk without spin, ignore nspin2 temporarily
         {
@@ -60,14 +60,14 @@ public:
         const std::array<TatomR, 3> latvec = {RI_Util::Vector3_to_array3(this->ucell.a1),
                                               RI_Util::Vector3_to_array3(this->ucell.a2),
                                               RI_Util::Vector3_to_array3(this->ucell.a3)};
-        this->LR_lri.set_parallel(MPI_COMM_WORLD, atoms_pos, latvec, period);
-        this->cell_nearest.init(atoms_pos, latvec, period);
+        this->LR_lri.set_parallel(MPI_COMM_WORLD, atoms_pos, latvec, kRlist.period);
+        this->cell_nearest.init(atoms_pos, latvec, kRlist.period);
     };
     
     ~MolecularLRI() {}
 
     /// =============== calculation interface ====================
-    void cal_W_for_A(std::vector<T>& m_global)
+    void cal_W_for_A(std::vector<T>& m_2d, const Parallel_2D& pm_2d)
     {
         //TCsk_mo<T> Csk_oo_k21 = slice_Csk_mo(nocc, nvirt, LR_Util::MO_TYPE::OO, "OOk21", this->k2_list, this->k1_list, this->list_I);
         //TCsk_mo<T> Csk_vv_k12 = slice_Csk_mo(nocc, nvirt, LR_Util::MO_TYPE::VV, "VVk12", this->k1_list, this->k2_list, this->list_J);
@@ -77,22 +77,22 @@ public:
         ModuleBase::TITLE("MolecularLRI", "cal_W_for_A");
         ModuleBase::timer::tick("MolecularLRI", "cal_W_for_A");
         std::map<Tk, std::map<Tk, RI::Tensor<T>>>
-            Wk = LR_lri.lri.cal_cvc_mo_k_onthefly(this->Csk_ao_mo, this->map_psi, k1_list, k2_list, list_I, list_J, cell_nearest,
+            Wk = LR_lri.lri.cal_cvc_mo_k_onthefly(this->Csk_ao_mo, this->map_psi, k1_list, k2_list, list_I, list_J,
                 {"O","O","V","V"}, (std::size_t)nocc, (std::size_t)nvirt, "Ws_", GlobalV::ofs_running, { 0,2,1,3 }); // (jiba) -> (jbia)
         ModuleBase::timer::tick("MolecularLRI", "cal_W_for_A");
-        this->transform_k_global(m_global, Wk);
+        this->transform_k_2dlocal(m_2d, Wk, pm_2d);
     }
-    void cal_W_for_B(std::vector<T>& m_global)
+    void cal_W_for_B(std::vector<T>& m_2d, const Parallel_2D& pm_2d)
     {
         ModuleBase::TITLE("MolecularLRI", "cal_W_for_B");
         ModuleBase::timer::tick("MolecularLRI", "cal_W_for_B");
         std::map<Tk, std::map<Tk, RI::Tensor<T>>>
-            Wk = LR_lri.lri.cal_cvc_mo_k_onthefly(this->Csk_ao_mo, this->map_psi, k1_list, k2_list, list_I, list_J, cell_nearest,
+            Wk = LR_lri.lri.cal_cvc_mo_k_onthefly(this->Csk_ao_mo, this->map_psi, k1_list, k2_list, list_I, list_J,
                 {"V","O","O","V"}, (std::size_t)nocc, (std::size_t)nvirt, "Ws_", GlobalV::ofs_running, { 2,0,1,3 }); // (bija) -> (jbia)
         ModuleBase::timer::tick("MolecularLRI", "cal_W_for_B");
-        this->transform_k_global(m_global, Wk);
+        this->transform_k_2dlocal(m_2d, Wk, pm_2d);
     }
-    void cal_hartree_for_A(std::vector<T>& m_global)
+    void cal_hartree_for_A(std::vector<T>& m_2d, const Parallel_2D& pm_2d)
     {
         ModuleBase::TITLE("MolecularLRI", "cal_hartree_for_A");
         ModuleBase::timer::tick("MolecularLRI", "cal_hartree_for_A");
@@ -100,9 +100,9 @@ public:
             Vk = LR_lri.lri.cal_cvc_mo_k_hartree_onthefly(this->Csk_ao_mo, this->map_psi, k1_list, k2_list, list_I, list_J,
                 {"O","V","O","V"}, (std::size_t)nocc, (std::size_t)nvirt, "Vs_", true);
         ModuleBase::timer::tick("MolecularLRI", "cal_hartree_for_A");
-        this->transform_k_global(m_global, Vk);
+        this->transform_k_2dlocal(m_2d, Vk, pm_2d);
     }
-    void cal_hartree_for_B(std::vector<T>& m_global)
+    void cal_hartree_for_B(std::vector<T>& m_2d, const Parallel_2D& pm_2d)
     {
         ModuleBase::TITLE("MolecularLRI", "cal_hartree_for_B");
         ModuleBase::timer::tick("MolecularLRI", "cal_hartree_for_B");
@@ -110,7 +110,7 @@ public:
             Vk = LR_lri.lri.cal_cvc_mo_k_hartree_onthefly(this->Csk_ao_mo, this->map_psi, k1_list, k2_list, list_I, list_J,
                 {"O","V","O","V"}, (std::size_t)nocc, (std::size_t)nvirt, "Vs_", false);
         ModuleBase::timer::tick("MolecularLRI", "cal_hartree_for_B");
-        this->transform_k_global(m_global, Vk);
+        this->transform_k_2dlocal(m_2d, Vk, pm_2d);
     }
 
     void init(TLRI<T>& Cs_in, TLRI<T>& Vs_in, TLRI<T>& Ws_in, const Exx_Info::Exx_Info_RI& info_ri);
@@ -145,7 +145,9 @@ public:
 
 protected:
     /// =============== inner function ====================
-    void transform_k_global(std::vector<T>& m_global, std::map<Tk, std::map<Tk, RI::Tensor<T>>>& m_lri);
+    void transform_k_2dlocal(std::vector<T>& m_2d,
+        const std::map<Tk, std::map<Tk, RI::Tensor<T>>>& m_lri,
+        const Parallel_2D& pm_2d);
 
     // <k, <I, <J, tesnor{nabfs, nmo1, nmo2}>>>
     TLRIk<T> cal_Csk_ao(const TLRI<T>& CsR_ao, const std::vector<Tk>& k_list, const std::vector<TA>& list_IJ);
@@ -199,7 +201,8 @@ protected:
     const UnitCell& ucell;
     const int nk;
     const K_Vectors& kv;
-    const TC period;
+    const LR_IO::RI_kRlist& kRlist;
+    const Parallel_2D pm_2d;
     const int nocc;
     const int nvirt;
     const int ndim;
@@ -208,6 +211,7 @@ protected:
     std::vector<int> list_I;
     std::vector<int> list_J;
     std::vector<int> list_IJ;
+    std::vector<int> list_k1_index, list_k2_index;
     std::vector<Tk> k1_list;
     std::vector<Tk> k2_list;
     std::vector<Tk> k_list;
@@ -331,4 +335,5 @@ protected:
 }// namespace BSE
 
 #include "molecular_lri.hpp"
+#include "molecular_lri_comm.hpp"
 #include "molecular_WR.hpp"

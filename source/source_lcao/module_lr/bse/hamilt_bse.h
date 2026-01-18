@@ -27,9 +27,9 @@ template <typename T>
 class HamiltBSE
 {
 public:
-    std::vector<T> BSE_A_global, BSE_B_global;
-    std::vector<T> VA_global, WA_global;
-    std::vector<T> VB_global, WB_global;
+    std::vector<T> BSE_A_local, BSE_B_local;
+    std::vector<T> VA_local, WA_local;
+    std::vector<T> VB_local, WB_local;
     int ndim = 0; // dimension of BSE matrix
     Parallel_2D pA;
     /// @brief constructor for BSE_Matrix
@@ -60,6 +60,7 @@ public:
     void init_bse_matrix(const bool is_full, const int& st_index);
     void tda_solver(const int& st_index, const int& nstates, double* ene_out, T* X_out);
     void full_solver(const int& st_index, const int& nstates, double* ene_out, T* X_out, T* Y_out);
+    void cal_V_by_grid(bool is_A);
     void grid_calculation(hamilt::HContainer<T>& VR) const;
     
     inline void write_AB_matrix(const std::string& file, const int& prec, const T* ptr, const int& size1, const int& size2)
@@ -107,6 +108,6 @@ private:
     const std::vector<std::string>& spin_types; // singlet, triplet, and rpa, ipa(independent particle approx)
     const std::string ri_hartree_benchmark;
 
-    std::unique_ptr<elecstate::DensityMatrix<T, T>> DM_trans;
+    std::unique_ptr<elecstate::DensityMatrix<T, T>> DM_trans = nullptr;
 };
 } // namespace BSE

@@ -43,33 +43,57 @@ HamiltBSE<T>::HamiltBSE(const int& nspin,
     assert(naos == pmat.get_global_row_size() && naos == pmat.get_global_col_size());
     this->nk = this->nspin == 2 ? this->kv.get_nks() / 2 : this->kv.get_nks();
     this->ndim = nk * nocc[0] * nvirt[0];
-    this->BSE_A_global.resize(ndim * ndim, 0.0);
-    if (tda == "both" || tda == "full") { this->BSE_B_global.resize(ndim * ndim, 0.0); }
 
-    this->DM_trans = LR_Util::make_unique<elecstate::DensityMatrix<T, T>>(&pmat, 1/*nspin*/, kv_in.kvec_d, nk);
-    this->DM_trans->set_DMK_zero();
-    LR_Util::initialize_DMR(*this->DM_trans, this->pmat, this->ucell, this->gd, this->orb_cutoff);
+    int nb2d;
+    if (this->ndim > 1000)
+    {
+        nb2d = 64;
+    }
+    else if (this->ndim > 500)
+    {
+        nb2d = 32;
+    }
+    else if (this->ndim > 0)
+    {
+        nb2d = 1;
+    }
+    else throw std::runtime_error("ndim in HamiltBSE is zero or negative.");
+    LR_Util::setup_2d_division(this->pA, nb2d, ndim, ndim
+        #ifdef __MPI
+                , this->pX[0].blacs_ctxt
+        #endif
+            );
+
+    this->BSE_A_local.resize(this->pA.get_local_size(), 0.0);
+    if (tda == "both" || tda == "full") { this->BSE_B_local.resize(this->pA.get_local_size(), 0.0); }
+
+    if (!PARAM.inp.bse_ri_hartree && this->ri_hartree_benchmark == "none")
+    {
+        this->DM_trans = LR_Util::make_unique<elecstate::DensityMatrix<T, T>>(&pmat, 1/*nspin*/, kv_in.kvec_d, nk);
+        this->DM_trans->set_DMK_zero();
+        LR_Util::initialize_DMR(*this->DM_trans, this->pmat, this->ucell, this->gd, this->orb_cutoff);
+    }
 
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "HamiltBSE is ready to calculate V and W");
 
     if (PARAM.inp.bse_continue >= 1) {
-        this->VA_global.resize( this->ndim * this->ndim, 0.0);
-        this->read_AB_matrix("A_V_matrix.dat", this->VA_global.data(), this->ndim, this->ndim);
+        this->VA_local.resize(this->pA.get_local_size(), 0.0);
+        this->read_AB_matrix("A_V_matrix_"+std::to_string(GlobalV::MY_RANK)+".dat", this->VA_local.data(), this->ndim, this->ndim);
         ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "read_V_for_A");
     }
     if (PARAM.inp.bse_continue >= 2) {
-        this->WA_global.resize( this->ndim * this->ndim, 0.0);
-        this->read_AB_matrix("A_W_matrix.dat", this->WA_global.data(), this->ndim, this->ndim);
+        this->WA_local.resize(this->pA.get_local_size(), 0.0);
+        this->read_AB_matrix("A_W_matrix_"+std::to_string(GlobalV::MY_RANK)+".dat", this->WA_local.data(), this->ndim, this->ndim);
         ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "read_W_for_A");
     }
     if (PARAM.inp.bse_continue >= 3) {
-        this->VB_global.resize( this->ndim * this->ndim, 0.0);
-        this->read_AB_matrix("B_V_matrix.dat", this->VB_global.data(), this->ndim, this->ndim);
+        this->VB_local.resize(this->pA.get_local_size(), 0.0);
+        this->read_AB_matrix("B_V_matrix_"+std::to_string(GlobalV::MY_RANK)+".dat", this->VB_local.data(), this->ndim, this->ndim);
         ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "read_V_for_B");
     }
     if (PARAM.inp.bse_continue >= 4) {
-        this->WB_global.resize( this->ndim * this->ndim, 0.0);
-        this->read_AB_matrix("B_W_matrix.dat", this->WB_global.data(), this->ndim, this->ndim);
+        this->WB_local.resize(this->pA.get_local_size(), 0.0);
+        this->read_AB_matrix("B_W_matrix_"+std::to_string(GlobalV::MY_RANK)+".dat", this->WB_local.data(), this->ndim, this->ndim);
         ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "read_W_for_B");
     }
     for (const auto& st : this->spin_types) {
@@ -102,79 +126,24 @@ void HamiltBSE<T>::cal_V_for_A(){
     ModuleBase::TITLE("HamiltBSE", "cal_V_for_A");
     ModuleBase::timer::tick("HamiltBSE", "cal_V_for_A");
     std::cout<<"in cal_V_for_A"<<std::endl;
-    if (! this->VA_global.empty()) {
+    if (! this->VA_local.empty()) {
         std::cout<< "V for A has been calculated, skip." <<std::endl;
         return;
     }
-    this->VA_global.resize( this->ndim * this->ndim, 0.0);
+    this->VA_local.resize(this->pA.get_local_size(), 0.0);
     if (this->ri_hartree_benchmark == "aims" || this->ri_hartree_benchmark == "abacus") {
         throw std::runtime_error("this BSE routine only supports aims-librpa/abacus-librpa benchmark");
     }
     else if (PARAM.inp.bse_ri_hartree || this->ri_hartree_benchmark =="aims-librpa" || this->ri_hartree_benchmark == "abacus-librpa") {
         std::cout << "Calculating Hartree term for A with RI approximation" << std::endl;
-        this->mo_lri.cal_hartree_for_A(this->VA_global);
+        this->mo_lri.cal_hartree_for_A(this->VA_local, this->pA);
     }
     else if (this->ri_hartree_benchmark == "none") { // do things like OperatorLRHxc
         std::cout << "Calculating Hartree term for A with grid integration" << std::endl;
-        // 1. initialize HContainer VR
-        const int& is = 0; //spin index, only support 1 spin now
-        const auto psi_is = LR_Util::get_psi_spin(psi_ks, is, nk);
-        std::unique_ptr<hamilt::HContainer<T>> VR = std::unique_ptr<hamilt::HContainer<T>>(new hamilt::HContainer<T>(&this->pmat));
-        LR_Util::initialize_HR<T, T>(*VR, this->ucell, this->gd, this->orb_cutoff);
-
-        for (int ik2 = 0; ik2 < nk; ++ik2) {                    
-            for (int j = 0; j < nocc[0]; ++j) {
-                for (int b = 0; b < nvirt[0]; ++b) {//calculate row {aik1} for each column {bjk2}
-                    ModuleBase::timer::tick("HamiltBSE", "cal_V_column_by_grid");
-                    int bjk = ik2 * nocc[0] * nvirt[0] + j * nvirt[0] + b; // column index in BSE matrix
-                    // 2. calculate transition matrix jk2→bk2, D(k)=c_b(k)c^†_j(k)
-        #ifdef __MPI
-                    ct::Tensor dm_trans_2d = 
-                        BSE_Util::cal_dm_trans_onebase_pblas(psi_is, pc, ik2, naos, j, b+nocc[0], pmat, (T)1.0 / (T)nk);
-        #else
-                    ct::Tensor dm_trans_2d = 
-                        BSE_Util::cal_dm_trans_onebase_blas(psi_is, pc, ik2, naos, j, b+nocc[0], (T)1.0 / (T)nk);
-        #endif
-                    // LR_Util::print_tensor<T>(dm_trans_2d, "dm_trans_2d", &pmat);
-                    this->DM_trans->set_DMK_pointer(ik2, dm_trans_2d.data<T>());
-                    // 3. D(k)→D(R)
-                    this->DM_trans->cal_DMR(ik2);
-                    // LR_Util::print_DMR(*DM_trans, ucell.nat, "DMR");
-
-                    // 4. D(R)→V(R)
-                    this->grid_calculation(*VR);
-
-                    // 5. V(R)→V(k) 
-                    std::vector<ct::Tensor> v_k_2d(nk, LR_Util::newTensor<T>({ pmat.get_col_size(), pmat.get_row_size() }));
-                    for (auto& v : v_k_2d) v.zero();
-                    int nrow = ModuleBase::GlobalFunc::IS_COLUMN_MAJOR_KS_SOLVER(PARAM.inp.ks_solver) ? 
-                        this->pmat.get_row_size() : this->pmat.get_col_size();
-                    for (int ik1 = 0;ik1 < nk;++ik1) {
-                        folding_HR(*VR, v_k_2d[ik1].data<T>(), this->kv.kvec_d[ik1], nrow, 1);
-                    }
-                    // for (int ik1 = 0;ik1 < nk;++ik1)
-                    //     LR_Util::print_tensor<T>(v_k_2d[ik1], "V(k)[ik=" + std::to_string(ik1) + "]", &this->pmat);
-        #ifdef __MPI
-                    std::vector<T> V_col_local( this->nk * this->pX[is].get_local_size(), 0.0); // V_col(bjk2)
-                    LR::ao_to_mo_pblas(v_k_2d, this->pmat, psi_is, this->pc, this->naos,
-                                    nocc[is], nvirt[is], this->pX[is], V_col_local.data(), false, LR_Util::MO_TYPE::VO);
-
-                    for (int ik1 = 0; ik1 < this->nk; ++ik1) {
-                        LR_Util::gather_2d_to_full(this->pX[is],
-                            V_col_local.data() + ik1 * this->pX[is].get_local_size(),
-                            &this->VA_global[bjk * this->ndim /*col*/ + ik1 * nocc[is] * nvirt[is]/*row*/],
-                            false, nvirt[is], nocc[is]);
-                    }
-        #else
-                    LR::ao_to_mo_blas(v_k_2d, psi_is, nocc[is], nvirt[is], this->VA_global.data()+bjk * this->ndim, false, LR_Util::MO_TYPE::VO);
-        #endif
-                    ModuleBase::timer::tick("HamiltBSE", "cal_V_column_by_grid");
-                }
-            }
-        }
+        this->cal_V_by_grid(true);
     }
-    if (PARAM.inp.bse_write_ab && GlobalV::MY_RANK == 0){
-        this->write_AB_matrix("A_V_matrix.dat", 6, this->VA_global.data(), this->ndim, this->ndim);
+    if (PARAM.inp.bse_write_ab){
+        this->write_AB_matrix("A_V_matrix_"+std::to_string(GlobalV::MY_RANK)+".dat", 6, this->VA_local.data(), this->ndim, this->ndim);
     }
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "cal_V_for_A");
     ModuleBase::timer::tick("HamiltBSE", "cal_V_for_A");
@@ -185,79 +154,24 @@ void HamiltBSE<T>::cal_V_for_B(){
     ModuleBase::TITLE("HamiltBSE", "cal_V_for_B");
     ModuleBase::timer::tick("HamiltBSE", "cal_V_for_B");
     std::cout<<"in cal_V_for_B"<<std::endl;
-    if (! this->VB_global.empty()) {
+    if (! this->VB_local.empty()) {
         std::cout<< "V for B has been calculated, skip." <<std::endl;
         return;
     }
-    this->VB_global.resize( this->ndim * this->ndim, 0.0);
+    this->VB_local.resize(this->pA.get_local_size(), 0.0);
     if (this->ri_hartree_benchmark == "aims" || this->ri_hartree_benchmark == "abacus") {
         throw std::runtime_error("this BSE routine only supports aims-librpa/abacus-librpa benchmark");
     }
     else if (PARAM.inp.bse_ri_hartree || this->ri_hartree_benchmark =="aims-librpa" || this->ri_hartree_benchmark == "abacus-librpa") {
         std::cout << "Calculating Hartree term for B with RI approximation" << std::endl;
-        this->mo_lri.cal_hartree_for_B(this->VB_global);
+        this->mo_lri.cal_hartree_for_B(this->VB_local, this->pA);
     }
     else if (this->ri_hartree_benchmark == "none") { // do things like OperatorLRHxc
         std::cout << "Calculating Hartree term for B with grid integration" << std::endl;
-        // 1. initialize HContainer VR
-        const int& is = 0; //spin index, only support 1 spin now
-        const auto psi_is = LR_Util::get_psi_spin(psi_ks, is, nk);
-        std::unique_ptr<hamilt::HContainer<T>> VR = std::unique_ptr<hamilt::HContainer<T>>(new hamilt::HContainer<T>(&this->pmat));
-        LR_Util::initialize_HR<T, T>(*VR, this->ucell, this->gd, this->orb_cutoff);
-
-        for (int ik2 = 0; ik2 < nk; ++ik2) {                    
-            for (int j = 0; j < nocc[0]; ++j) {
-                for (int b = 0; b < nvirt[0]; ++b) {//calculate row {aik1} for each column {bjk2}
-                    ModuleBase::timer::tick("HamiltBSE", "cal_V_column_by_grid");
-                    int bjk = ik2 * nocc[0] * nvirt[0] + j * nvirt[0] + b; // column index in BSE matrix
-                    // 2. calculate transition matrix jk2←bk2, D(k)=c_j(k)c^†_b(k)
-        #ifdef __MPI
-                    ct::Tensor dm_trans_2d = 
-                        BSE_Util::cal_dm_trans_onebase_pblas(psi_is, pc, ik2, naos, b+nocc[0], j, pmat, (T)1.0 / (T)nk);
-        #else
-                    ct::Tensor dm_trans_2d = 
-                        BSE_Util::cal_dm_trans_onebase_blas(psi_is, pc, ik2, naos, b+nocc[0], j, (T)1.0 / (T)nk);
-        #endif
-                    // LR_Util::print_tensor<T>(dm_trans_2d, "dm_trans_2d", &pmat);
-                    this->DM_trans->set_DMK_pointer(ik2, dm_trans_2d.data<T>());
-                    // 3. D(k)→D(R)
-                    this->DM_trans->cal_DMR(ik2);
-                    // LR_Util::print_DMR(*DM_trans, ucell.nat, "DMR");
-
-                    // 4. D(R)→V(R)
-                    this->grid_calculation(*VR);
-
-                    // 5. V(R)→V(k) 
-                    std::vector<ct::Tensor> v_k_2d(nk, LR_Util::newTensor<T>({ pmat.get_col_size(), pmat.get_row_size() }));
-                    for (auto& v : v_k_2d) v.zero();
-                    int nrow = ModuleBase::GlobalFunc::IS_COLUMN_MAJOR_KS_SOLVER(PARAM.inp.ks_solver) ? 
-                        this->pmat.get_row_size() : this->pmat.get_col_size();
-                    for (int ik1 = 0;ik1 < nk;++ik1) {
-                        folding_HR(*VR, v_k_2d[ik1].data<T>(), this->kv.kvec_d[ik1], nrow, 1);
-                    }
-                    // for (int ik1 = 0;ik1 < nk;++ik1)
-                    //     LR_Util::print_tensor<T>(v_k_2d[ik1], "V(k)[ik=" + std::to_string(ik1) + "]", &this->pmat);
-        #ifdef __MPI
-                    std::vector<T> V_col_local( this->nk * this->pX[is].get_local_size(), 0.0); // V_col(bjk2)
-                    LR::ao_to_mo_pblas(v_k_2d, this->pmat, psi_is, this->pc, this->naos,
-                                    nocc[is], nvirt[is], this->pX[is], V_col_local.data(), false, LR_Util::MO_TYPE::VO);
-
-                    for (int ik1 = 0; ik1 < this->nk; ++ik1) {
-                        LR_Util::gather_2d_to_full(this->pX[is],
-                            V_col_local.data() + ik1 * this->pX[is].get_local_size(),
-                            &this->VB_global[bjk * this->ndim /*col*/ + ik1 * nocc[is] * nvirt[is]/*row*/],
-                            false, nvirt[is], nocc[is]);
-                    }
-        #else
-                    LR::ao_to_mo_blas(v_k_2d, psi_is, nocc[is], nvirt[is], this->VB_global.data()+bjk * this->ndim, false, LR_Util::MO_TYPE::VO);
-        #endif
-                    ModuleBase::timer::tick("HamiltBSE", "cal_V_column_by_grid");
-                }
-            }
-        }
+        this->cal_V_by_grid(false);
     }
-    if (PARAM.inp.bse_write_ab && GlobalV::MY_RANK == 0){
-        this->write_AB_matrix("B_V_matrix.dat", 6, this->VB_global.data(), this->ndim, this->ndim);
+    if (PARAM.inp.bse_write_ab){
+        this->write_AB_matrix("B_V_matrix_"+std::to_string(GlobalV::MY_RANK)+".dat", 6, this->VB_local.data(), this->ndim, this->ndim);
     }
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "cal_V_for_B");
     ModuleBase::timer::tick("HamiltBSE", "cal_V_for_B");
@@ -268,19 +182,14 @@ void HamiltBSE<T>::cal_W_for_A(){
     ModuleBase::TITLE("HamiltBSE", "cal_W_for_A");
     ModuleBase::timer::tick("HamiltBSE", "cal_W_for_A");
     std::cout<<"in cal_W_for_A"<<std::endl;
-    if (! this->WA_global.empty()) {
+    if (! this->WA_local.empty()) {
         std::cout<< "W for A has been calculated, skip." <<std::endl;
         return;
     }
-    this->WA_global.resize( this->ndim * this->ndim, 0.0);
-    
-    // BSE::MolecularWR<T> WR(this->ucell, this->naos, this->nk, this->kv, this->nocc[0], this->nvirt[0],
-    //                 this->psi_ks_glb, this->LR_lri);
-    // WR.cal_W_global(this->WA_global);
-
-    this->mo_lri.cal_W_for_A(this->WA_global);    
-    if (PARAM.inp.bse_write_ab && GlobalV::MY_RANK == 0){
-        this->write_AB_matrix("A_W_matrix.dat", 6, this->WA_global.data(), this->ndim, this->ndim);
+    this->WA_local.resize(this->pA.get_local_size(), 0.0);
+    this->mo_lri.cal_W_for_A(this->WA_local, this->pA);    
+    if (PARAM.inp.bse_write_ab){
+        this->write_AB_matrix("A_W_matrix_"+std::to_string(GlobalV::MY_RANK)+".dat", 6, this->WA_local.data(), this->ndim, this->ndim);
     }
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "cal_W_for_A");
     ModuleBase::timer::tick("HamiltBSE", "cal_W_for_A");
@@ -291,15 +200,15 @@ void HamiltBSE<T>::cal_W_for_B(){
     ModuleBase::TITLE("HamiltBSE", "cal_W_for_B");
     ModuleBase::timer::tick("HamiltBSE", "cal_W_for_B");
     std::cout<<"in cal_W_for_B"<<std::endl;
-    if (! this->WB_global.empty()) {
+    if (! this->WB_local.empty()) {
         std::cout<< "W for B has been calculated, skip." <<std::endl;
         return;
     }
-    this->WB_global.resize( this->ndim * this->ndim, 0.0);
-    this->mo_lri.cal_W_for_B(this->WB_global);
+    this->WB_local.resize(this->pA.get_local_size(), 0.0);
+    this->mo_lri.cal_W_for_B(this->WB_local, this->pA);
     
-    if (PARAM.inp.bse_write_ab && GlobalV::MY_RANK == 0){
-        this->write_AB_matrix("B_W_matrix.dat", 6, this->WB_global.data(), this->ndim, this->ndim);
+    if (PARAM.inp.bse_write_ab){
+        this->write_AB_matrix("B_W_matrix_"+std::to_string(GlobalV::MY_RANK)+".dat", 6, this->WB_local.data(), this->ndim, this->ndim);
     }
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "cal_W_for_B");
     ModuleBase::timer::tick("HamiltBSE", "cal_W_for_B");
@@ -311,24 +220,24 @@ void HamiltBSE<T>::init_bse_matrix(const bool is_full, const int & st_index){
     ModuleBase::TITLE("HamiltBSE", "init_bse_matrix");
     ModuleBase::timer::tick("HamiltBSE", "init_bse_matrix");
 
-    std::fill(this->BSE_A_global.begin(), this->BSE_A_global.end(), 0.0);
-    if (this->VA_global.empty()){
-        std::cout<<"A_V matrix is not calculated, fill zero now!"<<std::endl;
-        this->VA_global.resize( this->ndim * this->ndim, 0.0);
+    std::fill(this->BSE_A_local.begin(), this->BSE_A_local.end(), 0.0);
+    if (this->VA_local.empty()){
+        if (GlobalV::MY_RANK == 0) std::cout<<"A_V matrix is not calculated, fill zero now!"<<std::endl;
+        this->VA_local.resize(this->pA.get_local_size(), 0.0);
     }
-    if (this->WA_global.empty()){
-        std::cout<<"A_W matrix is not calculated, fill zero now!"<<std::endl;
-        this->WA_global.resize( this->ndim * this->ndim, 0.0);
+    if (this->WA_local.empty()){
+        if (GlobalV::MY_RANK == 0) std::cout<<"A_W matrix is not calculated, fill zero now!"<<std::endl;
+        this->WA_local.resize(this->pA.get_local_size(), 0.0);
     }
     if (is_full) {
-        std::fill(this->BSE_B_global.begin(), this->BSE_B_global.end(), 0.0);
-        if (this->VB_global.empty()){
+        std::fill(this->BSE_B_local.begin(), this->BSE_B_local.end(), 0.0);
+        if (this->VB_local.empty()){
             std::cout<<"B_V matrix is not calculated, fill zero now!"<<std::endl;
-            this->VB_global.resize( this->ndim * this->ndim, 0.0);
+            this->VB_local.resize(this->pA.get_local_size(), 0.0);
         }
-        if (this->WB_global.empty()){
+        if (this->WB_local.empty()){
             std::cout<<"B_W matrix is not calculated, fill zero now!"<<std::endl;
-            this->WB_global.resize( this->ndim * this->ndim, 0.0);
+            this->WB_local.resize(this->pA.get_local_size(), 0.0);
         }
     }
 
@@ -352,10 +261,10 @@ void HamiltBSE<T>::init_bse_matrix(const bool is_full, const int & st_index){
     
     std::string tda_type = is_full ? "full" : "TDA";
     std::cout<<"| init "<< tda_type << " BSE for type: "<<this->spin_types[st_index]<<std::endl;
-    std::cout<<"| A(ai,bj) = (Ea-Ei) δ_ij δ_ab + alpha (ai|V|jb)  +  beta (ji|W|ab)" << std::endl;
-    std::cout<<"|   term coefficient: (Exchange) alpha: "<<std::setw(2)<<alpha<<", (Direct) beta: "<<beta<<std::endl;
+    std::cout<<"| A(ai,bj) = (Ea-Ei) δ_ij δ_ab + α (ai|V|jb)  +  β (ji|W|ab)" << std::endl;
+    std::cout<<"|   term coefficient: (Exchange) α: "<<std::setw(2)<<alpha<<", (Direct) β: "<<beta<<std::endl;
     if (is_full) {
-        std::cout<<"| B(ai,jb) = alpha (ai|V|bj)  +  beta (bi|W|aj)" << std::endl;
+        std::cout<<"| B(ai,jb) = α (ai|V|bj)  +  β (bi|W|aj)" << std::endl;
     }
 #ifdef _OPENMP
 #pragma omp parallel for collapse(3)
@@ -367,40 +276,53 @@ void HamiltBSE<T>::init_bse_matrix(const bool is_full, const int & st_index){
             for(int a = 0;a < nvirt[0];++a)
             {
                 int index = ik * nocc[0] * nvirt[0] + i * nvirt[0] + a;
-                this->BSE_A_global[index * ndim + index] = this->eig_gw(ik, nocc[0] + a) - this->eig_gw(ik, i);
+                int col_loc = this->pA.global2local_col(index);
+                int row_loc = this->pA.global2local_row(index);
+                if (col_loc == -1 || row_loc == -1) continue;
+                this->BSE_A_local[col_loc * this->pA.get_row_size() + row_loc]
+                    = this->eig_gw(ik, nocc[0] + a) - this->eig_gw(ik, i);
             }
         }
     }
 #ifdef _OPENMP
 #pragma omp parallel for schedule(static)
 #endif
-    for (size_t i = 0; i < this->BSE_A_global.size(); ++i) {
-        this->BSE_A_global[i] +=(alpha * this->VA_global[i] + beta * this->WA_global[i]);
-        if (is_full) { this->BSE_B_global[i] +=(alpha * this->VB_global[i] + beta * this->WB_global[i]); }
+    for (size_t i = 0; i < this->BSE_A_local.size(); ++i) {
+        this->BSE_A_local[i] +=(alpha * this->VA_local[i] + beta * this->WA_local[i]);
+        if (is_full) { this->BSE_B_local[i] +=(alpha * this->VB_local[i] + beta * this->WB_local[i]); }
     }
 
     constexpr double threshold = 1.0e-6;
-    if (LR_Util::is_hermitian(this->BSE_A_global.data(), this->ndim, threshold)) {
-        if (GlobalV::MY_RANK == 0) {
+    if (LR_Util::is_hermitian(this->BSE_A_local.data(), this->pA, threshold))
+    {
+        if (GlobalV::MY_RANK == 0)
             std::cout << "|  CHECK PASS: Matrix A is hermitian under threshold " << threshold << std::endl;
-        }
     }
-    else {
-        std::cout << "| Matrix A is not hermitian under threshold " << threshold << std::endl;
+    else
+    {
+        if (GlobalV::MY_RANK == 0)
+            std::cout << "|  CHECK WARNING: Matrix A is not hermitian under threshold " << threshold << std::endl;
     }
-    if (GlobalV::MY_RANK == 0){
-        this->write_AB_matrix("A_matrix.dat", 6, this->BSE_A_global.data(), this->ndim, this->ndim);
+    if (PARAM.inp.bse_write_ab)
+    {
+        this->write_AB_matrix("A_matrix_"+std::to_string(GlobalV::MY_RANK)+".dat", 6, this->BSE_A_local.data(), this->ndim, this->ndim);
     }
 
-    if (is_full) {
-        if (LR_Util::is_symmetric(this->BSE_B_global.data(), this->ndim, threshold)) {
-            if (GlobalV::MY_RANK == 0) {
+    if (is_full)
+    {
+        if (LR_Util::is_symmetric(this->BSE_B_local.data(), this->pA, threshold))
+        {
+            if (GlobalV::MY_RANK == 0)
                 std::cout << "| CHECK PASS: Matrix B is symmetric under threshold " << threshold << std::endl;
-            }
         }
-        else { std::cout << "|  CHECK WARNING: Matrix B is not symmetric under threshold " << threshold << std::endl; }
-        if (GlobalV::MY_RANK == 0){
-            this->write_AB_matrix("B_matrix.dat", 6, this->BSE_B_global.data(), this->ndim, this->ndim);
+        else
+        {
+            if (GlobalV::MY_RANK == 0)
+                std::cout << "|  CHECK WARNING: Matrix B is not symmetric under threshold " << threshold << std::endl;
+        }
+        if (PARAM.inp.bse_write_ab)
+        {
+            this->write_AB_matrix("B_matrix_"+std::to_string(GlobalV::MY_RANK)+".dat", 6, this->BSE_B_local.data(), this->ndim, this->ndim);
         }
     }
 
@@ -413,29 +335,21 @@ void HamiltBSE<T>::tda_solver(const int & st_index, const int& nstates, double* 
     ModuleBase::TITLE("HamiltBSE", "tda_solver");
     ModuleBase::timer::tick("HamiltBSE", "elpa_tda_solver");
 
-    std::fill(this->BSE_A_global.begin(), this->BSE_A_global.end(), 0.0);
-
     this->init_bse_matrix(false, st_index);
 
-    std::vector<T> global_X_tda(this->ndim * this->ndim, 0.0);
+    std::vector<T> X_tda(this->pA.get_local_size(), 0.0);
     std::vector<double> ev(this->ndim, 0.0);
-    // this->pA.init(ndim, ndim, 1/*nb*/, MPI_COMM_WORLD, false/*dim0<dim1*/);
-    LR_Util::setup_2d_division(this->pA, 1/*nb*/, ndim, ndim
-        #ifdef __MPI
-                , this->pX[0].blacs_ctxt
-        #endif
-            );
 
     BSE::solve_tda(GlobalV::MY_RANK,
-                    this->BSE_A_global,
+                    this->BSE_A_local,
                     this->pA,
-                    this->ndim,
                     ev,
-                    global_X_tda);
+                    X_tda);
     // copy to output
     std::copy_n(ev.data(), nstates, ene_out);
-    LR_Util::global2local_X(X_out, global_X_tda.data(), nstates, this->nk,
-                            this->nocc, this->nvirt, this->pX, false/*openshell*/);
+
+    LR_Util::trans2pX(X_out, X_tda.data(), nstates, this->nk,
+                    this->nocc, this->nvirt, this->pX, this->pA, 0, 0, false/*openshell*/);
     
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "BSE TDA solver");
     ModuleBase::timer::tick("HamiltBSE", "elpa_tda_solver");
@@ -450,38 +364,37 @@ void HamiltBSE<double>::full_solver(const int& st_index, const int& nstates,
     ModuleBase::timer::tick("HamiltBSE", "elpa_full_solver(double)");
 
     this->init_bse_matrix(true, st_index);
-
+    Parallel_2D pM;
+    LR_Util::setup_2d_division(pM, this->pA.get_block_size(), 2*this->ndim, 2*this->ndim
+        #ifdef __MPI
+                , this->pA.blacs_ctxt
+        #endif
+            );
     // convert to complex
-    std::vector<std::complex<double>> BSE_A_global_complex = BSE_Util::to_complex(this->BSE_A_global);
-    std::vector<std::complex<double>> BSE_B_global_complex = BSE_Util::to_complex(this->BSE_B_global);
-    std::vector<std::complex<double>> global_v_full(4 * this->ndim * this->ndim, 0.0);
+    std::vector<std::complex<double>> BSE_A_local_complex = BSE_Util::to_complex(this->BSE_A_local);
+    std::vector<std::complex<double>> BSE_B_local_complex = BSE_Util::to_complex(this->BSE_B_local);
+    std::vector<std::complex<double>> local_v_full(pM.get_local_size(), 0.0);
     std::vector<double> ev(2 * this->ndim, 0.0);
     BSE::solve_full(GlobalV::MY_RANK,
-                    BSE_A_global_complex,
-                    BSE_B_global_complex,
-                    this->ndim,
+                    BSE_A_local_complex,
+                    BSE_B_local_complex,
+                    this->pA,
+                    pM,
                     ev,
-                    global_v_full);
+                    local_v_full);
 
-    // copy positive eigenvalues
-    std::vector<double> global_X_full(this->ndim * nstates, 0.0);
-    std::vector<double> global_Y_full(this->ndim * nstates, 0.0);
-    for (int i = 0; i < this->ndim; ++i) {
-        assert(ev[i+this->ndim] >= 0.0);
-        for (int j = 0; j < this->ndim; ++j) {
-            assert(std::abs(global_v_full[(i+this->ndim)*2*this->ndim + j].imag()) < 1e-10);
-            assert(std::abs(global_v_full[(i+this->ndim)*2*this->ndim + j+this->ndim].imag()) < 1e-10);
-            global_X_full[i * this->ndim + j] = global_v_full[(i+this->ndim)*2*this->ndim + j].real();
-            global_Y_full[i * this->ndim + j] = global_v_full[(i+this->ndim)*2*this->ndim + j+this->ndim].real();
-        }
+    std::vector<double> local_v_full_real(pM.get_local_size(), 0.0);
+    for (size_t i = 0; i < local_v_full.size(); ++i) {
+        assert(std::abs(local_v_full[i].imag()) < 1e-10);
+        local_v_full_real[i] = local_v_full[i].real();
     }
 
-    // copy to output
+    // copy positive eigenvalues to output
     std::copy_n(&ev[this->ndim], nstates, ene_out);
-    LR_Util::global2local_X(X_out, global_X_full.data(), nstates, this->nk,
-                            this->nocc, this->nvirt, this->pX, false/*openshell*/);
-    LR_Util::global2local_X(Y_out, global_Y_full.data(), nstates, this->nk,
-                            this->nocc, this->nvirt, this->pX, false/*openshell*/);
+    LR_Util::trans2pX(X_out, local_v_full_real.data(), nstates, this->nk,
+                    this->nocc, this->nvirt, this->pX, pM, 0, this->ndim, false/*openshell*/);
+    LR_Util::trans2pX(Y_out, local_v_full_real.data(), nstates, this->nk,
+                    this->nocc, this->nvirt, this->pX, pM, this->ndim, this->ndim, false/*openshell*/);
 
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "BSE Full solver");
     ModuleBase::timer::tick("HamiltBSE", "elpa_full_solver(double)");
@@ -496,39 +409,107 @@ void HamiltBSE<std::complex<double>>::full_solver(const int& st_index, const int
     ModuleBase::timer::tick("HamiltBSE", "elpa_full_solver(complex)");
 
     this->init_bse_matrix(true, st_index);
-
-    std::vector<std::complex<double>> global_v_full(4 * this->ndim * this->ndim, 0.0);
+    Parallel_2D pM;
+    LR_Util::setup_2d_division(pM, this->pA.get_block_size(), 2*this->ndim, 2*this->ndim
+        #ifdef __MPI
+                , this->pA.blacs_ctxt
+        #endif
+            );
+    
+    std::vector<std::complex<double>> local_v_full(pM.get_local_size(), 0.0);
     std::vector<double> ev(2 * this->ndim, 0.0);
     BSE::solve_full(GlobalV::MY_RANK,
-                    this->BSE_A_global,
-                    this->BSE_B_global,
-                    this->ndim,
+                    this->BSE_A_local,
+                    this->BSE_B_local,
+                    this->pA,
+                    pM,
                     ev,
-                    global_v_full);
+                    local_v_full);
 
-    // copy positive eigenvalues
-    std::vector<std::complex<double>> global_X_full(this->ndim * nstates, 0.0);
-    std::vector<std::complex<double>> global_Y_full(this->ndim * nstates, 0.0);
-#ifdef _OPENMP
-#pragma omp parallel for schedule(static)
-#endif
-    for (int i = 0; i < this->ndim; ++i) {
-        assert(ev[i+this->ndim] >= 0.0);
-        for (int j = 0; j < this->ndim; ++j) {
-            global_X_full[i * this->ndim + j] = global_v_full[(i+this->ndim)*2*this->ndim + j];
-            global_Y_full[i * this->ndim + j] = global_v_full[(i+this->ndim)*2*this->ndim + j+this->ndim];
-        }
-    }
-
-    // copy to output
+    // copy positive eigenvalues to output
     std::copy_n(&ev[this->ndim], nstates, ene_out);
-    LR_Util::global2local_X(X_out, global_X_full.data(), nstates, this->nk,
-                            this->nocc, this->nvirt, this->pX, false/*openshell*/);
-    LR_Util::global2local_X(Y_out, global_Y_full.data(), nstates, this->nk,
-                            this->nocc, this->nvirt, this->pX, false/*openshell*/);
+    LR_Util::trans2pX(X_out, local_v_full.data(), nstates, this->nk,
+                    this->nocc, this->nvirt, this->pX, pM, 0, this->ndim, false/*openshell*/);
+    LR_Util::trans2pX(Y_out, local_v_full.data(), nstates, this->nk,
+                    this->nocc, this->nvirt, this->pX, pM, this->ndim, this->ndim, false/*openshell*/);
     
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "BSE FULL solver");
     ModuleBase::timer::tick("HamiltBSE", "elpa_full_solver(complex)");
+}
+
+template <typename T>
+void HamiltBSE<T>::cal_V_by_grid(bool is_A)
+{
+    // 1. initialize HContainer VR
+    const int is = 0; //spin index, NOTE: only support 1 spin now
+    const auto psi_is = LR_Util::get_psi_spin(psi_ks, is, nk);
+    std::unique_ptr<hamilt::HContainer<T>> VR = std::unique_ptr<hamilt::HContainer<T>>(new hamilt::HContainer<T>(&this->pmat));
+    LR_Util::initialize_HR<T, T>(*VR, this->ucell, this->gd, this->orb_cutoff);
+#ifdef __MPI
+    Parallel_2D pV_col; //{nvirt*nocc, 1}
+    LR_Util::setup_2d_division(pV_col, this->pX[is].get_block_size(), nvirt[is]*nocc[is], 1, this->pX[is].blacs_ctxt);
+    std::vector<T> V_col_local(this->nk * pV_col.get_local_size(), 0.0); // V_col(bjk2)
+#endif
+
+    int imo1, imo2;
+    for (int ik2 = 0; ik2 < nk; ++ik2) {                    
+        for (int j = 0; j < nocc[is]; ++j) {
+            for (int b = 0; b < nvirt[is]; ++b) {//calculate row {aik1} for each column {bjk2}
+                ModuleBase::timer::tick("HamiltBSE", "cal_V_column_by_grid");
+                int bjk = ik2 * nocc[is] * nvirt[is] + j * nvirt[is] + b; // column index in BSE matrix
+                // 2. calculate transition matrix 
+                if (is_A) //jk2→bk2, D(k)=c_b(k)c^†_j(k)
+                    { imo1 = j; imo2 = b + nocc[is]; }
+                else //bjk2←kb2, D(k)=c_j(k)c^†_b(k)
+                    { imo1 = b + nocc[is]; imo2 = j; }
+    #ifdef __MPI
+                ct::Tensor dm_trans_2d = 
+                    BSE_Util::cal_dm_trans_onebase_pblas(psi_is, pc, ik2, naos, imo1, imo2, pmat, (T)1.0 / (T)nk);
+    #else
+                ct::Tensor dm_trans_2d = 
+                    BSE_Util::cal_dm_trans_onebase_blas(psi_is, pc, ik2, naos, imo1, imo2, (T)1.0 / (T)nk);
+    #endif
+                // LR_Util::print_tensor<T>(dm_trans_2d, "dm_trans_2d", &pmat);
+                this->DM_trans->set_DMK_pointer(ik2, dm_trans_2d.data<T>());
+                // 3. D(k)→D(R)
+                this->DM_trans->cal_DMR(ik2);
+                // LR_Util::print_DMR(*DM_trans, ucell.nat, "DMR");
+
+                // 4. D(R)→V(R)
+                this->grid_calculation(*VR);
+
+                // 5. V(R)→V(k) 
+                std::vector<ct::Tensor> v_k_2d(nk, LR_Util::newTensor<T>({ pmat.get_col_size(), pmat.get_row_size() }));
+                for (auto& v : v_k_2d) v.zero();
+                int nrow = ModuleBase::GlobalFunc::IS_COLUMN_MAJOR_KS_SOLVER(PARAM.inp.ks_solver) ? 
+                    this->pmat.get_row_size() : this->pmat.get_col_size();
+                for (int ik1 = 0;ik1 < nk;++ik1) {
+                    folding_HR(*VR, v_k_2d[ik1].data<T>(), this->kv.kvec_d[ik1], nrow, 1);
+                }
+                // for (int ik1 = 0;ik1 < nk;++ik1)
+                //     LR_Util::print_tensor<T>(v_k_2d[ik1], "V(k)[ik=" + std::to_string(ik1) + "]", &this->pmat);
+    #ifdef __MPI
+                LR::ao_to_mo_pblas(v_k_2d, this->pmat, psi_is, this->pc, this->naos,
+                                nocc[is], nvirt[is], pV_col, V_col_local.data(), false, LR_Util::MO_TYPE::VO);
+
+                for (int ik1 = 0; ik1 < this->nk; ++ik1) {
+                    Cpxgemr2d(nvirt[is]*nocc[is], 1,
+                            V_col_local.data() + ik1 * pV_col.get_local_size(), 1, 1, pV_col.desc,
+                            this->VA_local.data(), 
+                            ik1 * nocc[is] * nvirt[is] + 1 , bjk + 1, this->pA.desc,
+                            this->pA.blacs_ctxt);
+                    // LR_Util::gather_2d_to_full(this->pX[is],
+                    //     V_col_local.data() + ik1 * this->pX[is].get_local_size(),
+                    //     &this->VA_local[bjk * this->ndim /*col*/ + ik1 * nocc[is] * nvirt[is]/*row*/],
+                    //     false, nvirt[is], nocc[is]);
+                }
+    #else
+                LR::ao_to_mo_blas(v_k_2d, psi_is, nocc[is], nvirt[is], this->VA_local.data()+bjk * this->ndim, false, LR_Util::MO_TYPE::VO);
+    #endif
+                ModuleBase::timer::tick("HamiltBSE", "cal_V_column_by_grid");
+            }
+        }
+    }
 }
 
 template<>

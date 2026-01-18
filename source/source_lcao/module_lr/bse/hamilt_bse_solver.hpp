@@ -4,19 +4,17 @@
 namespace BSE
 {
 template <typename T>
-void solve_tda(const int& my_rank,
-                const std::vector<T>& A_part,
-                const Parallel_2D& pA,
-                const int& nA /*part_dim*/,
-                std::vector<double>& ev,
-                std::vector<T>& global_v)
+void solve_tda(const int my_rank,
+               const std::vector<T>& A,
+               const Parallel_2D& pA,
+               std::vector<double>& ev,
+               std::vector<T>& v)
 {
     ModuleBase::TITLE("HamiltBSE", "elpa_solve_tda");
     ModuleBase::timer::tick("HamiltBSE", "elpa_solve_tda");
 
-    assert(pA.get_global_row_size() == nA);
-    assert(pA.get_global_col_size() == nA);
-    assert(A_part.size() == nA * nA);
+    assert(pA.get_global_row_size() == pA.get_global_col_size());
+    const int nA = pA.get_global_row_size();
 
     elpa_t elpaInstance;
     int status;
@@ -53,20 +51,8 @@ void solve_tda(const int& my_rank,
     {
         fprintf(stderr, "Could not set up the ELPA object");
     }
-    std::vector<T> A(pA.get_local_size(), 0.0);
-    std::vector<T> v(pA.get_local_size(), 0.0);
-#ifdef _OPENMP
-#pragma omp parallel for collapse(2)
-#endif
-    for (int j = 0; j < pA.get_col_size(); ++j)
-    {
-        for (int i = 0; i < pA.get_row_size(); ++i)
-        {
-            A[j * pA.get_row_size() + i] = A_part[pA.local2global_col(j) * nA + pA.local2global_row(i)];
-        }
-    }
-    elpa_eigenvectors(elpaInstance, A.data(), ev.data(), v.data(), &status);
-    LR_Util::gather_2d_to_full(pA, v.data(), global_v.data(), false, nA, nA);
+    std::vector<T> A_work = A;
+    elpa_eigenvectors(elpaInstance, A_work.data(), ev.data(), v.data(), &status);
 
     elpa_deallocate(elpaInstance, &status);
     elpa_uninit(&status);

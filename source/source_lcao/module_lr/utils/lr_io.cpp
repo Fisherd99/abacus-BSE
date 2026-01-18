@@ -20,7 +20,7 @@ RI_kRlist::RI_kRlist(const std::string& file_coarse,
 {
     read_kpts_coarse(file_coarse, ucell, this->klist);
     this->klist_coarse = *this->klist;
-    const TC period = RI_Util::get_Born_vonKarmen_period(*klist);
+    this->period = RI_Util::get_Born_vonKarmen_period(*klist);
     this->Rlist = RI_Util::get_Born_von_Karmen_cells(period);
     std::cout << "Rlist:" << std::endl;
     int count = 0;
@@ -73,7 +73,7 @@ void RI_kRlist::read_kpts_coarse(const std::string& file, const UnitCell& ucell,
         }
     }
 
-    // K_Coarse.wk is read in function `read_coulomb_mat_k`
+    // klist_coarse.wk is read in function `read_coulomb_mat_k`
 
     std::cout << "After read_kpts: klist(Cartesian|Direct)" << std::endl;
     for (int ik = 0; ik < nks; ++ik)

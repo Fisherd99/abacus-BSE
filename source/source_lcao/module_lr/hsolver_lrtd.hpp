@@ -68,8 +68,12 @@ namespace LR
                 }
                 bool openshell = std::is_same<THamilt, HamiltULR<T>>::value;
                 // copy eigenvectors
+#ifdef __MPI
                 LR_Util::global2local_X(psi, Amat_full.data(), nband, nk, 
                                         nocc, nvirt, pX, openshell);
+#else
+                std::memcpy(psi, Amat_full.data(), sizeof(T) * nband * gdim);
+#endif
             }
             else
             {

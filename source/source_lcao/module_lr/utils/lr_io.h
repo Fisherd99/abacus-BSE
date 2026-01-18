@@ -56,6 +56,7 @@ class RI_kRlist
   public:
     K_Vectors* klist = nullptr; // store fine kgrid if bse_use_fine_kgrid=true
     K_Vectors klist_coarse;
+    TC period;
     std::vector<TC> Rlist;
     RI_kRlist() = default;
     RI_kRlist(const std::string& fn_coarse, const std::string& file_fine, const UnitCell& ucell, K_Vectors* pkv);

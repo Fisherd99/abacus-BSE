@@ -7,9 +7,37 @@
 #include "source_base/module_external/scalapack_connector.h"
 #include "source_base/parallel_2d.h"
 #include "source_basis/module_ao/parallel_orbitals.h"
-
+#include <RI/global/Tensor.h>
+#include <array>
+#include <map>
 namespace BSE_Util
 {
+/// ================ RI ==================
+using TA = int;
+using TC = std::array<int, 3>;
+using TAC = std::pair<int, TC>;
+template <typename T>
+using TLRI = std::map<TA, std::map<TAC, RI::Tensor<T>>>;
+template <typename T>
+bool move_R_tensor(TLRI<T>& tensor_map, const TA ia, const TA ja, const TC& R_original, const TC& R_new)
+{
+    auto it_a = tensor_map.find(ia);
+    if (it_a == tensor_map.end()) return false;
+
+    auto& map_ja = it_a->second;
+
+    const TAC old_key{ja, R_original};
+    auto it_b = map_ja.find(old_key);
+    if (it_b == map_ja.end()) return false;
+
+    const TAC new_key{ja, R_new};
+    assert(map_ja.count(new_key) == 0 && "Error: target R tensor already exists in move_R_tensor!");
+
+    map_ja[new_key] = std::move(it_b->second);
+    map_ja.erase(it_b);
+    return true;
+}
+
 /// ================ Container ===============
 using DAT = container::DataType;
 using DEV = container::DeviceType;

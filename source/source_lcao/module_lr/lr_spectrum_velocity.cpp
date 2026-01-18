@@ -168,7 +168,7 @@ namespace LR
             const int loffset_X_b = istate * this->ldim;
             for (int id = 0; id < 3; ++id)
             {
-                std::complex<double> td = 0.0;
+                std::complex<double> td = 0.0; // short name of transition dipole
                 //|FULL std::complex<double> td2 = 0.0;
                 for (int is = 0; is < this->nspin_x; ++is)
                 {

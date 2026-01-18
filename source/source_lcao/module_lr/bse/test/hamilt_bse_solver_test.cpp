@@ -9,7 +9,7 @@ std::vector<std::complex<double>> generate_conjugate_matrix(int n) {
     std::vector<std::complex<double>> matrix(n*n, 0.0);
     for (int i = 0; i < n; ++i) {
         for (int j = 0; j <= i; ++j) {
-            if(i==j) matrix[i * n + j] = std::complex<double>(5+rand01, 0); // gaurantee {{A,B},{A*,B*}} is positive definite
+            if(i==j) matrix[i * n + j] = std::complex<double>(20+rand01, 0); // gaurantee {{A,B},{A*,B*}} is positive definite
             else{
                 matrix[i * n + j] = std::complex<double>(rand01, rand01);
                 matrix[j * n + i] = std::conj(matrix[i * n + j]);
@@ -46,66 +46,188 @@ TEST(BSETest, skewSolver) {
 
     int nA = 2;
     std::vector<double> ev(2*nA);
-    std::vector<std::complex<double>> global_v(4*nA*nA, 0.0);
-    std::vector<std::complex<double>> A_part = {
+    Parallel_2D pM, pA, pA_glb;
+    pM.init(2*nA, 2*nA, 1, MPI_COMM_WORLD, false);
+    pA.set(nA, nA, 1, pM.blacs_ctxt);
+    pA_glb.set(nA, nA, nA, pM.blacs_ctxt);
+    std::vector<std::complex<double>> v(pM.get_local_size(), 0.0);
+    std::vector<std::complex<double>> A_part(pA.get_local_size(), 0.0);
+    std::vector<std::complex<double>> B_part(pA.get_local_size(), 0.0);
+    std::vector<std::complex<double>> A_glb = {
     {3.0, 0.0}, {0.5, -1.0}, {0.5, 1.0}, {6.0, 0.0}
     };
-    std::vector<std::complex<double>> B_part = {
+    std::vector<std::complex<double>> B_glb = {
     {1.2, 0.6}, {0.4, 0.5}, {0.4, 0.5}, {1.4, 0.3}
     };
-    BSE::solve_full(my_rank, A_part, B_part, nA, ev, global_v);
+    Cpxgemr2d(nA, nA, A_glb.data(), 1, 1, pA_glb.desc,
+        A_part.data(), 1, 1, pA.desc,
+        pA_glb.blacs_ctxt);
+    Cpxgemr2d(nA, nA, B_glb.data(), 1, 1, pA_glb.desc,
+        B_part.data(), 1, 1, pA.desc,
+        pA_glb.blacs_ctxt);
+    BSE::solve_full(my_rank, A_part, B_part, pA, pM, ev, v);
     EXPECT_NEAR(ev[0], -6.127295611, 1e-8); 
     EXPECT_NEAR(ev[1], -2.299184312, 1e-8);
+}
+
+TEST(BSETest, TDASolver) {
+    int my_rank, num_procs;
+    Cblacs_pinfo(&my_rank, &num_procs); 
+    int nA = 5;
+    Parallel_2D pA_glb, pA;
+    pA.init(nA, nA, 1, MPI_COMM_WORLD, false);
+    pA_glb.set(nA, nA, nA, pA.blacs_ctxt);
+
+    std::vector<double> ev(nA);
+    std::vector<std::complex<double>> A_glb;
+    if (my_rank == 0){
+        A_glb = generate_conjugate_matrix(nA);
+    }
+    std::vector<std::complex<double>> A_part(pA.get_local_size(), 0.0);
+    std::vector<std::complex<double>> v(pA.get_local_size(), 0.0);
+
+    Cpxgemr2d(nA, nA, A_glb.data(), 1, 1, pA_glb.desc,
+                A_part.data(), 1, 1, pA.desc,
+                pA_glb.blacs_ctxt);
+
+    std::vector<std::complex<double>> Hv(pA.get_local_size(), 0.0);
+    std::vector<std::complex<double>> Ωv(pA.get_local_size(), 0.0);
+    
+    auto start = std::chrono::high_resolution_clock::now();
+    BSE::solve_tda(my_rank, A_part, pA, ev, v);
+    auto end = std::chrono::high_resolution_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(end - start);
+    if (my_rank == 0){
+        std::cout << "BSE::solve_tda execution time: " << elapsed.count() << " seconds" << std::endl;    
+    }
+
+    start = std::chrono::high_resolution_clock::now();
+    #pragma omp parallel for collapse(2)
+    for (int i = 0; i < pA.get_col_size(); ++i) {
+        int col_glb = pA.local2global_col(i);
+        for (int j = 0; j < pA.get_row_size(); ++j) {
+            Ωv[i * pA.get_row_size() + j] = ev[col_glb] * v[i * pA.get_row_size() + j];
+        }
+    }
+    end = std::chrono::high_resolution_clock::now();
+    elapsed = std::chrono::duration_cast<std::chrono::seconds>(end - start);
+    if (my_rank == 0)
+        std::cout << "Ωv construction time: " << elapsed.count() << " seconds" << std::endl;
+
+    start = std::chrono::high_resolution_clock::now();
+    ScalapackConnector::gemm('N', 'N', nA, nA, nA, 1.0,
+        A_part.data(), 1, 1, pA.desc,
+        v.data(), 1, 1, pA.desc,
+        0.0,
+        Hv.data(), 1, 1, pA.desc);
+    end = std::chrono::high_resolution_clock::now();
+    elapsed = std::chrono::duration_cast<std::chrono::seconds>(end - start);
+    if (my_rank == 0)
+        std::cout << "Hv execution time: " << elapsed.count() << " seconds" << std::endl;
+    check_eq(Hv.data(), Ωv.data(), pA.get_local_size(), 1e-6);
 }
 
 TEST(BSETest, skewSolver2) {
     int my_rank, num_procs;
     Cblacs_pinfo(&my_rank, &num_procs); 
 
-    int nA = 3;
-    std::vector<double> ev(2*nA);
-    std::vector<std::complex<double>> global_v(4*nA*nA, 0.0);
-    std::vector<std::complex<double>> A_part = generate_conjugate_matrix(nA);
-    std::vector<std::complex<double>> B_part = generate_symmetry_matrix(nA);
-    BSE::solve_full(my_rank, A_part, B_part, nA, ev, global_v);
+    int nA = 5;
+    int nM = 2 * nA; // Full matrix dimension
+    Parallel_2D pM, pA, pA_glb;
+    pM.init(nM, nM, 1, MPI_COMM_WORLD, false);
+    pA.set(nA, nA, 1, pM.blacs_ctxt);
+    pA_glb.set(nA, nA, nA, pM.blacs_ctxt);
 
-    std::vector<std::complex<double>> full_H (4*nA*nA, 0.0);
-    std::vector<std::complex<double>> Hv(4*nA*nA, 0.0);
-    std::vector<std::complex<double>> Ωv(4*nA*nA, 0.0);
-    for (int i = 0; i < 2*nA; ++i) {
-        for (int j = 0; j < 2*nA; ++j) {
-            Ωv[i * 2*nA + j] = ev[i] * global_v[i * 2*nA + j];
+    std::vector<std::complex<double>> A_glb, B_glb;
+    if (my_rank==0){
+        A_glb = generate_conjugate_matrix(nA);
+        B_glb = generate_symmetry_matrix(nA);
+    }
+    std::vector<std::complex<double>> A_part(pA.get_local_size(), 0.0);
+    std::vector<std::complex<double>> B_part(pA.get_local_size(), 0.0);
+    std::vector<double> ev(nM, 0.0);
+    std::vector<std::complex<double>> v(pM.get_local_size(), 0.0);
+    Cpxgemr2d(nA, nA, A_glb.data(), 1, 1, pA_glb.desc,
+                A_part.data(), 1, 1, pA.desc,
+                pA_glb.blacs_ctxt);
+    Cpxgemr2d(nA, nA, B_glb.data(), 1, 1, pA_glb.desc,
+                B_part.data(), 1, 1, pA.desc,
+                pA_glb.blacs_ctxt);
+    auto start = std::chrono::high_resolution_clock::now();
+    BSE::solve_full(my_rank, A_part, B_part, pA, pM, ev, v);
+    auto end = std::chrono::high_resolution_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(end - start);
+    if (my_rank == 0){
+        std::cout << "BSE::solve_full execution time: " << elapsed.count() << " seconds" << std::endl;    
+    }
+
+    std::vector<std::complex<double>> full_H (pM.get_local_size(), 0.0);
+    std::vector<std::complex<double>> Hv(pM.get_local_size(), 0.0);
+    std::vector<std::complex<double>> Ωv(pM.get_local_size(), 0.0);
+
+    start = std::chrono::high_resolution_clock::now();
+    for (int i = 0; i < pM.get_col_size(); ++i) {
+        int col_glb = pM.local2global_col(i);
+        for (int j = 0; j < pM.get_row_size(); ++j) {
+            Ωv[i * pM.get_row_size() + j] = ev[col_glb] * v[i * pM.get_row_size() + j];
         }
     }
-    BSE::arrayFlatten1(nA, A_part, B_part, full_H);
+    end = std::chrono::high_resolution_clock::now();
+    elapsed = std::chrono::duration_cast<std::chrono::seconds>(end - start);
+    if (my_rank == 0)
+        std::cout << "Ωv construction time: " << elapsed.count() << " seconds" << std::endl;
 
-    container::BlasConnector::gemm('N', 'N', 2*nA, 2*nA, 2*nA, 1.0,
-        full_H.data(), 2*nA,
-        global_v.data(), 2*nA,
+    BSE::arrayFlatten1(A_part, B_part, full_H, pA, pM);
+
+    start = std::chrono::high_resolution_clock::now();
+    ScalapackConnector::gemm('N', 'N', nM, nM, nM, 1.0,
+        full_H.data(), 1, 1, pM.desc,
+        v.data(), 1, 1, pM.desc,
         0.0,
-        Hv.data(), 2*nA);
-    check_eq(Hv.data(), Ωv.data(), 4*nA*nA, 1e-8);
+        Hv.data(), 1, 1, pM.desc);
+    end = std::chrono::high_resolution_clock::now();
+    elapsed = std::chrono::duration_cast<std::chrono::seconds>(end - start);
+    if (my_rank == 0)
+        std::cout << "Hv execution time: " << elapsed.count() << " seconds" << std::endl;
 
-    std::vector<std::complex<double>> identity(4*nA*nA, 0.0);
-    for (int i = 0; i < 2*nA; ++i) {
-        identity[i * 2*nA + i] = 1.0;
+    check_eq(Hv.data(), Ωv.data(), pM.get_local_size(), 1e-6);
+    
+    std::vector<std::complex<double>> identity(pM.get_local_size(), 0.0);
+    for (int i = 0; i < pM.get_col_size(); ++i) {
+        int col_glb = pM.local2global_col(i);
+        int row_loc = pM.global2local_row(col_glb);
+        if (row_loc != -1)
+            identity[i * pM.get_row_size() + row_loc] = 1.0;
     }
-    std::vector<std::complex<double>> left_v(4*nA*nA, 0.0);
-    for (int i = 0; i < nA; ++i) {
-        for (int j = 0; j < nA; ++j) {
-            left_v[i * 2*nA + j] = -global_v[i * 2*nA + j];
-            left_v[(nA+i) * 2*nA + j] = global_v[(nA+i) * 2*nA + j];
-            left_v[i * 2*nA + nA+j] = global_v[i * 2*nA + nA+j];
-            left_v[(nA+i) * 2*nA + nA+j] = -global_v[(nA+i) * 2*nA + nA+j];
+    // v = ｢Y* X      left_v = ｢-Y*  X
+    //      X* Y｣                X* -Y｣
+    std::vector<std::complex<double>> left_v(pM.get_local_size(), 0.0);
+    for (int i = 0; i < pM.get_col_size(); ++i) {
+        int col_glb = pM.local2global_col(i);
+        for (int j = 0; j < pM.get_row_size(); ++j) {
+            int row_glb = pM.local2global_row(j);
+            if (col_glb < nA && row_glb < nA)
+                left_v[i * pM.get_row_size() + j] = -v[i * pM.get_row_size() + j];
+            else if (col_glb >= nA && row_glb < nA)
+                left_v[i * pM.get_row_size() + j] = v[i * pM.get_row_size() + j];
+            else if (col_glb < nA && row_glb >= nA)
+                left_v[i * pM.get_row_size() + j] = v[i * pM.get_row_size() + j];
+            else // if (col_glb >= nA && row_glb >= nA)
+                left_v[i * pM.get_row_size() + j] = -v[i * pM.get_row_size() + j];
         }
     }
 
-    container::BlasConnector::gemm('C', 'N', 2*nA, 2*nA, 2*nA, 1.0,
-        left_v.data(), 2*nA,
-        global_v.data(), 2*nA,
+    start = std::chrono::high_resolution_clock::now();
+    ScalapackConnector::gemm('C', 'N', nM, nM, nM, 1.0,
+        left_v.data(), 1, 1, pM.desc,
+        v.data(), 1, 1, pM.desc,
         0.0,
-        Ωv.data(), 2*nA);// overwriten Ωv by left_v.v
-    check_eq(Ωv.data(), identity.data(), 4*nA*nA, 1e-8);
+        Ωv.data(), 1, 1, pM.desc);// overwrite Ωv by left_v.v
+    end = std::chrono::high_resolution_clock::now();
+    elapsed = std::chrono::duration_cast<std::chrono::seconds>(end - start);
+    if (my_rank == 0)
+        std::cout << "left_v.v execution time: " << elapsed.count() << " seconds" << std::endl;
+    check_eq(Ωv.data(), identity.data(), pM.get_local_size(), 1e-6);
 }
 
 
