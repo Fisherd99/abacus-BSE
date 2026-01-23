@@ -182,6 +182,8 @@ void ESolver_BSE<T, TR>::lri_init()
     MPI_Barrier(MPI_COMM_WORLD);
 #endif
     this->mo_lri->init(Cs_in, Vs_in, Ws_in, this->exx_info.info_ri);
+    malloc_trim(0);
+    ModuleBase::TITLE("ESolver_BSE", "Finish LRI init");
 }
 
 template <typename T, typename TR>
@@ -212,7 +214,8 @@ void ESolver_BSE<T, TR>::runner(UnitCell& ucell, const int istep)
 
         this->mo_lri->LR_lri.free_Vs();
         this->mo_lri->LR_lri.free_Ws();
-
+        malloc_trim(0);
+        
         auto write_tda_states = [&](const std::string& label, const Real<T>* e, const T* v, const int& dim, const int& nst, const int& prec = 8)->void
         {
             if (GlobalV::MY_RANK == 0) {
