@@ -1,5 +1,6 @@
 #include "lr_io.h"
 #include "source_lcao/module_lr/bse/bse_util.h"
+#include "source_lcao/module_lr/utils/lr_util.h"
 #include <algorithm>
 #include <cassert>
 #include <dirent.h>
@@ -410,7 +411,7 @@ void read_librpa_eigenvectors(psi::Psi<TK>& wfc_ks,
         wfc_ks_global.fix_k(iks);
         wfc_ks.fix_k(iks);
 #ifdef __MPI
-        MPI_Bcast(wfc_ks_global.get_pointer(), nbands * nbasis, BSE_Util::MPIType<TK>::value, 0, MPI_COMM_WORLD);
+        MPI_Bcast(wfc_ks_global.get_pointer(), nbands * nbasis, LR_Util::MPIType<TK>::value(), 0, MPI_COMM_WORLD);
         Parallel_2D pv_glb;
         pv_glb.set(nbasis, nbands, std::max(nbasis, nbands), pmat.blacs_ctxt);
         Cpxgemr2d(nbasis, nbands, wfc_ks_global.get_pointer(), 1, 1, pv_glb.desc,
@@ -510,7 +511,7 @@ void read_librpa_eigenvectors_from_band_files(psi::Psi<TK>& wfc_ks,
         wfc_ks_global.fix_k(iks);
         wfc_ks.fix_k(iks);
 #ifdef __MPI
-        MPI_Bcast(wfc_ks_global.get_pointer(), nbands * nbasis, BSE_Util::MPIType<TK>::value, 0, MPI_COMM_WORLD);
+        MPI_Bcast(wfc_ks_global.get_pointer(), nbands * nbasis, LR_Util::MPIType<TK>::value(), 0, MPI_COMM_WORLD);
         Parallel_2D pv_glb;
         pv_glb.set(nbasis, nbands, std::max(nbasis, nbands), pmat.blacs_ctxt);
         Cpxgemr2d(nbasis, nbands, wfc_ks_global.get_pointer(), 1, 1, pv_glb.desc,

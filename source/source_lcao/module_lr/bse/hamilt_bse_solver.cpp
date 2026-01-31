@@ -313,7 +313,7 @@ void solve_full(const int my_rank,
 
     elpa_deallocate(elpaInstance, &status);
     elpa_uninit(&status);
-
+    ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "elpa_solve_full");
     ModuleBase::timer::tick("HamiltBSE", "elpa_solve_full");
 }
 } // namespace BSE

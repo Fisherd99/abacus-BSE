@@ -19,6 +19,7 @@ void MolecularLRI<T>::init(TLRI<T>& Cs_in, TLRI<T>& Vs_in, TLRI<T>& Ws_in, const
     ModuleBase::timer::tick("MolecularLRI", "distribute_atom_and_k");
     int nproc = GlobalV::NPROC;
     std::set<int> set_I, set_J, set_IJ, set_k;
+    std::vector<int> list_k1_index, list_k2_index;
     int task_sizes = this->ucell.nat * this->ucell.nat * this->nk * this->nk;
     std::cout << "Total Molecular LRI tasks: " << task_sizes << ", number of MPI processes: " << nproc << std::endl;
     RI::Distribute_Equally::distribute_atom_and_k_pair(MPI_COMM_WORLD,
@@ -26,8 +27,8 @@ void MolecularLRI<T>::init(TLRI<T>& Cs_in, TLRI<T>& Vs_in, TLRI<T>& Ws_in, const
                                                        (std::size_t)this->nk,
                                                        this->list_I,
                                                        this->list_J,
-                                                       this->list_k1_index,
-                                                       this->list_k2_index,
+                                                       list_k1_index,
+                                                       list_k2_index,
                                                        false);
 
     set_I.insert(this->list_I.begin(), this->list_I.end());
@@ -40,6 +41,7 @@ void MolecularLRI<T>::init(TLRI<T>& Cs_in, TLRI<T>& Vs_in, TLRI<T>& Ws_in, const
     for (int k1 : list_k1_index)
     {
         this->k1_list.push_back(RI_Util::Vector3_to_array3(this->kv.kvec_d.at(k1)));
+        this->is_local_k1[k1] = true;
     }
     for (int k2 : list_k2_index)
     {

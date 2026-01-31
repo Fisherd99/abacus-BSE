@@ -55,18 +55,29 @@ void MolecularLRI<T>::transform_k_2dlocal(std::vector<T>& m_2d,
     const double fac = 2.0 / static_cast<double>(this->nk); // factor 2 for Ha → Ry
     const int nb = pm_2d.get_block_size();
 #ifdef __MPI
-    MPI_Datatype g_mpi_blockhead = mpi_type_blockhead();
-    // 0. outer loop: communicate per 8 k1
-    for (int k1_s = 0; k1_s < this->nk; k1_s+=8)
+    MPI_Datatype mpitype_blockhead = mpi_type_blockhead();
+    // 0. outer loop of k1: communicate per 64 k1
+    constexpr int comm_nk1 = 64;
+    std::vector<int> send_head_counts(GlobalV::NPROC, 0), recv_head_counts(GlobalV::NPROC, 0);
+    std::vector<int> send_buffer_counts(GlobalV::NPROC, 0), recv_buffer_counts(GlobalV::NPROC, 0);
+    std::vector<int> shdispls(GlobalV::NPROC, 0), rhdispls(GlobalV::NPROC, 0); //displacements of block heads
+    std::vector<int> sbdispls(GlobalV::NPROC, 0), rbdispls(GlobalV::NPROC, 0); //displacements of buffer
+    std::vector<int> cursor_head(GlobalV::NPROC, 0), cursor_buffer(GlobalV::NPROC, 0);
+    std::vector<BlockHead> send_heads, recv_heads;
+    std::vector<T> send_buffers, recv_buffers;
+    int max_send_head_total = 0, max_recv_head_total = 0;
+    int max_send_buffer_total = 0, max_recv_buffer_total = 0;
+    for (int k1_start = 0; k1_start < this->nk; k1_start += comm_nk1)
     {
-        const int k1_m = std::min(k1_s+8, this->nk);
-        std::vector<int> send_head_counts(GlobalV::NPROC, 0), recv_head_counts(GlobalV::NPROC, 0);
-        std::vector<int> send_buffer_counts(GlobalV::NPROC, 0), recv_buffer_counts(GlobalV::NPROC, 0);
-        // 1. calculate and coummunicate block counts, then calculate block displs
-        for (int kai = k1_s; kai < k1_m; ++kai)
+        std::fill(send_head_counts.begin(), send_head_counts.end(), 0);
+        std::fill(send_buffer_counts.begin(), send_buffer_counts.end(), 0);
+        std::fill(recv_head_counts.begin(), recv_head_counts.end(), 0);
+        std::fill(recv_buffer_counts.begin(), recv_buffer_counts.end(), 0);
+        const int k1_end = std::min(k1_start+comm_nk1, this->nk);
+        // 1. calculate and coummunicate block counts, then calculate block displacements
+        for (int kai = k1_start; kai < k1_end; ++kai)
         {
-            if (std::find(this->list_k1_index.begin(), this->list_k1_index.end(), kai)
-                == this->list_k1_index.end() ) continue;
+            if ( !this->is_local_k1[kai] ) continue;
             const int row_base = kai * npair;
             for (const Tk k2 : this->k2_list)
             {
@@ -98,8 +109,6 @@ void MolecularLRI<T>::transform_k_2dlocal(std::vector<T>& m_2d,
         MPI_Alltoall(send_buffer_counts.data(), 1, MPI_INT,
                      recv_buffer_counts.data(), 1, MPI_INT, pm_2d.comm());
         
-        std::vector<int> shdispls(GlobalV::NPROC, 0), rhdispls(GlobalV::NPROC, 0); //displacements of block heads
-        std::vector<int> sbdispls(GlobalV::NPROC, 0), rbdispls(GlobalV::NPROC, 0); //displacements of buffer
         int send_head_total = 0, recv_head_total = 0, send_buffer_total = 0, recv_buffer_total = 0;
         for (int p = 0; p < GlobalV::NPROC; ++p)
         {
@@ -108,16 +117,25 @@ void MolecularLRI<T>::transform_k_2dlocal(std::vector<T>& m_2d,
             sbdispls[p] = send_buffer_total; send_buffer_total += send_buffer_counts[p];
             rbdispls[p] = recv_buffer_total; recv_buffer_total += recv_buffer_counts[p];
         }
+        if (send_head_total > max_send_head_total)
+            { max_send_head_total = send_head_total; send_heads.reserve(max_send_head_total); }
+        if (recv_head_total > max_recv_head_total)
+            { max_recv_head_total = recv_head_total; recv_heads.reserve(max_recv_head_total); }
+        if (send_buffer_total > max_send_buffer_total)
+            { max_send_buffer_total = send_buffer_total; send_buffers.reserve(max_send_buffer_total); }
+        if (recv_buffer_total > max_recv_buffer_total)
+            { max_recv_buffer_total = recv_buffer_total; recv_buffers.reserve(max_recv_buffer_total); }
 
         // 2. prepare block heads and buffers for send and recv
-        std::vector<BlockHead> send_heads(send_head_total), recv_heads(recv_head_total);
-        std::vector<T> send_buffers(send_buffer_total), recv_buffers(recv_buffer_total);
-        std::vector<int> cursor_head = shdispls;
-        std::vector<int> cursor_buffer = sbdispls;
-        for (int kai = k1_s; kai < k1_m; ++kai)
+        send_heads.resize(send_head_total);
+        recv_heads.resize(recv_head_total);
+        send_buffers.resize(send_buffer_total);
+        recv_buffers.resize(recv_buffer_total);
+        cursor_head = shdispls;
+        cursor_buffer = sbdispls;
+        for (int kai = k1_start; kai < k1_end; ++kai)
         {
-            if (std::find(this->list_k1_index.begin(), this->list_k1_index.end(), kai)
-                == this->list_k1_index.end() ) continue;
+            if (!this->is_local_k1[kai] ) continue;
             const int row_base = kai * npair;
             const Tk k1 = RI_Util::Vector3_to_array3(this->kv.kvec_d.at(kai));
             for (const Tk k2 : this->k2_list)
@@ -133,7 +151,8 @@ void MolecularLRI<T>::transform_k_2dlocal(std::vector<T>& m_2d,
                     {
                         const int global_row = row_base + i;
                         const int i_next = std::min(global_row/nb*nb + nb - row_base, npair);
-                        if (pm_2d.in_this_processor(global_row, global_col))
+                        const int owner = pm_2d.owner_processor(global_row, global_col);
+                        if (owner == GlobalV::MY_RANK)
                         {
                             const int lr0 = pm_2d.global2local_row(global_row);
                             const int lc0 = pm_2d.global2local_col(global_col);
@@ -151,7 +170,6 @@ void MolecularLRI<T>::transform_k_2dlocal(std::vector<T>& m_2d,
                         }
                         else
                         {
-                            const int owner = pm_2d.owner_processor(global_row, global_col);
                             BlockHead& head = send_heads[cursor_head[owner]++];
                             head.gr0 = global_row;
                             head.gc0 = global_col;
@@ -176,12 +194,12 @@ void MolecularLRI<T>::transform_k_2dlocal(std::vector<T>& m_2d,
             assert(cursor_head[p] == shdispls[p] + send_head_counts[p]);
             assert(cursor_buffer[p] == sbdispls[p] + send_buffer_counts[p]);
         }
-        // 3. communicate
-        MPI_Alltoallv(send_heads.data(), send_head_counts.data(), shdispls.data(), g_mpi_blockhead,
-                    recv_heads.data(), recv_head_counts.data(), rhdispls.data(), g_mpi_blockhead,
+        // 3. communicate block heads and buffers
+        MPI_Alltoallv(send_heads.data(), send_head_counts.data(), shdispls.data(), mpitype_blockhead,
+                    recv_heads.data(), recv_head_counts.data(), rhdispls.data(), mpitype_blockhead,
                     pm_2d.comm());
-        MPI_Alltoallv(send_buffers.data(), send_buffer_counts.data(), sbdispls.data(), BSE_Util::MPIType<T>::value,
-                    recv_buffers.data(), recv_buffer_counts.data(), rbdispls.data(), BSE_Util::MPIType<T>::value,
+        MPI_Alltoallv(send_buffers.data(), send_buffer_counts.data(), sbdispls.data(), LR_Util::MPIType<T>::value(),
+                    recv_buffers.data(), recv_buffer_counts.data(), rbdispls.data(), LR_Util::MPIType<T>::value(),
                     pm_2d.comm());
         // 4. unpack recv head and buffer
         int buf_cursor = 0;

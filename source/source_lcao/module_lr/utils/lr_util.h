@@ -91,21 +91,37 @@ namespace LR_Util
     ///=================2D-block Parallel===============
     // pack the process to setup 2d divion reusing blacs_ctxt of a new 2d-matrix
     void setup_2d_division(Parallel_2D& pv, int nb, int gr, int gc);
-
-#ifdef __MPI
-    // pack the process to setup 2d divion reusing blacs_ctxt of an existing 2d-matrix
-    void setup_2d_division(Parallel_2D& pv, int nb, int gr, int gc, const int& blacs_ctxt_in);
-
+    
     /// @brief assign global X to 2d-matrix, its col is band(excition state), and row is { spin, k-point, occ, virt }
     /// @attention pX is 2d-blocked as {occ, virt}, this assignment is used to calculate transition density matrix c_b X_{bj} c_j
     template <typename T>
     void global2local_X(T* local_X, const T* global_X, const int nband, const int nk, 
         const std::vector<int>& nocc, const std::vector<int>& nvirt, const std::vector<Parallel_2D>& pX,
         const bool openshell);
-    
+#ifdef __MPI
+    // pack the process to setup 2d divion reusing blacs_ctxt of an existing 2d-matrix
+    void setup_2d_division(Parallel_2D& pv, int nb, int gr, int gc, const int& blacs_ctxt_in);
+
+    /// @brief Struct to get MPI_traits for different data types
+    template <typename T>
+    struct MPIType {
+        static MPI_Datatype value() { return MPI_DATATYPE_NULL; }
+    };
+    template <>
+    struct MPIType<int> {
+        static MPI_Datatype value() { return MPI_INT; }
+    };
+    template <>
+    struct MPIType<double> {
+        static MPI_Datatype value() { return MPI_DOUBLE; }
+    };
+    template <>
+    struct MPIType<std::complex<double>> {
+        static MPI_Datatype value() { return MPI_DOUBLE_COMPLEX; }
+    };
     /// @brief assign X in pA to X in pX
     template <typename T>
-    void trans2pX(T* X_pX, const T* X_pA, const int nband, const int nk, 
+    void pA2pX(T* X_pX, const T* X_pA, const int nband, const int nk, 
         const std::vector<int>& nocc, const std::vector<int>& nvirt,
         const std::vector<Parallel_2D>& pX, const Parallel_2D& pA,
         const int row_offset, const int col_offset, const bool openshell);

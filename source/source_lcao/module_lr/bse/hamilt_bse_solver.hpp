@@ -56,7 +56,7 @@ void solve_tda(const int my_rank,
 
     elpa_deallocate(elpaInstance, &status);
     elpa_uninit(&status);
-
+    ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "elpa_solve_tda");
     ModuleBase::timer::tick("HamiltBSE", "elpa_solve_tda");
 }
 }

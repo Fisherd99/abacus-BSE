@@ -64,8 +64,13 @@ HamiltBSE<T>::HamiltBSE(const int& nspin,
         #endif
             );
 
+    BSE_Util::print_mem_estimate("BSE A matrix", this->pA.get_local_size(), sizeof(T));
     this->BSE_A_local.resize(this->pA.get_local_size(), 0.0);
-    if (tda == "both" || tda == "full") { this->BSE_B_local.resize(this->pA.get_local_size(), 0.0); }
+    if (tda == "both" || tda == "full")
+    {
+        BSE_Util::print_mem_estimate("BSE B matrix", this->pA.get_local_size(), sizeof(T));
+        this->BSE_B_local.resize(this->pA.get_local_size(), 0.0);
+    }
 
     if (!PARAM.inp.bse_ri_hartree && this->ri_hartree_benchmark == "none")
     {
@@ -130,6 +135,7 @@ void HamiltBSE<T>::cal_V_for_A(){
         std::cout<< "V for A has been calculated, skip." <<std::endl;
         return;
     }
+    BSE_Util::print_mem_estimate("V matrix of A", this->pA.get_local_size(), sizeof(T));
     this->VA_local.resize(this->pA.get_local_size(), 0.0);
     if (this->ri_hartree_benchmark == "aims" || this->ri_hartree_benchmark == "abacus") {
         throw std::runtime_error("this BSE routine only supports aims-librpa/abacus-librpa benchmark");
@@ -158,6 +164,7 @@ void HamiltBSE<T>::cal_V_for_B(){
         std::cout<< "V for B has been calculated, skip." <<std::endl;
         return;
     }
+    BSE_Util::print_mem_estimate("V matrix of B", this->pA.get_local_size(), sizeof(T));
     this->VB_local.resize(this->pA.get_local_size(), 0.0);
     if (this->ri_hartree_benchmark == "aims" || this->ri_hartree_benchmark == "abacus") {
         throw std::runtime_error("this BSE routine only supports aims-librpa/abacus-librpa benchmark");
@@ -186,6 +193,7 @@ void HamiltBSE<T>::cal_W_for_A(){
         std::cout<< "W for A has been calculated, skip." <<std::endl;
         return;
     }
+    BSE_Util::print_mem_estimate("W matrix of A", this->pA.get_local_size(), sizeof(T));
     this->WA_local.resize(this->pA.get_local_size(), 0.0);
     this->mo_lri.cal_W_for_A(this->WA_local, this->pA);    
     if (PARAM.inp.bse_write_ab){
@@ -204,6 +212,7 @@ void HamiltBSE<T>::cal_W_for_B(){
         std::cout<< "W for B has been calculated, skip." <<std::endl;
         return;
     }
+    BSE_Util::print_mem_estimate("W matrix of B", this->pA.get_local_size(), sizeof(T));
     this->WB_local.resize(this->pA.get_local_size(), 0.0);
     this->mo_lri.cal_W_for_B(this->WB_local, this->pA);
     
@@ -223,20 +232,24 @@ void HamiltBSE<T>::init_bse_matrix(const bool is_full, const int & st_index){
     std::fill(this->BSE_A_local.begin(), this->BSE_A_local.end(), 0.0);
     if (this->VA_local.empty()){
         if (GlobalV::MY_RANK == 0) std::cout<<"A_V matrix is not calculated, fill zero now!"<<std::endl;
+        BSE_Util::print_mem_estimate("V matrix of A", this->pA.get_local_size(), sizeof(T));
         this->VA_local.resize(this->pA.get_local_size(), 0.0);
     }
     if (this->WA_local.empty()){
         if (GlobalV::MY_RANK == 0) std::cout<<"A_W matrix is not calculated, fill zero now!"<<std::endl;
+        BSE_Util::print_mem_estimate("W matrix of A", this->pA.get_local_size(), sizeof(T));
         this->WA_local.resize(this->pA.get_local_size(), 0.0);
     }
     if (is_full) {
         std::fill(this->BSE_B_local.begin(), this->BSE_B_local.end(), 0.0);
         if (this->VB_local.empty()){
-            std::cout<<"B_V matrix is not calculated, fill zero now!"<<std::endl;
+            if (GlobalV::MY_RANK == 0) std::cout<<"B_V matrix is not calculated, fill zero now!"<<std::endl;
+            BSE_Util::print_mem_estimate("V matrix of B", this->pA.get_local_size(), sizeof(T));
             this->VB_local.resize(this->pA.get_local_size(), 0.0);
         }
         if (this->WB_local.empty()){
-            std::cout<<"B_W matrix is not calculated, fill zero now!"<<std::endl;
+            if (GlobalV::MY_RANK == 0) std::cout<<"B_W matrix is not calculated, fill zero now!"<<std::endl;
+            BSE_Util::print_mem_estimate("W matrix of B", this->pA.get_local_size(), sizeof(T));
             this->WB_local.resize(this->pA.get_local_size(), 0.0);
         }
     }
@@ -348,7 +361,7 @@ void HamiltBSE<T>::tda_solver(const int & st_index, const int& nstates, double* 
     // copy to output
     std::copy_n(ev.data(), nstates, ene_out);
 
-    LR_Util::trans2pX(X_out, X_tda.data(), nstates, this->nk,
+    LR_Util::pA2pX(X_out, X_tda.data(), nstates, this->nk,
                     this->nocc, this->nvirt, this->pX, this->pA, 0, 0, false/*openshell*/);
     
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "BSE TDA solver");
@@ -391,9 +404,9 @@ void HamiltBSE<double>::full_solver(const int& st_index, const int& nstates,
 
     // copy positive eigenvalues to output
     std::copy_n(&ev[this->ndim], nstates, ene_out);
-    LR_Util::trans2pX(X_out, local_v_full_real.data(), nstates, this->nk,
+    LR_Util::pA2pX(X_out, local_v_full_real.data(), nstates, this->nk,
                     this->nocc, this->nvirt, this->pX, pM, 0, this->ndim, false/*openshell*/);
-    LR_Util::trans2pX(Y_out, local_v_full_real.data(), nstates, this->nk,
+    LR_Util::pA2pX(Y_out, local_v_full_real.data(), nstates, this->nk,
                     this->nocc, this->nvirt, this->pX, pM, this->ndim, this->ndim, false/*openshell*/);
 
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "BSE Full solver");
@@ -428,9 +441,9 @@ void HamiltBSE<std::complex<double>>::full_solver(const int& st_index, const int
 
     // copy positive eigenvalues to output
     std::copy_n(&ev[this->ndim], nstates, ene_out);
-    LR_Util::trans2pX(X_out, local_v_full.data(), nstates, this->nk,
+    LR_Util::pA2pX(X_out, local_v_full.data(), nstates, this->nk,
                     this->nocc, this->nvirt, this->pX, pM, 0, this->ndim, false/*openshell*/);
-    LR_Util::trans2pX(Y_out, local_v_full.data(), nstates, this->nk,
+    LR_Util::pA2pX(Y_out, local_v_full.data(), nstates, this->nk,
                     this->nocc, this->nvirt, this->pX, pM, this->ndim, this->ndim, false/*openshell*/);
     
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "BSE FULL solver");

@@ -1,12 +1,12 @@
 #pragma once
-#include <cstddef>
 #include "lr_util.h"
-#include <algorithm>
 #include "source_cell/unitcell.h"
 #include "source_base/constants.h"
 #include "source_hamilt/module_xc/xc_functional.h"
 #include "source_base/module_external/lapack_connector.h"
 #include "source_base/module_external/scalapack_connector.h"
+#include <algorithm>
+#include <cstddef>
 namespace LR_Util
 {
     /// =================PHYSICS====================
@@ -249,7 +249,6 @@ namespace LR_Util
     }
 //=================2D-block Parallel===============
 
-#ifdef __MPI
     /// @brief assign global X to 2d-matrix, its col is band(excition state), and row is { spin, k-point, occ, virt }
     /// @attention pX is 2d-blocked as {occ, virt}, this assignment is used to calculate transition density matrix c_b X_{bj} c_j
     /// @todo this function is a merge version of HamiltULR::global2local and HamiltLR::global2local, they should be replaced
@@ -287,12 +286,49 @@ namespace LR_Util
                 }
             }
         }
+        ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "global2local_X");
+    }
+#ifdef __MPI
+    struct BlockHead
+    {
+        int ivirt;    // {nvirt, nocc} global row
+        int iocc;    // {nvirt, nocc} global col
+        int ik;
+        int src_rank;
+        void set(int iv_, int io_, int ik_, int src_rank_)
+        {
+            ivirt = iv_;
+            iocc = io_;
+            ik = ik_;
+            src_rank = src_rank_;
+        }
+    };
+    inline MPI_Datatype mpi_type_blockhead()
+    {
+        static MPI_Datatype dt = MPI_DATATYPE_NULL;
+        static bool committed = false;
+        if (!committed)
+        {
+            int blen[4] = {1, 1, 1, 1};
+            MPI_Aint disp[4];
+            MPI_Datatype types[4] = {MPI_INT, MPI_INT, MPI_INT, MPI_INT};
+    
+            disp[0] = static_cast<MPI_Aint>(offsetof(BlockHead, ivirt));
+            disp[1] = static_cast<MPI_Aint>(offsetof(BlockHead, iocc));
+            disp[2] = static_cast<MPI_Aint>(offsetof(BlockHead, ik));
+            disp[3] = static_cast<MPI_Aint>(offsetof(BlockHead, src_rank));
+    
+            MPI_Type_create_struct(4, blen, disp, types, &dt);
+            MPI_Type_commit(&dt);
+            committed = true;
+        }
+        return dt;
     }
 
     /// @brief assign X in pA to X in pX
-    /// @todo this function should replace global2local_X
+    /// @note if use Cpxgemr2d, the communication time will be much more than MPIAlltoall by hand
     template <typename T>
-    void trans2pX(T* X_pX, const T* X_pA, const int nband, const int nk, 
+    void pA2pX(T* X_pX, const T* X_pA, const int nband, const int nk, 
         const std::vector<int>& nocc, const std::vector<int>& nvirt,
         const std::vector<Parallel_2D>& pX, const Parallel_2D& pA,
         const int row_offset, const int col_offset, const bool openshell)
@@ -310,29 +346,175 @@ namespace LR_Util
             assert(pX[is].get_global_row_size() == nvirt[is]);
             assert(pX[is].get_global_col_size() == nocc[is]);
         }
-        for (int ib = 0;ib < nband;++ib)
+        MPI_Datatype mpitype_blockhead = mpi_type_blockhead();
+
+        // 0. outer loop of row, communicate per 64 kpoints
+        constexpr int comm_nk = 64;
+        std::vector<int> send_head_counts(GlobalV::NPROC, 0), recv_head_counts(GlobalV::NPROC, 0);
+        std::vector<int> send_buffer_counts(GlobalV::NPROC, 0), recv_buffer_counts(GlobalV::NPROC, 0);
+        std::vector<int> shdispls(GlobalV::NPROC, 0), rhdispls(GlobalV::NPROC, 0); // displacements of block heads
+        std::vector<int> sbdispls(GlobalV::NPROC, 0), rbdispls(GlobalV::NPROC, 0); // displacements of buffer
+        std::vector<int> cursor_head(GlobalV::NPROC, 0), cursor_buffer(GlobalV::NPROC, 0);
+        std::vector<BlockHead> send_heads, recv_heads;
+        std::vector<T> send_buffers, recv_buffers;
+        int max_send_head_total = 0, max_recv_head_total = 0;
+        int max_send_buffer_total = 0, max_recv_buffer_total = 0;
+
+        // 1. pre-calculate local bands and global band list on each processor
+        const int gb_start = col_offset;
+        const int gb_end = col_offset + nband;
+        std::vector<int> lnbands(GlobalV::NPROC, 0);
+        std::vector<std::vector<int>> gblist(GlobalV::NPROC);
+        const int nbpA = pA.get_block_size();
+        for (int gb = gb_start; gb < gb_end; ++gb)
         {
-            const int loffset_b = ib * ldim;
-            for (int is = 0;is < nspin_X;++is)
+            int proc_col = (gb / nbpA) % pA.dim1;
+            for (int pr = 0; pr < pA.dim0; ++pr)
             {
-                const int loffset_bs = loffset_b + is * nk * pX[0].get_local_size();
-                const int row_bs = is * nk * npairs[0];                    
-                for (int ik = 0;ik < nk;++ik)
-                {
-                    const int loffset = loffset_bs + ik * pX[is].get_local_size();
-                    const int row_bsk = row_bs + ik * npairs[is];
-                    for (int go = 0;go < nocc[is];++go)
-                    {
-                        int row = row_bsk + go * nvirt[is] + 1 + row_offset;
-                        int col = ib + 1 + col_offset;
-                        Cpxgemr2d(nvirt[is], 1,
-                            const_cast<T*>(X_pA), row, col, const_cast<int*>(pA.desc),
-                            X_pX + loffset, 1, go+1, const_cast<int*>(pX[is].desc),
-                            pA.blacs_ctxt);
-                    }
-                }
+                int ownerA = proc_col + pr * pA.dim1;
+                ++lnbands[ownerA];
+                gblist[ownerA].push_back(gb);
             }
         }
+        const int lnband = lnbands[GlobalV::MY_RANK];
+        const int lb_start = pA.global2local_col(gblist[GlobalV::MY_RANK].front());
+        const int lb_end = lb_start + lnband;        
+
+        for (int is = 0; is < nspin_X; ++is)
+        {
+            const int gspin_base = is * nk * npairs[0];
+            const int lspin_base = is * nk * pX[0].get_local_size();
+            const int nrow = comm_nk * npairs[is];
+            const int grow_start = row_offset + gspin_base;
+            const int grow_end = grow_start + nk * npairs[is];
+            for (int irow_start = grow_start; irow_start < grow_end; irow_start += nrow)
+            {
+                std::fill(send_head_counts.begin(), send_head_counts.end(), 0);
+                std::fill(send_buffer_counts.begin(), send_buffer_counts.end(), 0);
+                
+                // 2. calculate and coummunicate block counts, then calculate block displacements
+                int irow_end = std::min(irow_start + nrow, grow_end);
+                for (int irow = irow_start; irow < irow_end; ++irow)
+                {
+                    const int lrpA = pA.global2local_row(irow);
+                    if (lrpA == -1) continue;
+                    const int ir = irow - row_offset - gspin_base;
+                    const int ik = ir / npairs[is];
+                    const int io = (ir-ik*npairs[is]) / nvirt[is];
+                    const int iv = ir % nvirt[is];
+                    int ownerX = pX[is].owner_processor(iv, io);
+                    if (ownerX != GlobalV::MY_RANK)
+                    {
+                        ++send_head_counts[ownerX];
+                        send_buffer_counts[ownerX] += lnband;
+                    }
+                }
+
+                assert(send_head_counts.at(GlobalV::MY_RANK) == 0);
+                assert(send_buffer_counts.at(GlobalV::MY_RANK) == 0);
+                MPI_Alltoall(send_head_counts.data(), 1, MPI_INT, recv_head_counts.data(), 1, MPI_INT, pA.comm());
+                MPI_Alltoall(send_buffer_counts.data(), 1, MPI_INT,
+                             recv_buffer_counts.data(), 1, MPI_INT, pA.comm());
+
+                int send_head_total = 0, recv_head_total = 0, send_buffer_total = 0, recv_buffer_total = 0;
+                for (int p = 0; p < GlobalV::NPROC; ++p)
+                {
+                    shdispls[p] = send_head_total; send_head_total += send_head_counts[p];
+                    rhdispls[p] = recv_head_total; recv_head_total += recv_head_counts[p];
+                    sbdispls[p] = send_buffer_total; send_buffer_total += send_buffer_counts[p];
+                    rbdispls[p] = recv_buffer_total; recv_buffer_total += recv_buffer_counts[p];
+                }
+                if (send_head_total > max_send_head_total)
+                    { max_send_head_total = send_head_total; send_heads.reserve(max_send_head_total); }
+                if (recv_head_total > max_recv_head_total)
+                    { max_recv_head_total = recv_head_total; recv_heads.reserve(max_recv_head_total); }
+                if (send_buffer_total > max_send_buffer_total)
+                    { max_send_buffer_total = send_buffer_total; send_buffers.reserve(max_send_buffer_total); }
+                if (recv_buffer_total > max_recv_buffer_total)
+                    { max_recv_buffer_total = recv_buffer_total; recv_buffers.reserve(max_recv_buffer_total); }
+                
+                // 3. prepare block heads and buffers
+                send_heads.resize(send_head_total);
+                recv_heads.resize(recv_head_total);
+                send_buffers.resize(send_buffer_total);
+                recv_buffers.resize(recv_buffer_total);
+                cursor_head = shdispls;
+                cursor_buffer = sbdispls;
+
+                for (int irow = irow_start; irow < irow_end; ++irow)
+                {
+                    const int lr = pA.global2local_row(irow);
+                    if (lr == -1) continue;
+                    const int ir = irow - row_offset - gspin_base;
+                    const int ik = ir / npairs[is];
+                    const int io = (ir-ik*npairs[is]) / nvirt[is];
+                    const int iv = ir % nvirt[is];
+                    const int ownerX = pX[is].owner_processor(iv, io);
+                    if (ownerX == GlobalV::MY_RANK)
+                    {
+                        for (int lb = lb_start; lb < lb_end; ++lb)
+                        {
+                            const int gb = pA.local2global_col(lb);
+                            const int lb_base = (gb - col_offset) * ldim;
+                            const int lrowX = pX[is].global2local_row(iv);
+                            const int lcolX = pX[is].global2local_col(io);
+                            X_pX[lrowX + lcolX * pX[is].get_row_size() + 
+                                lb_base + lspin_base + ik * pX[is].get_local_size()] =
+                                X_pA[lr + lb * pA.get_row_size()];
+                        }
+                    }
+                    else
+                    {
+                        BlockHead& head = send_heads[cursor_head[ownerX]++];
+                        head.set(iv, io, ik, GlobalV::MY_RANK);
+                        for (int lb = lb_start; lb < lb_end; ++lb)
+                        {
+                            send_buffers[cursor_buffer[ownerX]++] = X_pA[lr + lb * pA.get_row_size()];
+                        }
+                    }
+                }
+                for (int p = 0; p < GlobalV::NPROC; ++p)
+                {
+                    assert(cursor_head[p] == shdispls[p] + send_head_counts[p]);
+                    assert(cursor_buffer[p] == sbdispls[p] + send_buffer_counts[p]);
+                }
+                // 4. communicate block heads and buffers
+                MPI_Alltoallv(send_heads.data(), send_head_counts.data(), shdispls.data(), mpitype_blockhead,
+                              recv_heads.data(), recv_head_counts.data(), rhdispls.data(), mpitype_blockhead,
+                              pA.comm());
+                MPI_Alltoallv(send_buffers.data(), send_buffer_counts.data(), sbdispls.data(), LR_Util::MPIType<T>::value(),
+                              recv_buffers.data(), recv_buffer_counts.data(), rbdispls.data(), LR_Util::MPIType<T>::value(),
+                              pA.comm());
+
+                // 5. unpack received buffers to pX
+                for (int src = 0; src < GlobalV::NPROC; ++src)
+                {
+                    const int nh = recv_head_counts[src];
+                    if (nh == 0) continue;
+                    int buf_cursor = rbdispls[src];
+                    const int ib_start = rhdispls[src];
+                    const int ib_end = ib_start + nh;
+                    for (int iblock = ib_start; iblock < ib_end; ++iblock)
+                    {
+                        const BlockHead& rh = recv_heads[iblock];
+                        assert(rh.src_rank == src);
+                        const int ik = rh.ik;
+                        const int lr = pX[is].global2local_row(rh.ivirt);
+                        const int lc = pX[is].global2local_col(rh.iocc);
+                        for (int ib = 0; ib < lnbands[src]; ++ib)
+                        {
+                            const int lb_base = (gblist[src][ib] - col_offset) * ldim;
+                            X_pX[lr + lc * pX[is].get_row_size() + 
+                                lb_base + lspin_base + ik * pX[is].get_local_size()] =
+                                recv_buffers[ib + buf_cursor];
+                        }
+                        buf_cursor += lnbands[src];
+                    }
+                    assert(buf_cursor == rbdispls[src] + recv_buffer_counts[src]);
+                }
+            } // end of irow_start
+        } // end of is
+        ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "pA2pX");
         ModuleBase::timer::tick("LR_Util", "pA2pX");
     }
 
@@ -342,15 +524,6 @@ namespace LR_Util
         //ModuleBase::TITLE("LR_Util", "gather_2d_to_full");
         assert(pv.get_global_row_size() == global_nrow);
         assert(pv.get_global_col_size() == global_ncol);
-        auto get_mpi_datatype = []() -> MPI_Datatype {
-            if (std::is_same<T, int>::value) { return MPI_INT; }
-            if (std::is_same<T, float>::value) { return MPI_FLOAT; }
-            else if (std::is_same<T, double>::value) { return MPI_DOUBLE; }
-            if (std::is_same<T, std::complex<float>>::value) { return MPI_COMPLEX; }
-            else if (std::is_same<T, std::complex<double>>::value) { return MPI_DOUBLE_COMPLEX; }
-            else { throw std::runtime_error("gather_2d_to_full: unsupported type"); }
-            };
-
         // zeros
         for (int i = 0;i < global_nrow * global_ncol;++i) { fullmat[i] = 0.0; }
         // copy
@@ -367,7 +540,7 @@ namespace LR_Util
             }
         }
         //reduce to root
-        MPI_Allreduce(MPI_IN_PLACE, fullmat, global_nrow * global_ncol, get_mpi_datatype(), MPI_SUM, pv.comm());
+        MPI_Allreduce(MPI_IN_PLACE, fullmat, global_nrow * global_ncol, LR_Util::MPIType<T>::value(), MPI_SUM, pv.comm());
     };
 #endif
 

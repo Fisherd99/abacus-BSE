@@ -43,7 +43,7 @@ public:
         const int nvirt,
         const psi::Psi<T>& psi_ks_in) // < ATTENTION: psi_ks should be global
     : ucell(ucell), nk(nk), kRlist(kRlist_in), kv(*kRlist_in.klist), nocc(nocc), nvirt(nvirt),
-    ndim(nk*nocc*nvirt), psi_ks(psi_ks_in)
+    ndim(nk*nocc*nvirt), psi_ks(psi_ks_in), is_local_k1(nk, false)
     {
         for (int i = 0; i < nk; ++i) // nk without spin, ignore nspin2 temporarily
         {
@@ -211,7 +211,7 @@ protected:
     std::vector<int> list_I;
     std::vector<int> list_J;
     std::vector<int> list_IJ;
-    std::vector<int> list_k1_index, list_k2_index;
+    std::vector<bool> is_local_k1;
     std::vector<Tk> k1_list;
     std::vector<Tk> k2_list;
     std::vector<Tk> k_list;

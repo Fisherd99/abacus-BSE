@@ -3,6 +3,7 @@
 #include <ATen/core/tensor.h>
 #include "source_psi/psi.h"
 #include "source_base/tool_title.h"
+#include "source_base/global_variable.h"
 #include "source_base/module_external/blas_connector.h"
 #include "source_base/module_external/scalapack_connector.h"
 #include "source_base/parallel_2d.h"
@@ -12,6 +13,23 @@
 #include <map>
 namespace BSE_Util
 {
+/// ================ info ==================
+inline void print_mem_estimate(const std::string& name,
+                               const size_t& local_size,
+                               const size_t& type_size)
+{
+    double mem_MB = static_cast<double>(local_size * type_size) / (1024.0 * 1024.0);
+    double mem_GB = mem_MB / 1024.0;
+
+    GlobalV::ofs_running << "Allocating " << name << ", memory size: ";
+    if (mem_GB >= 1.0) {
+        GlobalV::ofs_running << std::fixed << std::setprecision(5) << mem_GB << " GB";
+    } else {
+        GlobalV::ofs_running << std::fixed << std::setprecision(5) << mem_MB << " MB";
+    }
+    GlobalV::ofs_running << std::endl;
+}
+
 /// ================ RI ==================
 using TA = int;
 using TC = std::array<int, 3>;
@@ -55,26 +73,8 @@ std::complex<double> inner_product(const std::complex<double>* vec1,
                                    const std::complex<double>* vec2,
                                    const int& size);
 
-/// ================= MPI ====================
-#ifdef __MPI
-
-/// @brief Struct to get MPI_traits for different data types
-template <typename T>
-struct MPIType {
-    static constexpr int value = MPI_DATATYPE_NULL;
-};
-// specializations of MPITraits
-template <>
-struct MPIType<double> {
-    static constexpr int value = MPI_DOUBLE;
-};
-template <>
-struct MPIType<std::complex<double>> {
-    static constexpr int value = MPI_DOUBLE_COMPLEX;
-};
-
 /// ================ DM_onebase ===================
-
+#ifdef __MPI
 /// @brief calculate the 2d-block transition density matrix in AO basis
 /// \f[ \tilde{\rho}_{\mu\mu}=c_{j,\mu}c^*_{b,\nu} \f]
 template<typename T>
