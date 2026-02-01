@@ -423,6 +423,15 @@ void ReadInput::item_lr_tddft()
         this->add_item(item);
     }
     {
+        Input_Item item("bse_mem_save");
+        item.annotation = "whether to save memory by adding V and W to BSE matrix directly";
+        item.reset_value = [](const Input_Item& item, Parameter& para) {
+            if (para.input.bse_mem_save == true) { para.input.bse_continue=0; para.input.bse_ri_hartree=true; }
+            };
+        read_sync_bool(input.bse_mem_save);
+        this->add_item(item);
+    }
+    {
         Input_Item item("bse_ri_hartree");
         item.annotation = "whether to use RI approximation for Hartree term in BSE";
         read_sync_bool(input.bse_ri_hartree);

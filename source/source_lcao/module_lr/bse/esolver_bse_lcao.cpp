@@ -213,10 +213,6 @@ void ESolver_BSE<T, TR>::runner(UnitCell& ucell, const int istep)
                                 this->input.bse_tda,
                                 this->input.ri_hartree_benchmark);
 
-        this->mo_lri->LR_lri.free_Vs();
-        this->mo_lri->LR_lri.free_Ws();
-        malloc_trim(0);
-        
         auto write_tda_states = [&](const std::string& label, const Real<T>* e, const T* v, const int& dim, const int& nst, const int& prec = 8)->void
         {
             if (GlobalV::MY_RANK == 0) {

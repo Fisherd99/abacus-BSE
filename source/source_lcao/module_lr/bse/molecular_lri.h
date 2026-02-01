@@ -67,7 +67,7 @@ public:
     ~MolecularLRI() {}
 
     /// =============== calculation interface ====================
-    void cal_W_for_A(std::vector<T>& m_2d, const Parallel_2D& pm_2d)
+    void cal_W_for_A(std::vector<T>& m_2d, const Parallel_2D& pm_2d, const double beta=1.0)
     {
         //TCsk_mo<T> Csk_oo_k21 = slice_Csk_mo(nocc, nvirt, LR_Util::MO_TYPE::OO, "OOk21", this->k2_list, this->k1_list, this->list_I);
         //TCsk_mo<T> Csk_vv_k12 = slice_Csk_mo(nocc, nvirt, LR_Util::MO_TYPE::VV, "VVk12", this->k1_list, this->k2_list, this->list_J);
@@ -80,9 +80,9 @@ public:
             Wk = LR_lri.lri.cal_cvc_mo_k_onthefly(this->Csk_ao_mo, this->map_psi, k1_list, k2_list, list_I, list_J,
                 {"O","O","V","V"}, (std::size_t)nocc, (std::size_t)nvirt, "Ws_", GlobalV::ofs_running, { 0,2,1,3 }); // (jiba) -> (jbia)
         ModuleBase::timer::tick("MolecularLRI", "cal_W_for_A");
-        this->transform_k_2dlocal(m_2d, Wk, pm_2d);
+        this->transform_k_2dlocal(m_2d, Wk, pm_2d, beta);
     }
-    void cal_W_for_B(std::vector<T>& m_2d, const Parallel_2D& pm_2d)
+    void cal_W_for_B(std::vector<T>& m_2d, const Parallel_2D& pm_2d, const double beta=1.0)
     {
         ModuleBase::TITLE("MolecularLRI", "cal_W_for_B");
         ModuleBase::timer::tick("MolecularLRI", "cal_W_for_B");
@@ -90,9 +90,9 @@ public:
             Wk = LR_lri.lri.cal_cvc_mo_k_onthefly(this->Csk_ao_mo, this->map_psi, k1_list, k2_list, list_I, list_J,
                 {"V","O","O","V"}, (std::size_t)nocc, (std::size_t)nvirt, "Ws_", GlobalV::ofs_running, { 2,0,1,3 }); // (bija) -> (jbia)
         ModuleBase::timer::tick("MolecularLRI", "cal_W_for_B");
-        this->transform_k_2dlocal(m_2d, Wk, pm_2d);
+        this->transform_k_2dlocal(m_2d, Wk, pm_2d, beta);
     }
-    void cal_hartree_for_A(std::vector<T>& m_2d, const Parallel_2D& pm_2d)
+    void cal_hartree_for_A(std::vector<T>& m_2d, const Parallel_2D& pm_2d, const double beta=1.0)
     {
         ModuleBase::TITLE("MolecularLRI", "cal_hartree_for_A");
         ModuleBase::timer::tick("MolecularLRI", "cal_hartree_for_A");
@@ -100,9 +100,9 @@ public:
             Vk = LR_lri.lri.cal_cvc_mo_k_hartree_onthefly(this->Csk_ao_mo, this->map_psi, k1_list, k2_list, list_I, list_J,
                 {"O","V","O","V"}, (std::size_t)nocc, (std::size_t)nvirt, "Vs_", true);
         ModuleBase::timer::tick("MolecularLRI", "cal_hartree_for_A");
-        this->transform_k_2dlocal(m_2d, Vk, pm_2d);
+        this->transform_k_2dlocal(m_2d, Vk, pm_2d, beta);
     }
-    void cal_hartree_for_B(std::vector<T>& m_2d, const Parallel_2D& pm_2d)
+    void cal_hartree_for_B(std::vector<T>& m_2d, const Parallel_2D& pm_2d, const double beta=1.0)
     {
         ModuleBase::TITLE("MolecularLRI", "cal_hartree_for_B");
         ModuleBase::timer::tick("MolecularLRI", "cal_hartree_for_B");
@@ -110,7 +110,7 @@ public:
             Vk = LR_lri.lri.cal_cvc_mo_k_hartree_onthefly(this->Csk_ao_mo, this->map_psi, k1_list, k2_list, list_I, list_J,
                 {"O","V","O","V"}, (std::size_t)nocc, (std::size_t)nvirt, "Vs_", false);
         ModuleBase::timer::tick("MolecularLRI", "cal_hartree_for_B");
-        this->transform_k_2dlocal(m_2d, Vk, pm_2d);
+        this->transform_k_2dlocal(m_2d, Vk, pm_2d, beta);
     }
 
     void init(TLRI<T>& Cs_in, TLRI<T>& Vs_in, TLRI<T>& Ws_in, const Exx_Info::Exx_Info_RI& info_ri);
@@ -147,7 +147,7 @@ protected:
     /// =============== inner function ====================
     void transform_k_2dlocal(std::vector<T>& m_2d,
         const std::map<Tk, std::map<Tk, RI::Tensor<T>>>& m_lri,
-        const Parallel_2D& pm_2d);
+        const Parallel_2D& pm_2d, const double beta);
 
     // <k, <I, <J, tesnor{nabfs, nmo1, nmo2}>>>
     TLRIk<T> cal_Csk_ao(const TLRI<T>& CsR_ao, const std::vector<Tk>& k_list, const std::vector<TA>& list_IJ);

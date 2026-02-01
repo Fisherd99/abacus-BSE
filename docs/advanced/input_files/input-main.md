@@ -8,7 +8,7 @@
     - [symmetry](#symmetry)
     - [symmetry\_prec](#symmetry_prec)
     - [symmetry\_autoclose](#symmetry_autoclose)
-    - [cal_symm_repr](#cal_symm_repr)
+    - [cal\_symm\_repr](#cal_symm_repr)
     - [kpar](#kpar)
     - [bndpar](#bndpar)
     - [latname](#latname)
@@ -136,8 +136,8 @@
     - [out\_chg](#out_chg)
     - [out\_xc\_r](#out_xc_r)
     - [out\_pot](#out_pot)
-    - [out\_dm](#out_dmk)
-    - [out\_dm1](#out_dmr)
+    - [out\_dmk](#out_dmk)
+    - [out\_dmr](#out_dmr)
     - [out\_wfc\_pw](#out_wfc_pw)
     - [out\_wfc\_lcao](#out_wfc_lcao)
     - [out\_dos](#out_dos)
@@ -149,9 +149,9 @@
     - [out\_level](#out_level)
     - [out\_alllog](#out_alllog)
     - [out\_mat\_hs](#out_mat_hs)
+    - [out\_mat\_hs2](#out_mat_hs2)
     - [out\_mat\_tk](#out_mat_tk)
     - [out\_mat\_r](#out_mat_r)
-    - [out\_mat\_hs2](#out_mat_hs2)
     - [out\_mat\_t](#out_mat_t)
     - [out\_mat\_dh](#out_mat_dh)
     - [out\_mat\_ds](#out_mat_ds)
@@ -168,8 +168,8 @@
     - [restart\_save](#restart_save)
     - [rpa](#rpa)
     - [out\_pchg](#out_pchg)
-    - [out\_wfc_norm](#out_wfc_norm)
-    - [out\_wfc_re_im](#out_wfc_re_im)
+    - [out\_wfc\_norm](#out_wfc_norm)
+    - [out\_wfc\_re\_im](#out_wfc_re_im)
     - [if\_separate\_k](#if_separate_k)
     - [out\_elf](#out_elf)
   - [Density of States](#density-of-states)
@@ -274,7 +274,7 @@
     - [exx\_hybrid\_step](#exx_hybrid_step)
     - [exx\_mixing\_beta](#exx_mixing_beta)
   - [Exact Exchange (LCAO in PW)](#exact-exchange-lcao-in-pw)
-    - [exx\_erfc\_lambda](#exx_erfc_lambda)
+    - [exx\_fock\_lambda](#exx_fock_lambda)
   - [Exact Exchange (LCAO)](#exact-exchange-lcao)
     - [exx\_pca\_threshold](#exx_pca_threshold)
     - [exx\_c\_threshold](#exx_c_threshold)
@@ -290,6 +290,7 @@
     - [exx\_opt\_orb\_ecut](#exx_opt_orb_ecut)
     - [exx\_opt\_orb\_tolerence](#exx_opt_orb_tolerence)
     - [exx\_real\_number](#exx_real_number)
+    - [exx\_singularity\_correction](#exx_singularity_correction)
     - [rpa\_ccp\_rmesh\_times](#rpa_ccp_rmesh_times)
     - [exx\_symmetry\_realspace](#exx_symmetry_realspace)
     - [out\_ri\_cv](#out_ri_cv)
@@ -479,10 +480,18 @@
     - [nvirt](#nvirt)
     - [lr\_nstates](#lr_nstates)
     - [lr\_unrestricted](#lr_unrestricted)
-    - [lr\_tda (Under Development Feature)](#lr_tda (Under Development Feature))
     - [abs\_wavelen\_range](#abs_wavelen_range)
-    - [out\_wfc\_lr](#out_wfc_lr)
     - [abs\_broadening](#abs_broadening)
+    - [abs\_gauge](#abs_gauge)
+    - [out\_wfc\_lr](#out_wfc_lr)
+    - [bse\_tda](#bse_tda)
+    - [bse\_spin\_types](#bse_spin_types)
+    - [bse\_mem\_save](#bse_mem_save)
+    - [bse\_ri\_hartree](#bse_ri_hartree)
+    - [bse\_use\_fine\_kgrid](#bse_use_fine_kgrid)
+    - [bse\_write\_ab](#bse_write_ab)
+    - [bse\_continue](#bse_continue)
+    - [plot\_istate](#plot_istate)
     - [ri\_hartree\_benchmark](#ri_hartree_benchmark)
     - [aims\_nbasis](#aims_nbasis)
   - [Reduced Density Matrix Functional Theory](#reduced-density-matrix-functional-theory)
@@ -4460,18 +4469,18 @@ These variables are used to control the usage of PEXSI (Pole Expansion and Selec
 
 [back to top](#full-list-of-input-keywords)
 
-## Linear Response TDDFT (Under Development Feature)
+## Linear Response TDDFT
 
 These parameters are used to solve the excited states using. e.g. LR-TDDFT.
 
-### xc_kernel (Under Development Feature)
+### xc_kernel
 
 - **Type**: String
 - **Description**: The exchange-correlation kernel used in the calculation. 
 Currently supported: `RPA`, `LDA`, `PBE`, `HSE`, `HF`, `BSE`.
 - **Default**: LDA
 
-### lr_init_xc_kernel (Under Development Feature)
+### lr_init_xc_kernel
 
 - **Type**: String
 - **Description**: The method to initalize the xc kernel. 
@@ -4480,7 +4489,7 @@ Currently supported: `RPA`, `LDA`, `PBE`, `HSE`, `HF`, `BSE`.
   - "from_charge_file": Calculate fxc from the charge density read from the provided files. The following words should be the paths of ".cube" files, where the first [nspin]($nspin) files will be read in. 
 - **Default**: "default"
 
-### lr_solver (Under Development Feature)
+### lr_solver
 
 - **Type**: String
 - **Description**: The method to solve the Casida equation $AX=\Omega X$ in LR-TDDFT under Tamm-Dancoff approximation (TDA), where $A_{ai,bj}=(\epsilon_a-\epsilon_i)\delta_{ij}\delta_{ab}+(ai|f_{Hxc}|bj)+\alpha_{EX}(ab|ij)$ is the particle-hole excitation matrix and $X$ is the transition amplitude.
@@ -4493,32 +4502,32 @@ Currently supported: `RPA`, `LDA`, `PBE`, `HSE`, `HF`, `BSE`.
   - `plot`: Plot the exciton wave function, should identify `plot_istate`.
 - **Default**: dav
 
-### lr_thr (Under Development Feature)
+### lr_thr
 
 - **Type**: Real
 - **Description**: The convergence threshold of iterative diagonalization solver fo LR-TDDFT. It is a pure-math number with the same as [pw_diag_thr](#pw_diag_thr), but since the Casida equation is a one-shot eigenvalue problem, it is also the convergence threshold of LR-TDDFT.
 - **Default**: 1e-2
 
-### nocc (Under Development Feature)
+### nocc
 
 - **Type**: Integer
 - **Description**: The number of occupied orbitals (up to HOMO) used in the LR-TDDFT calculation. 
   - Note: If the value is illegal ( > [nelec](#nelec)\/2 or <= 0), it will be autoset to [nelec](#nelec)\/2.
 - **Default**: [nband](#nband)
 
-### nvirt (Under Development Feature)
+### nvirt
 
 - **Type**: Integer
 - **Description**: The number of virtual orbitals (staring from LUMO) used in the LR-TDDFT calculation.
 - **Default**: 1
 
-### lr_nstates (Under Development Feature)
+### lr_nstates
 
 - **Type**: Integer
 - **Description**: The number of 2-particle states to be solved
 - **Default**: 0
 
-### lr_unrestricted (Under Development Feature)
+### lr_unrestricted
 
 - **Type**: Boolean
 - **Description**: Whether to use unrestricted construction for LR-TDDFT (the matrix size will be doubled).
@@ -4526,32 +4535,32 @@ Currently supported: `RPA`, `LDA`, `PBE`, `HSE`, `HF`, `BSE`.
   - False: Use unrestricted LR-TDDFT only when the system is open-shell.
 - **Default**: False
 
-### abs_wavelen_range (Under Development Feature)
+### abs_wavelen_range
 
 - **Type**: Real Real
 - **Description**: The range of the wavelength for the absorption spectrum calculation.
 - **Default**: 0.0 0.0
 
-### abs_broadening (Under Development Feature)
+### abs_broadening
 
 - **Type**: Real
 - **Description**: The broadening factor $\eta$ for the absorption spectrum calculation.
 - **Default**: 0.01
 
-### abs_gauge (Under Development Feature)
+### abs_gauge
 
 - **Type**: String
 - **Description**: 
 - **Default**: velocity
 
-### out_wfc_lr (Under Development Feature)
+### out_wfc_lr
 
 - **Type**: Boolean
 - **Description**: Whether to output the eigenstates (excitation energy) and eigenvectors (excitation amplitude) of the LR-TDDFT calculation.
 The output files are `OUT.${suffix}/Excitation_Energy.dat` and `OUT.${suffix}/Excitation_Amplitude_${processor_rank}.dat`.
 - **Default**: False
 
-### bse_tda (Under Development Feature)
+### bse_tda
 
 - **Type**: String
 - **Description**: Whether Tamm-Dancoff Approximation is used (can be 'tda', 'full' or 'both').
@@ -4562,6 +4571,12 @@ The output files are `OUT.${suffix}/Excitation_Energy.dat` and `OUT.${suffix}/Ex
 - **Type**: Vector of String
 - **Description**: spin types for close-shell case to be calculated in one task (can be 'singlet', 'triplet', and for test 'rpa', 'ipa').
 - **Defalut**: \{singlet, triplet\}
+
+### bse_mem_save
+
+- **Type**: Boolean
+- **Description**: Whether to save memory by adding V and W to BSE matrix directly. This option is useful when out-of-memory occurs. If this option is on, `bse_ri_hartree` will be on and `bse_continue` will be off automatically.
+- **Default**: false
 
 ### bse_ri_hartree
 
@@ -4598,7 +4613,7 @@ The output files are `OUT.${suffix}/Excitation_Energy.dat` and `OUT.${suffix}/Ex
 - **Description**: The index of excited state to be plotted (starting from 0)
 - **Default**: 0
 
-### ri_hartree_benchmark (Under Development Feature)
+### ri_hartree_benchmark
 
 - **Type**: String
 - **Description**: Whether to use the localized resolution-of-identity (LRI) approximation for the **Hartree** term of kernel in the $A$ matrix of LR-TDDFT for benchmark (with FHI-aims or another ABACUS calculation). 
@@ -4612,7 +4627,7 @@ The output files are `OUT.${suffix}/Excitation_Energy.dat` and `OUT.${suffix}/Ex
   - `none`: Construct the Hartree term by Poisson equation and grid integration as usual.
 - **Default**: none
 
-### aims_nbasis (Under Development Feature)
+### aims_nbasis
 
 - **Type**: A number(ntype) of Integers
 - **Availability**: `ri_hartree_benchmark` = `aims` or `aims-librpa`

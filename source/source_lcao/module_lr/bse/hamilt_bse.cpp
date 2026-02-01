@@ -60,16 +60,16 @@ HamiltBSE<T>::HamiltBSE(const int& nspin,
     else throw std::runtime_error("ndim in HamiltBSE is zero or negative.");
     LR_Util::setup_2d_division(this->pA, nb2d, ndim, ndim
         #ifdef __MPI
-                , this->pX[0].blacs_ctxt
+            , this->pX[0].blacs_ctxt
         #endif
-            );
+        );
 
     BSE_Util::print_mem_estimate("BSE A matrix", this->pA.get_local_size(), sizeof(T));
-    this->BSE_A_local.resize(this->pA.get_local_size(), 0.0);
+    this->BSE_A_local.resize(this->pA.get_local_size());
     if (tda == "both" || tda == "full")
     {
         BSE_Util::print_mem_estimate("BSE B matrix", this->pA.get_local_size(), sizeof(T));
-        this->BSE_B_local.resize(this->pA.get_local_size(), 0.0);
+        this->BSE_B_local.resize(this->pA.get_local_size());
     }
 
     if (!PARAM.inp.bse_ri_hartree && this->ri_hartree_benchmark == "none")
@@ -78,51 +78,62 @@ HamiltBSE<T>::HamiltBSE(const int& nspin,
         this->DM_trans->set_DMK_zero();
         LR_Util::initialize_DMR(*this->DM_trans, this->pmat, this->ucell, this->gd, this->orb_cutoff);
     }
-
-    ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "HamiltBSE is ready to calculate V and W");
+    if (PARAM.inp.bse_mem_save) { assert(PARAM.inp.bse_continue == 0 && PARAM.inp.bse_ri_hartree); }
+    ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "HamiltBSE is ready to calculate");
 
     if (PARAM.inp.bse_continue >= 1) {
+        BSE_Util::print_mem_estimate("V matrix of A", this->pA.get_local_size(), sizeof(T));
         this->VA_local.resize(this->pA.get_local_size(), 0.0);
         this->read_AB_matrix("A_V_matrix_"+std::to_string(GlobalV::MY_RANK)+".dat", this->VA_local.data(), this->ndim, this->ndim);
         ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "read_V_for_A");
     }
     if (PARAM.inp.bse_continue >= 2) {
+        BSE_Util::print_mem_estimate("W matrix of A", this->pA.get_local_size(), sizeof(T));
         this->WA_local.resize(this->pA.get_local_size(), 0.0);
         this->read_AB_matrix("A_W_matrix_"+std::to_string(GlobalV::MY_RANK)+".dat", this->WA_local.data(), this->ndim, this->ndim);
         ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "read_W_for_A");
     }
     if (PARAM.inp.bse_continue >= 3) {
+        BSE_Util::print_mem_estimate("V matrix of B", this->pA.get_local_size(), sizeof(T));
         this->VB_local.resize(this->pA.get_local_size(), 0.0);
         this->read_AB_matrix("B_V_matrix_"+std::to_string(GlobalV::MY_RANK)+".dat", this->VB_local.data(), this->ndim, this->ndim);
         ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "read_V_for_B");
     }
     if (PARAM.inp.bse_continue >= 4) {
+        BSE_Util::print_mem_estimate("W matrix of B", this->pA.get_local_size(), sizeof(T));
         this->WB_local.resize(this->pA.get_local_size(), 0.0);
         this->read_AB_matrix("B_W_matrix_"+std::to_string(GlobalV::MY_RANK)+".dat", this->WB_local.data(), this->ndim, this->ndim);
         ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "read_W_for_B");
     }
-    for (const auto& st : this->spin_types) {
-        if (st == "singlet" || st == "triplet") {
-            // Hartree term V (exchange electron and hole)
-            if (st == "singlet"){
+    
+    if (!PARAM.inp.bse_mem_save)
+    {
+        for (const auto& st : this->spin_types) {
+            if (st == "singlet" || st == "triplet") {
+                // Hartree term V (exchange electron and hole)
+                if (st == "singlet"){
+                    this->cal_V_for_A();
+                    if (tda == "both" || tda == "full") { this->cal_V_for_B(); }
+                }
+                else if (st == "triplet") {
+                    std::cout << "Hatree term is not needed for triplet." << std::endl;
+                }
+
+                // direct term W (electron-electron and hole-hole)
+                this->cal_W_for_A();
+                if (tda == "both" || tda == "full") { this->cal_W_for_B(); }
+            }
+            else if(st == "rpa") {
                 this->cal_V_for_A();
                 if (tda == "both" || tda == "full") { this->cal_V_for_B(); }
             }
-            else if (st == "triplet") {
-                std::cout << "Hatree term is not needed for triplet." << std::endl;
+            else if(st != "ipa") {
+                throw std::runtime_error("Unsupported type in BSE: " + st);
             }
-
-            // direct term W (electron-electron and hole-hole)
-            this->cal_W_for_A();
-            if (tda == "both" || tda == "full") { this->cal_W_for_B(); }
         }
-        else if(st == "rpa") {
-            this->cal_V_for_A();
-            if (tda == "both" || tda == "full") { this->cal_V_for_B(); }
-        }
-        else if(st != "ipa") {
-            throw std::runtime_error("Unsupported type in BSE: " + st);
-        }
+        this->mo_lri.LR_lri.free_Vs();
+        this->mo_lri.LR_lri.free_Ws();
+        malloc_trim(0);
     }
 }
 
@@ -131,7 +142,7 @@ void HamiltBSE<T>::cal_V_for_A(){
     ModuleBase::TITLE("HamiltBSE", "cal_V_for_A");
     ModuleBase::timer::tick("HamiltBSE", "cal_V_for_A");
     std::cout<<"in cal_V_for_A"<<std::endl;
-    if (! this->VA_local.empty()) {
+    if (!this->VA_local.empty()) {
         std::cout<< "V for A has been calculated, skip." <<std::endl;
         return;
     }
@@ -160,7 +171,7 @@ void HamiltBSE<T>::cal_V_for_B(){
     ModuleBase::TITLE("HamiltBSE", "cal_V_for_B");
     ModuleBase::timer::tick("HamiltBSE", "cal_V_for_B");
     std::cout<<"in cal_V_for_B"<<std::endl;
-    if (! this->VB_local.empty()) {
+    if (!this->VB_local.empty()) {
         std::cout<< "V for B has been calculated, skip." <<std::endl;
         return;
     }
@@ -189,7 +200,7 @@ void HamiltBSE<T>::cal_W_for_A(){
     ModuleBase::TITLE("HamiltBSE", "cal_W_for_A");
     ModuleBase::timer::tick("HamiltBSE", "cal_W_for_A");
     std::cout<<"in cal_W_for_A"<<std::endl;
-    if (! this->WA_local.empty()) {
+    if (!this->WA_local.empty()) {
         std::cout<< "W for A has been calculated, skip." <<std::endl;
         return;
     }
@@ -208,7 +219,7 @@ void HamiltBSE<T>::cal_W_for_B(){
     ModuleBase::TITLE("HamiltBSE", "cal_W_for_B");
     ModuleBase::timer::tick("HamiltBSE", "cal_W_for_B");
     std::cout<<"in cal_W_for_B"<<std::endl;
-    if (! this->WB_local.empty()) {
+    if (!this->WB_local.empty()) {
         std::cout<< "W for B has been calculated, skip." <<std::endl;
         return;
     }
@@ -229,56 +240,25 @@ void HamiltBSE<T>::init_bse_matrix(const bool is_full, const int & st_index){
     ModuleBase::TITLE("HamiltBSE", "init_bse_matrix");
     ModuleBase::timer::tick("HamiltBSE", "init_bse_matrix");
 
-    std::fill(this->BSE_A_local.begin(), this->BSE_A_local.end(), 0.0);
-    if (this->VA_local.empty()){
-        if (GlobalV::MY_RANK == 0) std::cout<<"A_V matrix is not calculated, fill zero now!"<<std::endl;
-        BSE_Util::print_mem_estimate("V matrix of A", this->pA.get_local_size(), sizeof(T));
-        this->VA_local.resize(this->pA.get_local_size(), 0.0);
-    }
-    if (this->WA_local.empty()){
-        if (GlobalV::MY_RANK == 0) std::cout<<"A_W matrix is not calculated, fill zero now!"<<std::endl;
-        BSE_Util::print_mem_estimate("W matrix of A", this->pA.get_local_size(), sizeof(T));
-        this->WA_local.resize(this->pA.get_local_size(), 0.0);
-    }
-    if (is_full) {
-        std::fill(this->BSE_B_local.begin(), this->BSE_B_local.end(), 0.0);
-        if (this->VB_local.empty()){
-            if (GlobalV::MY_RANK == 0) std::cout<<"B_V matrix is not calculated, fill zero now!"<<std::endl;
-            BSE_Util::print_mem_estimate("V matrix of B", this->pA.get_local_size(), sizeof(T));
-            this->VB_local.resize(this->pA.get_local_size(), 0.0);
-        }
-        if (this->WB_local.empty()){
-            if (GlobalV::MY_RANK == 0) std::cout<<"B_W matrix is not calculated, fill zero now!"<<std::endl;
-            BSE_Util::print_mem_estimate("W matrix of B", this->pA.get_local_size(), sizeof(T));
-            this->WB_local.resize(this->pA.get_local_size(), 0.0);
-        }
-    }
-
     double alpha, beta;
     const std::string& st = this->spin_types[st_index];
-    if (st == "singlet") {
-        alpha = 2.0; beta = -1.0;
-    }
-    else if (st == "triplet") {
-        alpha = 0.0; beta = -1.0;
-    }
-    else if (st == "rpa") {
-        alpha = 2.0; beta = 0.0;
-    }
-    else if (st == "ipa") {
-        alpha = 0.0; beta = 0.0;
-    }
-    else {
-        throw std::runtime_error("Unsupported type in BSE: " + st);
-    }
-    
+    if (st == "singlet")      { alpha = 2.0; beta = -1.0; }
+    else if (st == "triplet") { alpha = 0.0; beta = -1.0; }
+    else if (st == "rpa")     { alpha = 2.0; beta =  0.0; }
+    else if (st == "ipa")     { alpha = 0.0; beta =  0.0; }
+    else { throw std::runtime_error("Unsupported type in BSE: " + st); }
+
     std::string tda_type = is_full ? "full" : "TDA";
-    std::cout<<"| init "<< tda_type << " BSE for type: "<<this->spin_types[st_index]<<std::endl;
+    std::cout<<"| init "<< tda_type << " BSE for type: "<< st << std::endl;
     std::cout<<"| A(ai,bj) = (Ea-Ei) δ_ij δ_ab + α (ai|V|jb)  +  β (ji|W|ab)" << std::endl;
     std::cout<<"|   term coefficient: (Exchange) α: "<<std::setw(2)<<alpha<<", (Direct) β: "<<beta<<std::endl;
     if (is_full) {
         std::cout<<"| B(ai,jb) = α (ai|V|bj)  +  β (bi|W|aj)" << std::endl;
     }
+
+    std::fill(this->BSE_A_local.begin(), this->BSE_A_local.end(), 0.0);
+    if (is_full) { std::fill(this->BSE_B_local.begin(), this->BSE_B_local.end(), 0.0); }
+    // 1) add diagonal GW energy term
 #ifdef _OPENMP
 #pragma omp parallel for collapse(3)
 #endif
@@ -297,14 +277,42 @@ void HamiltBSE<T>::init_bse_matrix(const bool is_full, const int & st_index){
             }
         }
     }
+    // 2) add V/W contributions
+    if (PARAM.inp.bse_mem_save)
+    {
+        std::cout << "| bse_mem_save is true, V and W matrix will be added to BSE matrix directly." << std::endl;
+        if (alpha != 0.0) {
+            this->mo_lri.cal_hartree_for_A(this->BSE_A_local, this->pA, alpha);
+            if (is_full) { this->mo_lri.cal_hartree_for_B(this->BSE_B_local, this->pA, alpha); }
+        }
+        if (beta != 0.0) {
+            this->mo_lri.cal_W_for_A(this->BSE_A_local, this->pA, beta);
+            if (is_full) { this->mo_lri.cal_W_for_B(this->BSE_B_local, this->pA, beta); }
+        }
+    }
+    else
+    {
+        if (alpha != 0.0) {
+            assert(this->VA_local.size() == this->BSE_A_local.size());
+            if (is_full) assert(this->VB_local.size() == this->BSE_A_local.size());
+        }
+        if (beta != 0.0) {
+            assert(this->WA_local.size() == this->BSE_A_local.size());
+            if (is_full) assert(this->WB_local.size() == this->BSE_A_local.size());
+        }
 #ifdef _OPENMP
 #pragma omp parallel for schedule(static)
 #endif
-    for (size_t i = 0; i < this->BSE_A_local.size(); ++i) {
-        this->BSE_A_local[i] +=(alpha * this->VA_local[i] + beta * this->WA_local[i]);
-        if (is_full) { this->BSE_B_local[i] +=(alpha * this->VB_local[i] + beta * this->WB_local[i]); }
-    }
-
+        for (std::size_t i = 0; i < this->BSE_A_local.size(); ++i) {
+            if (alpha != 0.0) this->BSE_A_local[i] += alpha * this->VA_local[i];
+            if (beta != 0.0)  this->BSE_A_local[i] += beta  * this->WA_local[i];
+            if (is_full) {
+                if (alpha != 0.0) this->BSE_B_local[i] +=(alpha * this->VB_local[i]);
+                if (beta != 0.0)  this->BSE_B_local[i] +=(beta * this->WB_local[i]);
+            }
+        }
+    }    
+    // 3) check hermiticity/symmetry and (optionally) write to file
     constexpr double threshold = 1.0e-6;
     if (LR_Util::is_hermitian(this->BSE_A_local.data(), this->pA, threshold))
     {
@@ -326,7 +334,7 @@ void HamiltBSE<T>::init_bse_matrix(const bool is_full, const int & st_index){
         if (LR_Util::is_symmetric(this->BSE_B_local.data(), this->pA, threshold))
         {
             if (GlobalV::MY_RANK == 0)
-                std::cout << "| CHECK PASS: Matrix B is symmetric under threshold " << threshold << std::endl;
+                std::cout << "|  CHECK PASS: Matrix B is symmetric under threshold " << threshold << std::endl;
         }
         else
         {

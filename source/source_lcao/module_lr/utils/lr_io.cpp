@@ -253,7 +253,7 @@ std::vector<double> read_energy_qp_from_band_files(const std::string& ks_prefix,
         for (int ik = 0; ik < nk; ++ik)
         {
             ifs_ks >> read_ik >> kx >> ky >> kz;
-            std::cout << "ik: " << ik <<" is:" << is << std::endl;
+            // std::cout << "ik: " << ik <<" is:" << is << std::endl;
             double thread = 1.e-6;
             assert(ik == (read_ik-1));
             assert(std::abs(kx - kv.kvec_d[ik + is * nk].x) < thread);
@@ -279,7 +279,7 @@ std::vector<double> read_energy_qp_from_band_files(const std::string& ks_prefix,
                 gw_line >> occ >> eig_gw;
                 ks_temps.push_back(eig_ks / ModuleBase::Ry_to_eV);
                 gw_temps.push_back(eig_gw / ModuleBase::Ry_to_eV);
-                occ_temps.push_back(occ * nk);
+                occ_temps.push_back(occ);
                 if (occ*nk < 0.1) { ivirt++;}
                 if (ivirt == nvirt) { break; }                
             }
@@ -291,10 +291,10 @@ std::vector<double> read_energy_qp_from_band_files(const std::string& ks_prefix,
                 eig_info[(ikstep + ib)*3] = occ_temps[ncore + ib];
                 eig_info[(ikstep + ib)*3 + 1] = ks_temps[ncore + ib];
                 eig_info[(ikstep + ib)*3 + 2] = gw_temps[ncore + ib];
-                std::cout <<"GW_info: ik=" << std::setw(5) << ik << " ib=" << std::setw(5) << ib
-                        << std::setw(9) << eig_info[(ikstep + ib)*3] << std::setw(11)
-                        << eig_info[(ikstep + ib)*3 + 1] << std::setw(11)
-                        << eig_info[(ikstep + ib)*3 + 2] << std::endl; //check
+                // std::cout <<"GW_info: ib=" << std::setw(5) << ib
+                //         << std::setw(9) << eig_info[(ikstep + ib)*3] << std::setw(11)
+                //         << eig_info[(ikstep + ib)*3 + 1] << std::setw(11)
+                //         << eig_info[(ikstep + ib)*3 + 2] << std::endl; //check
             }          
         }
         ifs_ks.close();

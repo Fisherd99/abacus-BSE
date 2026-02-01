@@ -360,6 +360,7 @@ struct Input_para
         = {}; ///< the number of basis functions for each atom type used in FHI-aims (for benchmark)
     std::string bse_tda = "tda"; ///< TDA type can be: "tda", "full", "both"
     std::vector<std::string> bse_spin_types = {"singlet", "triplet"}; ///< spin types for close-shell case to be calculated
+    bool bse_mem_save = false;    ///< whether to save memory by adding V and W to BSE matrix directly
     bool bse_ri_hartree = true; ///< whether to use RI approximation for Hartree term in BSE
     bool bse_use_fine_kgrid = false; ///< whether to use a finer k-grid for BSE
     bool bse_write_ab = false;    ///< whether to write the AB matrix to file

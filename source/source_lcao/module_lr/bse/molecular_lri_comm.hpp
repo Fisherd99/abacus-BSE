@@ -47,12 +47,12 @@ inline MPI_Datatype mpi_type_blockhead()
 template <typename T>
 void MolecularLRI<T>::transform_k_2dlocal(std::vector<T>& m_2d,
     const std::map<Tk, std::map<Tk, RI::Tensor<T>>>& m_lri,
-    const Parallel_2D& pm_2d)
+    const Parallel_2D& pm_2d, const double beta)
 {
     ModuleBase::TITLE("MolecularLRI", "transform_k_2dlocal");
     ModuleBase::timer::tick("MolecularLRI", "transform_k_2dlocal");
     const int npair = this->nocc * this->nvirt;
-    const double fac = 2.0 / static_cast<double>(this->nk); // factor 2 for Ha → Ry
+    const double fac = beta * 2.0 / static_cast<double>(this->nk); // factor 2 for Ha → Ry
     const int nb = pm_2d.get_block_size();
 #ifdef __MPI
     MPI_Datatype mpitype_blockhead = mpi_type_blockhead();
@@ -164,7 +164,7 @@ void MolecularLRI<T>::transform_k_2dlocal(std::vector<T>& m_2d,
                                     const int lr = lr0 + (ii - i);
                                     const int lc = lc0 + (jj - j);
                                     const int idx_2d = lr + lc * lld;
-                                    m_2d[idx_2d] = (*m_kai_kbj.data)[ii + jj * npair] * fac;
+                                    m_2d[idx_2d] += (*m_kai_kbj.data)[ii + jj * npair] * fac;
                                 }
                             }
                         }
@@ -217,7 +217,7 @@ void MolecularLRI<T>::transform_k_2dlocal(std::vector<T>& m_2d,
                 {
                     const int idx_buffer = i + j * nr;
                     const int idx_2d = (lr + i) + (lc + j) * lld;
-                    m_2d[idx_2d] = recv_buffers[idx_buffer + buf_cursor];
+                    m_2d[idx_2d] += recv_buffers[idx_buffer + buf_cursor];
                 }
             }
             buf_cursor += nr * nc;
@@ -238,7 +238,7 @@ void MolecularLRI<T>::transform_k_2dlocal(std::vector<T>& m_2d,
             {
                 const int idx_target = (k1_step + i) + (k2_step + j) * this->ndim;
                 const int idx_value = i + j * npair;
-                target[idx_target] = value[idx_value] * factor;
+                target[idx_target] += value[idx_value] * factor;
             }
         }
     };

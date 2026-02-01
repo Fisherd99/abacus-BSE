@@ -52,14 +52,19 @@ public:
               const std::vector<std::string>& spin_types_in,
               const std::string& tda,
               const std::string& ri_hartree_benchmark_in = "none");
-
+    /// @note these four functions shouldn't be called when `bse_mem_save` is true
     void cal_V_for_A();
     void cal_W_for_A();
     void cal_V_for_B();
     void cal_W_for_B();
+    
+    /// @brief initialize BSE matrix
+    /// @note if `bse_mem_save` is true, V and W matrix will be added directly
     void init_bse_matrix(const bool is_full, const int& st_index);
+
     void tda_solver(const int& st_index, const int& nstates, double* ene_out, T* X_out);
     void full_solver(const int& st_index, const int& nstates, double* ene_out, T* X_out, T* Y_out);
+
     void cal_V_by_grid(bool is_A);
     void grid_calculation(hamilt::HContainer<T>& VR) const;
     
