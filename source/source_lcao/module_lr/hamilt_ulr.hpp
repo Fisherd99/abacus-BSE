@@ -120,7 +120,7 @@ namespace LR
             const std::vector<int> npairs = { this->nocc[0] * this->nvirt[0], this->nocc[1] * this->nvirt[1] };
             const std::vector<int64_t> ldim_is = { nk * pX[0].get_local_size(), nk * pX[1].get_local_size() };
             const std::vector<int> gdim_is = { nk * npairs[0], nk * npairs[1] };
-            std::vector<T> Amat_full(gdim * gdim);
+            std::vector<T> Amat_full(gdim * gdim, 0.0);
             for (int is_bj : {0, 1})
             {
                 const int no = this->nocc[is_bj];

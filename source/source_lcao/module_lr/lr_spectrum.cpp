@@ -47,11 +47,12 @@ void LR::LR_Spectrum<T>::cal_gint_rho(double** rho, const int& nrxx)
 
 inline void check_sum_rule(const double& osc_tot)
 {
+    GlobalV::ofs_running << "Total oscillator strength = " << osc_tot << std::endl;
+    std::cout << "Total oscillator strength = " << osc_tot << std::endl;
     if (std::abs(osc_tot - 1.0) > 1e-3) {
-        GlobalV::ofs_running << "Warning: in LR_Spectrum::oscillator_strength, \
-        the sum rule is not satisfied, try more nstates if needed.\n \
-        Total oscillator strength = " + std::to_string(osc_tot) + "\n";
-}
+        GlobalV::ofs_running << "The sum rule is not well satisfied, try more nvirt and nstates if needed." << std::endl;
+        std::cout << "The sum rule is not well satisfied, try more nvirt and nstates if needed." << std::endl;
+    }
 }
 
 template<>
@@ -239,9 +240,11 @@ void LR::LR_Spectrum<T>::oscillator_strength()
     double osc_tot = 0.0;
     for (int istate = 0;istate < nstate;++istate)
     {
-        osc[istate] = this->mean_squared_transition_dipole_[istate] * this->eig[istate] * 2.;
+        osc[istate] = this->mean_squared_transition_dipole_[istate] * this->omega[istate] * 2.;
         osc_tot += osc[istate] / 2.; //Ry to Hartree (1/2) 
     }
+    const int nele = (this->nspin_x == 2) ? this->nocc[0] + this->nocc[1] : 2 * this->nocc[0];
+    osc_tot /= this->nk * nele;
     check_sum_rule(osc_tot);
 }
 
@@ -274,8 +277,8 @@ void LR::LR_Spectrum<T>::optical_absorption_method1(const std::vector<double>& f
     {
         std::complex<double> f_complex = std::complex<double>(freq[f], eta);
         double abs = 0.0;
-        // for (int i = 0;i < osc.size();++i) { abs += (osc[i] / (f_complex * f_complex - eig[i] * eig[i])).imag() * freq[f] * FourPI_div_c; }
-        for (int i = 0;i < osc.size();++i) { abs += (osc[i] / (f_complex * f_complex - eig[i] * eig[i])).imag() * fac; }
+        // for (int i = 0;i < osc.size();++i) { abs += (osc[i] / (f_complex * f_complex - omega[i] * omega[i])).imag() * freq[f] * FourPI_div_c; }
+        for (int i = 0;i < osc.size();++i) { abs += (osc[i] / (f_complex * f_complex - omega[i] * omega[i])).imag() * fac; }
         if (GlobalV::MY_RANK == 0) { ofs << freq[f] * ModuleBase::Ry_to_eV << "\t" << 91.126664 / freq[f] << "\t" << std::abs(abs) << std::endl; }
     }
     ofs.close();
@@ -285,58 +288,106 @@ template<typename T>
 void LR::LR_Spectrum<T>::transition_analysis(const std::string& spintype)
 {
     ModuleBase::TITLE("LR::LR_Spectrum", "transition_analysis");
-    std::ofstream& ofs = GlobalV::ofs_running;
-    ofs << "==================================================================== " << std::endl;
-    ofs << std::setw(40) << spintype << std::endl;
-    ofs << "==================================================================== " << std::endl;
-    ofs << std::setw(8) << "State" << std::setw(30) << "Excitation Energy (Ry, eV)" <<
-        std::setw(90) << "Transition dipole x, y, z (a.u.)" << std::setw(30) << "Oscillator strength(a.u.)" << std::endl;
-    ofs << "------------------------------------------------------------------------------------ " << std::endl;
-    for (int istate = 0;istate < nstate;++istate)
-        ofs << std::setw(8) << istate << std::setw(15) << std::setprecision(6) << eig[istate] << std::setw(15) << eig[istate] * ModuleBase::Ry_to_eV
-        << std::setprecision(4) << std::setw(30) << transition_dipole_[istate].x << std::setw(30) << transition_dipole_[istate].y << std::setw(30) << transition_dipole_[istate].z
-        << std::setprecision(6) << std::setw(30) << oscillator_strength_[istate] << std::endl;
-    ofs << "------------------------------------------------------------------------------------ " << std::endl;
-    ofs << std::setw(8) << "State" << std::setw(20) << "Occupied orbital"
-        << std::setw(20) << "Virtual orbital" << std::setw(30) << "Excitation amplitude"
-        << std::setw(30) << "Excitation rate"
-        << std::setw(10) << "k-point" << std::endl;
-    ofs << "------------------------------------------------------------------------------------ " << std::endl;
-    for (int istate = 0;istate < nstate;++istate)
+    std::ofstream ofs;
+    if (GlobalV::MY_RANK == 0)
     {
-        /// find the main contributions (> 0.5)
-        const int loffset_b = istate * ldim;
-        std::vector<T> X_full(gdim, T(0));// one-band, global
-        for (int is = 0;is < nspin_x;++is)
+        ofs.open(PARAM.globalv.global_out_dir + "trans_analysis_" + spintype + ".dat");
+        ofs << "==================================================================== " << std::endl;
+        ofs << std::setw(40) << spintype << std::endl;
+        ofs << "==================================================================== " << std::endl;
+        ofs << std::setw(8) << "State" << std::setw(30) << "Excitation Energy (Ry, eV)" <<
+            std::setw(90) << "Transition dipole x, y, z (a.u.)" << std::setw(30) << "Oscillator strength(a.u.)" << std::endl;
+        ofs << "------------------------------------------------------------------------------------ " << std::endl;
+        for (int istate = 0;istate < nstate;++istate)
+            ofs << std::setw(8) << istate << std::setw(15) << std::setprecision(6) << omega[istate]
+            << std::setw(15) << omega[istate] * ModuleBase::Ry_to_eV
+            << std::setprecision(4) << std::setw(30) << transition_dipole_[istate].x 
+            << std::setw(30) << transition_dipole_[istate].y << std::setw(30) << transition_dipole_[istate].z
+            << std::setprecision(6) << std::setw(30) << oscillator_strength_[istate] << std::endl;
+        ofs << "------------------------------------------------------------------------------------ " << std::endl;
+        ofs << std::setw(8) << "State" << std::setw(20) << "Occupied orbital"
+            << std::setw(20) << "Virtual orbital" << std::setw(30) << "Excitation amplitude"
+            << std::setw(30) << "Excitation rate"
+            << std::setw(10) << "k-point" << std::endl;
+        ofs << "------------------------------------------------------------------------------------ " << std::endl;
+    }
+    // Communicate per 256 states
+    constexpr int NCOMM = 256;
+    std::vector<T> X_batch;
+    for (int istart = 0; istart < nstate; istart += NCOMM)
+    {
+        const int iend = std::min(istart + NCOMM, nstate);
+        const int ncount = (iend - istart) * this->gdim;
+        X_batch.resize(ncount);
+        std::fill(X_batch.begin(), X_batch.end(), T(0));
+        ModuleBase::timer::tick("transition_analysis", "copy");
+        for (int istate = istart; istate < iend; ++istate)
         {
-            const int loffset_bs = loffset_b + is * nk * pX[0].get_local_size();
-            const int goffset_s = is * nk * nocc[0] * nvirt[0];
-            for (int ik = 0;ik < nk;++ik)
+            const int loffset_b = istate * ldim;
+            const int goffset_b = (istate-istart) * gdim;
+            for (int is = 0;is < nspin_x;++is)
             {
-                const int loffset_x = loffset_bs + ik * pX[is].get_local_size();
-                const int goffset_x = goffset_s + ik * nocc[is] * nvirt[is];
-#ifdef __MPI
-                LR_Util::gather_2d_to_full(this->pX[is], X + loffset_x, X_full.data() + goffset_x, false, nvirt[is], nocc[is]);
-#endif
+                const int loffset_bs = loffset_b + is * nk * pX[0].get_local_size();
+                const int goffset_bs = goffset_b + is * nk * nocc[0] * nvirt[0];
+                for (int ik = 0;ik < nk;++ik)
+                {
+                    const int loffset_x = loffset_bs + ik * pX[is].get_local_size();
+                    const int goffset_x = goffset_bs + ik * nocc[is] * nvirt[is];
+    #ifdef __MPI
+                    LR_Util::gather_2d_to_full(this->pX[is],
+                                            X + loffset_x,
+                                            X_batch.data() + goffset_x,
+                                            false/*col_first*/,
+                                            nvirt[is], nocc[is], false/*no reduce*/);
+    #else
+                    std::copy_n(X + loffset_x, pX[is].get_local_size(), X_batch.data() + goffset_x);
+    #endif
+                }
             }
         }
-        std::map<double, int, std::greater<double>> abs_order;
-        for (int i = 0;i < gdim;++i) { double abs = std::abs(X_full.at(i));if (abs > ana_thr) { abs_order[abs] = i; } }
-        if (abs_order.size() > 0) {
-            for (auto it = abs_order.cbegin();it != abs_order.cend();++it)
+        ModuleBase::timer::tick("transition_analysis", "copy");
+    #ifdef __MPI
+        ModuleBase::timer::tick("transition_analysis", "comm");
+        // Root-only reduction: only rank 0 receives the reduced X_batch.
+        if (GlobalV::MY_RANK == 0)
+        {
+            MPI_Reduce(MPI_IN_PLACE, X_batch.data(), ncount, LR_Util::MPIType<T>::value(), MPI_SUM, 0, this->pX[0].comm());
+        }
+        else
+        {
+            MPI_Reduce(X_batch.data(), X_batch.data(), ncount, LR_Util::MPIType<T>::value(), MPI_SUM, 0, this->pX[0].comm());
+        }
+        ModuleBase::timer::tick("transition_analysis", "comm");
+    #endif
+        if (GlobalV::MY_RANK != 0) continue; // only rank 0 write the analysis file
+
+        for (int istate = istart; istate < iend; ++istate)
+        {
+            const T* X_full = X_batch.data() + static_cast<size_t>((istate - istart) * gdim);
+            std::vector<std::pair<double, int>> abs_order;
+            abs_order.reserve(4 * gdim);
+            for (int i = 0;i < gdim;++i) {
+                double abs = std::abs(X_full[i]); // find the main contributions (> ana_thr)
+                if (abs > ana_thr) { abs_order.emplace_back(abs, i); }
+            }
+
+            std::sort(abs_order.begin(), abs_order.end(),
+                [](const auto& l, const auto& r) { return l.first > r.first; });
+
+            for (auto it = abs_order.cbegin(); it != abs_order.cend(); ++it)
             {
                 auto pair_info = get_pair_info(it->second);
                 const int& is = pair_info["ispin"];
                 const std::string s = nspin_x == 2 ? (is == 0 ? "a" : "b") : "";
                 ofs << std::setw(8) << (it == abs_order.cbegin() ? std::to_string(istate) : " ")
                     << std::setw(20) << std::to_string(pair_info["iocc"] + 1) + s << std::setw(20) << std::to_string(pair_info["ivirt"] + nocc[is] + 1) + s// iocc and ivirt
-                    << std::setw(30) << X_full.at(it->second)
-                    << std::setw(30) << std::norm(X_full.at(it->second))
+                    << std::setw(30) << X_full[it->second]
+                    << std::setw(30) << std::norm(X_full[it->second])
                     << std::setw(10) << pair_info["ik"] + 1 << std::endl;
             }
         }
     }
-    ofs << "==================================================================== " << std::endl;
+    if (GlobalV::MY_RANK == 0) ofs.close();
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "LR::LR_Spectrum::transition_analysis");
 }
 
@@ -361,14 +412,14 @@ void LR::LR_Spectrum<T>::write_transition_dipole(const std::string& filename)
     ofs << std::setw(6) << "State" << std::setw(13) << "Energy (eV)" << std::setw(15) << "x" << std::setw(23) << "|x|^2" << std::setw(19) << "y" << std::setw(23) <<"|y|^2" << std::setw(19) << "z" << std::setw(23) <<"|z|^2" << std::setw(13) << "average" << std::endl;
     for (int istate = 0;istate < nstate;++istate)
     {
-        ofs << std::setw(4) << istate << std::setw(13) << std::setprecision(6) << eig[istate] * ModuleBase::Ry_to_eV
+        ofs << std::setw(4) << istate << std::setw(13) << std::setprecision(6) << omega[istate] * ModuleBase::Ry_to_eV
         << std::setw(29) << transition_dipole_[istate].x << std::setw(13) << std::norm(transition_dipole_[istate].x)
         << std::setw(29) << transition_dipole_[istate].y << std::setw(13) << std::norm(transition_dipole_[istate].y)
         << std::setw(29) << transition_dipole_[istate].z << std::setw(13) << std::norm(transition_dipole_[istate].z)
         << std::setw(13) << mean_squared_transition_dipole_[istate] << std::endl;
     }
     ofs.close();
-    ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "LR::LR_Spectrum::write_transition_dipole");
+    ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "LR::LR_Spectrum::write_transition_dipole " + filename);
 }
 
 template class LR::LR_Spectrum<double>;

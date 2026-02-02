@@ -42,6 +42,7 @@ namespace LR
 
             // reduce psi_ks for later use
             this->psi_ks_full.resize(this->nk, nocc + nvirt, this->naos);
+            this->psi_ks_full.zero_out();
             for (int ik = 0;ik < nk;++ik)
             {
                 LR_Util::gather_2d_to_full(this->pc, &this->psi_ks(ik, 0, 0), &this->psi_ks_full(ik, 0, 0), false, this->naos, nocc + nvirt);

@@ -57,7 +57,7 @@ namespace LR
             double abs_value = 0.0;
             for (int i = 0;i < nstate;++i)
             {
-                abs_value += this->mean_squared_transition_dipole_[i] * lorentz_delta((freq[f] - eig[i]) / ModuleBase::e2, eta / ModuleBase::e2); // e2: Ry to Hartree 
+                abs_value += this->mean_squared_transition_dipole_[i] * lorentz_delta((freq[f] - omega[i]) / ModuleBase::e2, eta / ModuleBase::e2); // e2: Ry to Hartree 
             }
             abs_value *= fac;
             if (GlobalV::MY_RANK == 0) { ofs << freq[f] * ModuleBase::Ry_to_eV << "\t" << 91.126664 / freq[f] << "\t" << abs_value << std::endl; }
@@ -97,7 +97,7 @@ namespace LR
         const elecstate::DensityMatrix<T, T>& DM_trans = this->cal_transition_density_matrix(istate);
 
         std::vector<std::complex<double>> trans_dipole(3, 0.0);    // $=\sum_{uvR} v(R) D(R) = \sum_{aik}X_{aik}<ik|v|ak>$
-        const std::complex<double> fac = ModuleBase::IMAG_UNIT / (eig[istate] / ModuleBase::e2);    // Ry to Hartree
+        const std::complex<double> fac = ModuleBase::IMAG_UNIT / (omega[istate] / ModuleBase::e2);    // Ry to Hartree
         for (int i = 0; i < 3; i++)
         {
             for (int is = 0;is < this->nspin_x; ++is)
@@ -119,7 +119,7 @@ namespace LR
         const elecstate::DensityMatrix<T, T>& DM_trans = this->cal_transition_density_matrix(istate, this->X, false);
 
         std::vector<std::complex<double>> trans_dipole(3, 0.0);    // $=\sum_{uvk} v(k) D(k) = \sum_{aik}X_{aik}<ik|v|ak>$
-        const std::complex<double> fac = ModuleBase::IMAG_UNIT / (eig[istate] / ModuleBase::e2);    // Ry to Hartree
+        const std::complex<double> fac = ModuleBase::IMAG_UNIT / (omega[istate] / ModuleBase::e2);    // Ry to Hartree
         for (int i = 0; i < 3; i++)
         {
             for (int is = 0;is < this->nspin_x;++is)
@@ -150,10 +150,7 @@ namespace LR
         const int nbands = this->nocc[0] + this->nvirt[0];
         assert(nbands == this->pc.get_global_col_size());
         const bool use_ks_gap = (method == DipoleEnergyType::KS_GAP);
-
-        this->transition_dipole_.resize(nstate);
-        this->mean_squared_transition_dipole_.resize(nstate);
-
+        
         std::vector<std::complex<double>> trans_dipole_buf(3 * nstate, 0.0); // $= \sum_{aik} i (<ik|v|ak>X_{aik} + <ak|v|ik>Y_{aik})/Ω$
         //|FULL std::vector<std::complex<double>> trans_dipole_buf2(3 * nstate, 0.0);// $= \sum_{aik} i (<ik|v|ak>X_{aik} - <ak|v|ik>Y_{aik})/Ω$
         // vmo is global [spin, direction, kpoint, nbands, nbands], X is local [spin, kpoint, nocc_local, nvirt_local]
@@ -164,7 +161,7 @@ namespace LR
         for (int istate = 0; istate < nstate; ++istate)
         {
             const std::complex<double> fac = use_ks_gap ? ModuleBase::IMAG_UNIT :
-                                            (ModuleBase::IMAG_UNIT / (eig[istate] / 2.0)); // Ry to Hartree;
+                                            (ModuleBase::IMAG_UNIT / (omega[istate] / 2.0)); // Ry to Hartree;
             const int loffset_X_b = istate * this->ldim;
             for (int id = 0; id < 3; ++id)
             {
@@ -242,24 +239,24 @@ namespace LR
     }
 
     template<typename T>
-    void LR::LR_Spectrum<T>::cal_transition_dipoles_velocity()
+    void LR::LR_Spectrum<T>::test_transition_dipoles_velocity_omega()
     {
-        ModuleBase::timer::tick("LR_Spectrum", "cal_transition_dipoles_velocity");
+        ModuleBase::timer::tick("LR_Spectrum", "test_transition_dipoles_velocity_omega");
 
-        // const Velocity_op<std::complex<double>>& vR = get_velocity_matrix_R(ucell, gd_, pmat, two_center_bundle_);     // velocity matrix v(R)
-        // transition_dipole_.resize(nstate);
-        // this->mean_squared_transition_dipole_.resize(nstate);
+        this->transition_dipole_.resize(nstate);
+        this->mean_squared_transition_dipole_.resize(nstate);
+
+        // const Velocity_op<std::complex<double>>& vR = get_velocity_matrix_R(ucell, gd_, pmat, two_center_bundle_);  // v(R)
         // for (int istate = 0;istate < nstate;++istate)
         // {
         //     transition_dipole_[istate] = cal_transition_dipole_istate_velocity_k(istate, vR);
         //     mean_squared_transition_dipole_[istate] = cal_mean_squared_dipole(transition_dipole_[istate]);
         // }
 
-        transition_dipole_.resize(nstate);
-        this->mean_squared_transition_dipole_.resize(nstate);
         this->cal_transition_dipole_istate_velocity_mo(DipoleEnergyType::LR_EIG, {});
-        ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "LR::LR_Spectrum::cal_transition_dipoles_velocity");
-        ModuleBase::timer::tick("LR_Spectrum", "cal_transition_dipoles_velocity");
+        this->oscillator_strength();
+        ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "LR::LR_Spectrum::test_transition_dipoles_velocity_omega");
+        ModuleBase::timer::tick("LR_Spectrum", "test_transition_dipoles_velocity_omega");
     }
 
     inline void cal_eig_ks_diff(double* const eig_ks_diff, const double* const eig_ks, const Parallel_2D& px, const int nk, const int nocc, const int nvirt)
@@ -283,15 +280,18 @@ namespace LR
     }
 
     template<typename T>
-    void LR::LR_Spectrum<T>::test_transition_dipoles_velocity_ks(const double* const ks_eig)
+    void LR::LR_Spectrum<T>::cal_transition_dipoles_velocity(const double* const eig_ks)
     {
-        ModuleBase::timer::tick("LR_Spectrum", "test_transition_dipoles_velocity_ks");
+        ModuleBase::timer::tick("LR_Spectrum", "cal_transition_dipoles_velocity");
+
+        this->transition_dipole_.resize(nstate);
+        this->mean_squared_transition_dipole_.resize(nstate);
 
         //  (e_c-e_v) of KS eigenvalues
         std::vector<double> eig_ks_diff(this->ldim);
         for (int is = 0;is < this->nspin_x;++is)
         {
-            cal_eig_ks_diff(eig_ks_diff.data() + is * nk * pX[0].get_local_size(), ks_eig, pX[is], nk, nocc[is], nvirt[is]);
+            cal_eig_ks_diff(eig_ks_diff.data() + is * nk * pX[0].get_local_size(), eig_ks, pX[is], nk, nocc[is], nvirt[is]);
         }
 
         //  X/(ec-ev)
@@ -301,14 +301,10 @@ namespace LR
         //     const int st = istate * this->ldim;
         //     std::transform(X + st, X + st + ldim, eig_ks_diff.begin(), X_div_ks_eig.data() + st, std::divides<T>());
         // }
-
-        this->transition_dipole_.resize(nstate);
-        this->mean_squared_transition_dipole_.resize(nstate);
-
+        
         this->cal_transition_dipole_istate_velocity_mo(DipoleEnergyType::KS_GAP, eig_ks_diff);
-
-        ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "LR::LR_Spectrum::test_transition_dipoles_velocity_ks");
-        ModuleBase::timer::tick("LR_Spectrum", "test_transition_dipoles_velocity_ks");
+        ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "LR::LR_Spectrum::cal_transition_dipoles_velocity");
+        ModuleBase::timer::tick("LR_Spectrum", "cal_transition_dipoles_velocity");
     }
 
 } // namespace LR

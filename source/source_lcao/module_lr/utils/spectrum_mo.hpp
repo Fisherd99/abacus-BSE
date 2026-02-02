@@ -103,13 +103,14 @@ std::vector<std::complex<double>> cal_velocity_mo(const UnitCell& ucell,
             {
                 LR_Util::gather_2d_to_full(pmo, v_mo.data() + ik * pmo.get_local_size(), 
                 &velocity_mo[(is * 3 * nk + id * nk + ik) * KS_num * KS_num ],
-                false/*col_first*/, KS_num, KS_num);
+                false/*col_first*/, KS_num, KS_num, false/*no reduce*/);
                 
                 //std::cout<< "is" << is << "id: " << id << " ik: " << ik << " v_mo: " << std::endl;            
                 //LR_Util::print_value(velocity_mo.data()+(is * 3 * nk + id * nk + ik) * KS_num * KS_num, KS_num, KS_num);
             }
         }
     }//id
+    MPI_Allreduce(MPI_IN_PLACE, velocity_mo.data(), velocity_mo.size(), LR_Util::MPIType<T>::value(), MPI_SUM, pmo.comm());
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "Finish velocity matrix in KS presentation.");
     ModuleBase::timer::tick("LR_Util", "cal_velocity_mo");
     return velocity_mo;
@@ -198,13 +199,14 @@ std::vector<std::complex<double>> cal_dipole_r_mo(const UnitCell& ucell,
             {
                 LR_Util::gather_2d_to_full(pmo, r_mo.data() + ik * pmo.get_local_size(), 
                 &dipole_mo[(is * 3 * nk + id * nk + ik) * KS_num * KS_num ],
-                false/*col_first*/, KS_num, KS_num);
+                false/*col_first*/, KS_num, KS_num, false/*no reduce*/);
                 
                 //std::cout<< "is" << is << "id: " << id << " ik: " << ik << " v_mo: " << std::endl;            
                 //LR_Util::print_value(dipole_mo.data()+(is * 3 * nk + id * nk + ik) * KS_num * KS_num, KS_num, KS_num);
             }
         }
     }//id
+    MPI_Allreduce(MPI_IN_PLACE, dipole_mo.data(), dipole_mo.size(), LR_Util::MPIType<T>::value(), MPI_SUM, pmo.comm());
     std::cout<<"Finish r-dipole matrix in KS presentation."<<std::endl;
     ModuleBase::timer::tick("LR_Util", "cal_dipole_r_mo");
     return dipole_mo;

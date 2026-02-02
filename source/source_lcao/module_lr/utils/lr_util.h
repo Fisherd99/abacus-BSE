@@ -75,10 +75,10 @@ namespace LR_Util
     void matsym(T* inout, const int n, const Parallel_2D& pmat);
 #endif
     template<typename T>
-    bool is_hermitian(const T* mat, const Parallel_2D& pmat, const double threshold = 1.0e-6);
+    bool is_hermitian(const T* mat, const Parallel_2D& pmat, const double threshold);
 
     template<typename T>
-    bool is_symmetric(const T* mat, const Parallel_2D& pmat, const double threshold = 1.0e-6);
+    bool is_symmetric(const T* mat, const Parallel_2D& pmat, const double threshold);
 
     ///===================Psi wrapper=================
     /// psi(nk=1, nbands=nb, nk * nbasis) -> psi(nb, nk, nbasis) without memory copy
@@ -129,7 +129,8 @@ namespace LR_Util
     /// @brief  gather 2d matrix to full matrix
     /// the defination of row and col is consistent with setup_2d_division
     template <typename T>
-    void gather_2d_to_full(const Parallel_2D& pv, const T* submat, T* fullmat, bool row_major, int global_nrow, int global_ncol);
+    void gather_2d_to_full(const Parallel_2D& pv, const T* submat, T* fullmat,
+        const bool row_major, const int global_nrow, const int global_ncol, const bool do_reduce = true);
 #endif
 
     ///=================diago-lapack====================

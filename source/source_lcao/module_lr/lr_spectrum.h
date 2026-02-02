@@ -20,14 +20,14 @@ namespace LR
             const UnitCell& ucell, const K_Vectors& kv_in, const Grid_Driver& gd, const std::vector<double>& orb_cutoff,
             const TwoCenterBundle& two_center_bundle_,
             const std::vector<Parallel_2D>& pX_in, const Parallel_2D& pc_in, const Parallel_Orbitals& pmat_in,
-            const double* eig, const T* X, const int& nstate, const bool& openshell,
+            const double* omega, const double* eig_ks, const T* X, const int& nstate, const bool& openshell,
             const std::string& gauge) :
             nspin_x(openshell ? 2 : 1), naos(naos), nocc(nocc), nvirt(nvirt),
             nk(nspin_global == 2 ? kv_in.get_nks() / 2 : kv_in.get_nks()),
             gint(gint), rho_basis(rho_basis), ucell(ucell), kv(kv_in), gd_(gd),
             orb_cutoff_(orb_cutoff), two_center_bundle_(two_center_bundle_),
             pX(pX_in), pc(pc_in), pmat(pmat_in),
-            eig(eig), X(X), nstate(nstate), gauge(gauge),
+            omega(omega), eig_ks(eig_ks), X(X), nstate(nstate), gauge(gauge),
             ldim(nk* (nspin_x == 2 ? pX_in[0].get_local_size() + pX_in[1].get_local_size() : pX_in[0].get_local_size())),
             gdim(nk* std::inner_product(nocc.begin(), nocc.end(), nvirt.begin(), 0))
         {
@@ -37,9 +37,9 @@ namespace LR
         void set_Y(T* Y_in) { this->Y = Y_in; };
         void set_full(bool tag) { this->is_full = tag; };
         void cal_spectrum(){
-            this->gauge == "velocity" ? this->cal_transition_dipoles_velocity() : this->cal_transition_dipoles_length();
+            std::cout << "Calculating transition dipole moments in " << this->gauge << " gauge." << std::endl;
+            this->gauge == "velocity" ? this->cal_transition_dipoles_velocity(this->eig_ks) : this->cal_transition_dipoles_length();
             this->oscillator_strength();
-            ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "LR_Spectrum::cal_spectrum");
         }
         /// @brief calculate the optical absorption spectrum with $Im[1/[(w+i\eta)^2-\Omega_S^2]]$
         void optical_absorption_method1(const std::vector<double>& freq, const double eta);
@@ -51,8 +51,8 @@ namespace LR
         //========================================== test functions ==============================================
         /// @brief write transition dipole
         void write_transition_dipole(const std::string& filename);
-        /// @brief calculate transition dipole in velocity gauge using ks eigenvalues instead of excitation energies
-        void test_transition_dipoles_velocity_ks(const double* const ks_eig);
+        /// @brief calculate transition dipole in velocity gauge using excitation eigenvalues instead of KS differences
+        void test_transition_dipoles_velocity_omega();
 
         //======================================================================================================
     private:
@@ -73,7 +73,7 @@ namespace LR
         ModuleBase::Vector3<T> cal_transition_dipole_istate_velocity_k(const int istate, const Velocity_op<std::complex<double>>& vR);
         void cal_transition_dipole_istate_velocity_mo(DipoleEnergyType method, const std::vector<double>& eig_ks_diff);
         /// calculate the transition dipole of all states in velocity gauge
-        void cal_transition_dipoles_velocity();
+        void cal_transition_dipoles_velocity(const double* const eig_ks);
         double cal_mean_squared_dipole(ModuleBase::Vector3<T> dipole);
         /// calculate the transition density matrix
         elecstate::DensityMatrix<T, T> cal_transition_density_matrix(const int istate, const T* X_in = nullptr, const bool need_R = true);
@@ -87,7 +87,8 @@ namespace LR
         const int ldim = 1;///< local leading dimension of X, or the data size of each state
         const int gdim = 1;///< global leading dimension of X
         const double ana_thr = 0.3;     ///< {abs(X) > thr} will appear in the transition analysis log
-        const double* eig;
+        const double* omega; ///< excitation energies
+        const double* eig_ks; ///< KS eigenvalues
         const T* X;
         T* Y = nullptr; ///< the deexcitation part of amplitudes
         bool is_full = false;

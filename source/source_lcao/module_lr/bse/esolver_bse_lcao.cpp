@@ -380,20 +380,23 @@ void ESolver_BSE<T, TR>::after_all_runners(UnitCell& ucell)
                 LR::LR_Spectrum<T> spectrum(this->nspin, this->nbasis, this->nocc, this->nvirt, this->gint_, *this->pw_rho, *this->psi_ks,
                     this->ucell, this->kv, this->gd, this->orb_cutoff_, this->two_center_bundle_,
                     this->paraX_, this->paraC_, this->paraMat_,
-                    &this->tda_ene[is * this->nstates], this->X[is].template data<T>(), this->nstates, false/*openshell*/,
+                    &this->tda_ene[is * this->nstates], this->eig_ks.c, this->X[is].template data<T>(), this->nstates, false/*openshell*/,
                     LR_Util::tolower(this->input.abs_gauge));
                 if (LR_Util::tolower(this->input.abs_gauge) == "velocity" ) {spectrum.set_vmo(this->velocity_mo.data());}
                 spectrum.cal_spectrum();
-                spectrum.transition_analysis(this->input.bse_spin_types[is]);
+                spectrum.transition_analysis(this->input.bse_spin_types[is]+"_tda");              
                 if (this->input.bse_spin_types[is] != "triplet")        // triplets has no transition dipole and no contribution to the spectrum
                 {
-                    spectrum.write_transition_dipole(PARAM.globalv.global_out_dir + "transition_dipole.dat");
-
+                    spectrum.write_transition_dipole(PARAM.globalv.global_out_dir + 
+                        "trans_dipole_" + this->input.bse_spin_types[is] + "_tda.dat");
+                    // ============================== for test ==============================
                     if (LR_Util::tolower(this->input.abs_gauge) == "velocity")
                     {
-                        spectrum.test_transition_dipoles_velocity_ks(this->eig_ks.c);
-                        spectrum.write_transition_dipole(PARAM.globalv.global_out_dir + "transition_dipole_velocity_ks.dat");
+                        spectrum.test_transition_dipoles_velocity_omega();
+                        spectrum.write_transition_dipole(PARAM.globalv.global_out_dir + 
+                            "trans_dipole_" + this->input.bse_spin_types[is] + "_vomega_tda.dat");
                     }
+                    // ============================== for test ==============================
                 }
             }        
         }
@@ -404,23 +407,25 @@ void ESolver_BSE<T, TR>::after_all_runners(UnitCell& ucell)
                 LR::LR_Spectrum<T> spectrum(this->nspin, this->nbasis, this->nocc, this->nvirt, this->gint_, *this->pw_rho, *this->psi_ks,
                     this->ucell, this->kv, this->gd, this->orb_cutoff_, this->two_center_bundle_,
                     this->paraX_, this->paraC_, this->paraMat_,
-                    &this->full_ene[is * this->nstates], this->full_X[is].template data<T>(), this->nstates, false/*openshell*/,
+                    &this->full_ene[is * this->nstates], this->eig_ks.c, this->full_X[is].template data<T>(), this->nstates, false/*openshell*/,
                     LR_Util::tolower(this->input.abs_gauge));
                 if (LR_Util::tolower(this->input.abs_gauge) == "velocity" ) {spectrum.set_vmo(this->velocity_mo.data());}
                 spectrum.set_Y(this->full_Y[is].template data<T>());
                 spectrum.set_full(true);
                 spectrum.cal_spectrum();
-                spectrum.transition_analysis(this->input.bse_spin_types[is]);
+                spectrum.transition_analysis(this->input.bse_spin_types[is]+"_full");
                 if (this->input.bse_spin_types[is] != "triplet")        // triplets has no transition dipole and no contribution to the spectrum
                 {
-                    // spectrum.optical_absorption_method1(freq, input.abs_broadening);
-                    spectrum.write_transition_dipole(PARAM.globalv.global_out_dir + "transition_dipole_full.dat");
-
+                    spectrum.write_transition_dipole(PARAM.globalv.global_out_dir + 
+                        "trans_dipole_" + this->input.bse_spin_types[is] + "_full.dat");
+                    // ============================== for test ==============================
                     if (LR_Util::tolower(this->input.abs_gauge) == "velocity")
                     {
-                        spectrum.test_transition_dipoles_velocity_ks(this->eig_ks.c);
-                        spectrum.write_transition_dipole(PARAM.globalv.global_out_dir + "transition_dipole_velocity_ks_full.dat");
+                        spectrum.test_transition_dipoles_velocity_omega();
+                        spectrum.write_transition_dipole(PARAM.globalv.global_out_dir + 
+                            "trans_dipole_" + this->input.bse_spin_types[is] + "_vomega_full.dat");
                     }
+                    // ============================== for test ==============================
                 }
             }
         }

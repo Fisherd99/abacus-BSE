@@ -159,6 +159,7 @@ TEST_F(DMTransTest, DoubleParallel)
 
         auto gather = [&](const psi::Psi<double>& X, psi::Psi<double>& X_full, const Parallel_2D& px, const int dim1, const int dim2)
             {
+                X_full.zero_out();
                 for (int istate = 0;istate < nstate;++istate)
                 {
                     X.fix_b(istate);
@@ -183,6 +184,7 @@ TEST_F(DMTransTest, DoubleParallel)
             // gather C
             std::vector<int> temp(s.nks, s.naos);
             psi::Psi<double> c_full(s.nks, s.nocc + s.nvirt, s.naos, temp, true);
+            c_full.zero_out();
             for (int isk = 0;isk < s.nks;++isk)
             {
                 c.fix_k(isk);
@@ -198,6 +200,7 @@ TEST_F(DMTransTest, DoubleParallel)
                     std::vector<container::Tensor> dm_gather(s.nks, container::Tensor(DAT::DT_DOUBLE, DEV::CpuDevice, { s.naos, s.naos }));
                     for (int isk = 0;isk < s.nks;++isk)
                     {
+                        dm_gather[isk].zero();
                         LR_Util::gather_2d_to_full(pmat, dm_pblas_loc[isk].data<double>(), dm_gather[isk].data<double>(), false, s.naos, s.naos);
                     }
                     if (my_rank == 0)
@@ -244,6 +247,7 @@ TEST_F(DMTransTest, ComplexParallel)
 
         auto gather = [&](const psi::Psi<std::complex<double>>& X, psi::Psi<std::complex<double>>& X_full, const Parallel_2D& px, const int dim1, const int dim2)
             {
+                X_full.zero_out();
                 for (int istate = 0;istate < nstate;++istate)
                 {
                     X.fix_b(istate);
@@ -267,6 +271,7 @@ TEST_F(DMTransTest, ComplexParallel)
             // compare to global matrix
             std::vector<int> ngk_temp_2(s.nks, s.naos);
             psi::Psi<std::complex<double>> c_full(s.nks, s.nocc + s.nvirt, s.naos, ngk_temp_2, true);
+            c_full.zero_out();
             for (int isk = 0;isk < s.nks;++isk)
             {
                 c.fix_k(isk);
@@ -282,6 +287,7 @@ TEST_F(DMTransTest, ComplexParallel)
                     std::vector<container::Tensor> dm_gather(s.nks, container::Tensor(DAT::DT_COMPLEX_DOUBLE, DEV::CpuDevice, { s.naos, s.naos }));
                     for (int isk = 0;isk < s.nks;++isk)
                     {
+                        dm_gather[isk].zero();
                         LR_Util::gather_2d_to_full(pmat, dm_pblas_loc[isk].data<std::complex<double>>(), dm_gather[isk].data<std::complex<double>>(), false, s.naos, s.naos);
                     }
                     if (my_rank == 0)

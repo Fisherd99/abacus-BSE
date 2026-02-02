@@ -519,10 +519,6 @@ void HamiltBSE<T>::cal_V_by_grid(bool is_A)
                             this->VA_local.data(), 
                             ik1 * nocc[is] * nvirt[is] + 1 , bjk + 1, this->pA.desc,
                             this->pA.blacs_ctxt);
-                    // LR_Util::gather_2d_to_full(this->pX[is],
-                    //     V_col_local.data() + ik1 * this->pX[is].get_local_size(),
-                    //     &this->VA_local[bjk * this->ndim /*col*/ + ik1 * nocc[is] * nvirt[is]/*row*/],
-                    //     false, nvirt[is], nocc[is]);
                 }
     #else
                 LR::ao_to_mo_blas(v_k_2d, psi_is, nocc[is], nvirt[is], this->VA_local.data()+bjk * this->ndim, false, LR_Util::MO_TYPE::VO);

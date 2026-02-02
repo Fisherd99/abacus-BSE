@@ -519,13 +519,11 @@ namespace LR_Util
     }
 
     template <typename T>
-    void gather_2d_to_full(const Parallel_2D& pv, const T* submat, T* fullmat, bool row_major, int global_nrow, int global_ncol)
+    void gather_2d_to_full(const Parallel_2D& pv, const T* submat, T* fullmat,
+        const bool row_major, const int global_nrow, const int global_ncol, const bool do_reduce)
     {
-        //ModuleBase::TITLE("LR_Util", "gather_2d_to_full");
         assert(pv.get_global_row_size() == global_nrow);
         assert(pv.get_global_col_size() == global_ncol);
-        // zeros
-        for (int i = 0;i < global_nrow * global_ncol;++i) { fullmat[i] = 0.0; }
         // copy
 #ifdef _OPENMP
 #pragma omp parallel for collapse(2)
@@ -539,8 +537,9 @@ namespace LR_Util
                 }
             }
         }
-        //reduce to root
-        MPI_Allreduce(MPI_IN_PLACE, fullmat, global_nrow * global_ncol, LR_Util::MPIType<T>::value(), MPI_SUM, pv.comm());
+        if (do_reduce) {
+            MPI_Allreduce(MPI_IN_PLACE, fullmat, global_nrow * global_ncol, LR_Util::MPIType<T>::value(), MPI_SUM, pv.comm());
+        }
     };
 #endif
 
