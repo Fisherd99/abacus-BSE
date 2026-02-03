@@ -544,11 +544,10 @@ TLRI<TVs> read_coulomb_mat_k(const std::string& path, const TLRI<TCs>& Cs, LR_IO
             break;
         }
     }
-    closedir(dir);
-
+    rewinddir(dir);
     const std::string prefix = has_unshrinked ? "coulomb_unshrinked_cut_" : "coulomb_cut_";
     std::cout << "read_coulomb_mat_k: using prefix \"" << prefix << "\" in directory " << path << std::endl;
-    dir = opendir(path.c_str());
+
     size_t nk = 0, nabf = 0, istart = 0, jstart = 0, iend = 0, jend = 0;
     std::string tmp;
     K_Vectors* const klist = &(kRlist.klist_coarse);
@@ -676,11 +675,10 @@ TLRI<TVs> read_coulomb_mat_general_k(const std::string& path, const TLRI<TCs>& C
             break;
         }
     }
-    closedir(dir);
-
+    rewinddir(dir);
     const std::string prefix = has_unshrinked ? "coulomb_unshrinked_cut_" : "coulomb_cut_";
     std::cout << "read_coulomb_mat_k: using prefix \"" << prefix << "\" in directory " << path << std::endl;
-    dir = opendir(path.c_str());
+    
     TLRI<TVs> Vs;
     std::map<int, std::map<std::pair<int,int>, RI::Tensor<std::complex<double>>>> Vq; // <iat1, <<iat2,ik>, T>>
     std::map<int,std::vector<std::complex<double>>> Vq_tmp; //<ik, vector> 
