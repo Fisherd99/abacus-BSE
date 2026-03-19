@@ -86,10 +86,15 @@ void MolecularLRI<T>::init(TLRI<T>& Cs_in, TLRI<T>& Vs_in, TLRI<T>& Ws_in, const
         }
     }
     // 1-3. set tensors, in these functions MPI distribution will be performed
+    ModuleBase::TITLE("MolecularLRI", "before_set_Cs");
     this->LR_lri.set_Cs(Cs_in, info_ri.C_threshold, set_IJ, all_atoms);
+    ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "set_Cs");
+    ModuleBase::TITLE("MolecularLRI", "before_set_Vs");
     this->LR_lri.set_Vs(Vs_in, info_ri.V_threshold, set_I, set_J);
+    ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "set_Vs");
+    ModuleBase::TITLE("MolecularLRI", "before_set_Ws");
     this->LR_lri.set_Ws(Ws_in, info_ri.V_threshold, set_I, set_J);
-
+    ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "set_Ws");
 
     if (PARAM.inp.out_ri_cv)        // out LR_lri tensors
     {        

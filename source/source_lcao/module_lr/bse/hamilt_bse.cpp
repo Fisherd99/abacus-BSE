@@ -64,14 +64,6 @@ HamiltBSE<T>::HamiltBSE(const int& nspin,
         #endif
         );
 
-    BSE_Util::print_mem_estimate("BSE A matrix", this->pA.get_local_size(), sizeof(T));
-    this->BSE_A_local.resize(this->pA.get_local_size());
-    if (tda == "both" || tda == "full")
-    {
-        BSE_Util::print_mem_estimate("BSE B matrix", this->pA.get_local_size(), sizeof(T));
-        this->BSE_B_local.resize(this->pA.get_local_size());
-    }
-
     if (!PARAM.inp.bse_ri_hartree && this->ri_hartree_benchmark == "none")
     {
         this->DM_trans = LR_Util::make_unique<elecstate::DensityMatrix<T, T>>(&pmat, 1/*nspin*/, kv_in.kvec_d, nk);
@@ -256,8 +248,13 @@ void HamiltBSE<T>::init_bse_matrix(const bool is_full, const int & st_index){
         std::cout<<"| B(ai,jb) = α (ai|V|bj)  +  β (bi|W|aj)" << std::endl;
     }
 
-    std::fill(this->BSE_A_local.begin(), this->BSE_A_local.end(), 0.0);
-    if (is_full) { std::fill(this->BSE_B_local.begin(), this->BSE_B_local.end(), 0.0); }
+    BSE_Util::print_mem_estimate("BSE A matrix", this->pA.get_local_size(), sizeof(T));
+    this->BSE_A_local.assign(this->pA.get_local_size(), 0.0);
+    if (is_full)
+    {
+        BSE_Util::print_mem_estimate("BSE B matrix", this->pA.get_local_size(), sizeof(T));
+        this->BSE_B_local.assign(this->pA.get_local_size(), 0.0);
+    }
     // 1) add diagonal GW energy term
 #ifdef _OPENMP
 #pragma omp parallel for collapse(3)
@@ -289,6 +286,8 @@ void HamiltBSE<T>::init_bse_matrix(const bool is_full, const int & st_index){
             this->mo_lri.cal_W_for_A(this->BSE_A_local, this->pA, beta);
             if (is_full) { this->mo_lri.cal_W_for_B(this->BSE_B_local, this->pA, beta); }
         }
+        GlobalV::ofs_running << "| V and W matrix has been added." << std::endl;
+        std::cout << "| V and W matrix has been added." << std::endl;
     }
     else
     {
@@ -313,16 +312,16 @@ void HamiltBSE<T>::init_bse_matrix(const bool is_full, const int & st_index){
         }
     }    
     // 3) check hermiticity/symmetry and (optionally) write to file
+    GlobalV::ofs_running << "CHECK hermiticity/symmetry" << std::endl;
+    std::cout << "| CHECK hermiticity/symmetry" << std::endl;
     constexpr double threshold = 1.0e-6;
     if (LR_Util::is_hermitian(this->BSE_A_local.data(), this->pA, threshold))
     {
-        if (GlobalV::MY_RANK == 0)
-            std::cout << "|  CHECK PASS: Matrix A is hermitian under threshold " << threshold << std::endl;
+        std::cout << "|  CHECK PASS: Matrix A is hermitian under threshold " << threshold << std::endl;
     }
     else
     {
-        if (GlobalV::MY_RANK == 0)
-            std::cout << "|  CHECK WARNING: Matrix A is not hermitian under threshold " << threshold << std::endl;
+        std::cout << "|  CHECK WARNING: Matrix A is not hermitian under threshold " << threshold << std::endl;
     }
     if (PARAM.inp.bse_write_ab)
     {
@@ -333,13 +332,11 @@ void HamiltBSE<T>::init_bse_matrix(const bool is_full, const int & st_index){
     {
         if (LR_Util::is_symmetric(this->BSE_B_local.data(), this->pA, threshold))
         {
-            if (GlobalV::MY_RANK == 0)
-                std::cout << "|  CHECK PASS: Matrix B is symmetric under threshold " << threshold << std::endl;
+            std::cout << "|  CHECK PASS: Matrix B is symmetric under threshold " << threshold << std::endl;
         }
         else
         {
-            if (GlobalV::MY_RANK == 0)
-                std::cout << "|  CHECK WARNING: Matrix B is not symmetric under threshold " << threshold << std::endl;
+            std::cout << "|  CHECK WARNING: Matrix B is not symmetric under threshold " << threshold << std::endl;
         }
         if (PARAM.inp.bse_write_ab)
         {
@@ -359,7 +356,7 @@ void HamiltBSE<T>::tda_solver(const int & st_index, const int& nstates, double* 
     this->init_bse_matrix(false, st_index);
 
     std::vector<T> X_tda(this->pA.get_local_size(), 0.0);
-    std::vector<double> ev(this->ndim, 0.0);
+    std::vector<double> ev(nstates, 0.0);
 
     BSE::solve_tda(GlobalV::MY_RANK,
                     this->BSE_A_local,
@@ -439,6 +436,7 @@ void HamiltBSE<std::complex<double>>::full_solver(const int& st_index, const int
     
     std::vector<std::complex<double>> local_v_full(pM.get_local_size(), 0.0);
     std::vector<double> ev(2 * this->ndim, 0.0);
+    ModuleBase::TITLE("HamiltBSE", "full_solver(complex)2");
     BSE::solve_full(GlobalV::MY_RANK,
                     this->BSE_A_local,
                     this->BSE_B_local,
@@ -446,7 +444,7 @@ void HamiltBSE<std::complex<double>>::full_solver(const int& st_index, const int
                     pM,
                     ev,
                     local_v_full);
-
+    ModuleBase::TITLE("HamiltBSE", "full_solver(complex)3");
     // copy positive eigenvalues to output
     std::copy_n(&ev[this->ndim], nstates, ene_out);
     LR_Util::pA2pX(X_out, local_v_full.data(), nstates, this->nk,

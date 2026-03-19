@@ -317,7 +317,12 @@ void LR::LR_Spectrum<T>::transition_analysis(const std::string& spintype)
     for (int istart = 0; istart < nstate; istart += NCOMM)
     {
         const int iend = std::min(istart + NCOMM, nstate);
-        const int ncount = (iend - istart) * this->gdim;
+        const std::size_t ncount_c = std::size_t(iend - istart) * this->gdim;
+        if (ncount_c > std::numeric_limits<int>::max())
+        {
+            throw std::overflow_error("in transition_analysis: overflow converting to int!");
+        }
+        const int ncount = static_cast<int>(ncount_c);
         X_batch.resize(ncount);
         std::fill(X_batch.begin(), X_batch.end(), T(0));
         ModuleBase::timer::tick("transition_analysis", "copy");
@@ -363,7 +368,7 @@ void LR::LR_Spectrum<T>::transition_analysis(const std::string& spintype)
 
         for (int istate = istart; istate < iend; ++istate)
         {
-            const T* X_full = X_batch.data() + static_cast<size_t>((istate - istart) * gdim);
+            const T* X_full = X_batch.data() + (istate - istart) * gdim;
             std::vector<std::pair<double, int>> abs_order;
             abs_order.reserve(4 * gdim);
             for (int i = 0;i < gdim;++i) {

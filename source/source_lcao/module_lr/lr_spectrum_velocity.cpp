@@ -162,18 +162,18 @@ namespace LR
         {
             const std::complex<double> fac = use_ks_gap ? ModuleBase::IMAG_UNIT :
                                             (ModuleBase::IMAG_UNIT / (omega[istate] / 2.0)); // Ry to Hartree;
-            const int loffset_X_b = istate * this->ldim;
+            const std::size_t loffset_X_b = std::size_t(istate) * std::size_t(this->ldim);
             for (int id = 0; id < 3; ++id)
             {
                 std::complex<double> td = 0.0; // short name of transition dipole
                 //|FULL std::complex<double> td2 = 0.0;
                 for (int is = 0; is < this->nspin_x; ++is)
                 {
-                    const int loffset_X_bs = loffset_X_b + is * nk * pX[0].get_local_size();
+                    const std::size_t loffset_X_bs = loffset_X_b + is * nk * pX[0].get_local_size();
                     const int goffset_v_ds = (is * 3 + id) * nk * nbands * nbands;
                     for (int ik = 0; ik < nk; ++ik)
                     {
-                        const int loffset_X = loffset_X_bs + ik * pX[is].get_local_size();
+                        const std::size_t loffset_X = loffset_X_bs + ik * pX[is].get_local_size();
                         const int goffset_v = goffset_v_ds + ik * nbands * nbands;
                         for (int io = 0; io < pX[is].get_col_size(); ++io)    // nocc_local
                         {
@@ -181,7 +181,7 @@ namespace LR
                             {
                                 int io_g = pX[is].local2global_col(io);
                                 int iv_g = pX[is].local2global_row(iv);
-                                const int X_index = loffset_X + io * pX[is].get_row_size() + iv;
+                                const std::size_t X_index = loffset_X + io * pX[is].get_row_size() + iv;
                                 const int v_index = goffset_v + (iv_g+nocc[is]) * nbands + io_g;
                                 if (use_ks_gap)
                                 {

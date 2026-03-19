@@ -130,7 +130,7 @@ namespace LR_Util
     /// the defination of row and col is consistent with setup_2d_division
     template <typename T>
     void gather_2d_to_full(const Parallel_2D& pv, const T* submat, T* fullmat,
-        const bool row_major, const int global_nrow, const int global_ncol, const bool do_reduce = true);
+        const bool row_major, const std::size_t global_nrow, const std::size_t global_ncol, const bool do_reduce = true);
 #endif
 
     ///=================diago-lapack====================

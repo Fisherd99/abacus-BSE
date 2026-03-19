@@ -33,8 +33,8 @@ void arrayFlatten2(const std::vector<std::complex<double>>& A,
 
 /// @brief solve full BSE through matrix M = {{Re(A+B), Im(A-B)},{-Im(A+B), Re(A-B)}}
 void solve_full(const int my_rank,
-                const std::vector<std::complex<double>>& A_part,
-                const std::vector<std::complex<double>>& B_part,
+                std::vector<std::complex<double>>& A_part,
+                std::vector<std::complex<double>>& B_part,
                 const Parallel_2D& pA,
                 const Parallel_2D& pM,
                 std::vector<double>& ev,

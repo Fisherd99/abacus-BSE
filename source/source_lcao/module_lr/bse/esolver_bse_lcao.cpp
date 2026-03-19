@@ -559,14 +559,14 @@ void ESolver_BSE<T, TR>::allocate_eigen_infos()
 
     int n_spin_types = this->input.bse_spin_types.size();
     if (this->input.bse_tda == "both" || this->input.bse_tda == "tda") {
-        BSE_Util::print_mem_estimate("TDA BSE eigen states", n_spin_types * this->nstates
+        BSE_Util::print_mem_estimate("TDA BSE eigen states", n_spin_types * static_cast<std::size_t>(this->nstates)
              * (1 + this->nloc_per_state), sizeof(T));
         this->tda_ene.resize(n_spin_types * this->nstates);
         this->X.resize(n_spin_types, LR_Util::newTensor<T>({ this->nstates, this->nloc_per_state }));
         for (auto& x : this->X) { x.zero(); }
     }
     if (this->input.bse_tda == "both" || this->input.bse_tda == "full") {
-        BSE_Util::print_mem_estimate("full BSE eigen states", n_spin_types * this->nstates
+        BSE_Util::print_mem_estimate("full BSE eigen states", n_spin_types * static_cast<std::size_t>(this->nstates)
             * (1 + 2 * this->nloc_per_state), sizeof(T));
         this->full_ene.resize(n_spin_types * this->nstates);
         this->full_X.resize(n_spin_types, LR_Util::newTensor<T>({ this->nstates, this->nloc_per_state }));

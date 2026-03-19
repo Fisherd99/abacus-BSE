@@ -1,6 +1,7 @@
 #include "molecular_lri.h"
 #include <algorithm>
 #include <cstddef> // offsetof
+#include <limits>
 #ifdef _OPENMP
 #include <omp.h>
 #endif
@@ -60,6 +61,7 @@ void MolecularLRI<T>::transform_k_2dlocal(std::vector<T>& m_2d,
     constexpr int comm_nk1 = 64;
     std::vector<int> send_head_counts(GlobalV::NPROC, 0), recv_head_counts(GlobalV::NPROC, 0);
     std::vector<int> send_buffer_counts(GlobalV::NPROC, 0), recv_buffer_counts(GlobalV::NPROC, 0);
+    std::vector<std::size_t> send_buffer_counts_c(GlobalV::NPROC, 0);
     std::vector<int> shdispls(GlobalV::NPROC, 0), rhdispls(GlobalV::NPROC, 0); //displacements of block heads
     std::vector<int> sbdispls(GlobalV::NPROC, 0), rbdispls(GlobalV::NPROC, 0); //displacements of buffer
     std::vector<int> cursor_head(GlobalV::NPROC, 0), cursor_buffer(GlobalV::NPROC, 0);
@@ -71,6 +73,7 @@ void MolecularLRI<T>::transform_k_2dlocal(std::vector<T>& m_2d,
     {
         std::fill(send_head_counts.begin(), send_head_counts.end(), 0);
         std::fill(send_buffer_counts.begin(), send_buffer_counts.end(), 0);
+        std::fill(send_buffer_counts_c.begin(), send_buffer_counts_c.end(), 0);
         std::fill(recv_head_counts.begin(), recv_head_counts.end(), 0);
         std::fill(recv_buffer_counts.begin(), recv_buffer_counts.end(), 0);
         const int k1_end = std::min(k1_start+comm_nk1, this->nk);
@@ -95,13 +98,21 @@ void MolecularLRI<T>::transform_k_2dlocal(std::vector<T>& m_2d,
                         {
                             const int owner = pm_2d.owner_processor(global_row, global_col);
                             ++send_head_counts[owner];
-                            send_buffer_counts[owner]+=(i_next-i) * (j_next-j);
+                            send_buffer_counts_c[owner] += std::size_t(i_next - i) * std::size_t(j_next - j);
                         }
                         i = i_next;
                     }
                     j = j_next;
                 }
             }
+        }
+        for (int p = 0; p < GlobalV::NPROC; ++p)
+        {
+            if (send_buffer_counts_c[p] > std::numeric_limits<int>::max())
+            {
+                throw std::overflow_error("in transform_k_2dlocal: overflow converting to int!");
+            }
+            send_buffer_counts[p] = static_cast<int>(send_buffer_counts_c[p]);
         }
         assert(send_head_counts.at(GlobalV::MY_RANK) == 0);
         assert(send_buffer_counts.at(GlobalV::MY_RANK) == 0);
@@ -163,7 +174,7 @@ void MolecularLRI<T>::transform_k_2dlocal(std::vector<T>& m_2d,
                                 {
                                     const int lr = lr0 + (ii - i);
                                     const int lc = lc0 + (jj - j);
-                                    const int idx_2d = lr + lc * lld;
+                                    const std::size_t idx_2d = lr + std::size_t(lc) * std::size_t(lld);
                                     m_2d[idx_2d] += (*m_kai_kbj.data)[ii + jj * npair] * fac;
                                 }
                             }
@@ -216,7 +227,7 @@ void MolecularLRI<T>::transform_k_2dlocal(std::vector<T>& m_2d,
                 for (int i = 0; i < nr; ++i)
                 {
                     const int idx_buffer = i + j * nr;
-                    const int idx_2d = (lr + i) + (lc + j) * lld;
+                    const std::size_t idx_2d = (lr + i) + std::size_t(lc + j) * std::size_t(lld);
                     m_2d[idx_2d] += recv_buffers[idx_buffer + buf_cursor];
                 }
             }
@@ -236,7 +247,7 @@ void MolecularLRI<T>::transform_k_2dlocal(std::vector<T>& m_2d,
         {
             for (int i = 0; i < npair; ++i)
             {
-                const int idx_target = (k1_step + i) + (k2_step + j) * this->ndim;
+                const std::size_t idx_target = (k1_step + i) + std::size_t(k2_step + j) * std::size_t(this->ndim);
                 const int idx_value = i + j * npair;
                 target[idx_target] += value[idx_value] * factor;
             }

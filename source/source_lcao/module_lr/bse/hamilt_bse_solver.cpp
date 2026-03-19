@@ -106,8 +106,8 @@ void arrayFlatten2(const std::vector<std::complex<double>>& A,
 }
 
 void solve_full(const int my_rank,
-                const std::vector<std::complex<double>>& A_part,
-                const std::vector<std::complex<double>>& B_part,
+                std::vector<std::complex<double>>& A_part,
+                std::vector<std::complex<double>>& B_part,
                 const Parallel_2D& pA,
                 const Parallel_2D& pM,
                 std::vector<double>& ev,
@@ -137,7 +137,7 @@ void solve_full(const int my_rank,
         exit(1);
     }
     elpa_set(elpaInstance, "na", n, &status);
-    elpa_set(elpaInstance, "nev", n, &status);
+    elpa_set(elpaInstance, "nev", n, &status); // have to solve all ev, see step6: v = SQLzΩ^(-1/2)
     elpa_set(elpaInstance, "local_nrows", pM.get_row_size(), &status);
     elpa_set(elpaInstance, "local_ncols", pM.get_col_size(), &status);
     elpa_set(elpaInstance, "nblk", pM.get_block_size(), &status);
@@ -159,11 +159,14 @@ void solve_full(const int my_rank,
 
     // step1: construct M
     // M = {{Re(A_part+B_part), Im(A_part-B_part)}, {-Im(A_part+B_part), Re(A_part-B_part)}}
-
+    ModuleBase::TITLE("HamiltBSE", "elpa_solve_full1");
     std::vector<double> M(pM.get_local_size());
     arrayFlatten2(A_part, B_part, M, pA, pM);
+    std::vector<std::complex<double>>().swap(A_part);
+    std::vector<std::complex<double>>().swap(B_part);
 
-// stp2: construct J = {{0, I}, {-I, 0}}
+    // step2: construct J = {{0, I}, {-I, 0}}
+    ModuleBase::TITLE("HamiltBSE", "elpa_solve_full2");
     std::vector<double> J(pM.get_local_size(), 0.0);
 #ifdef _OPENMP
 #pragma omp parallel for collapse(2)
@@ -182,7 +185,7 @@ void solve_full(const int my_rank,
     }
 
     // step3: Cholesky factorization M = U^T U
-
+    ModuleBase::TITLE("HamiltBSE", "elpa_solve_full3");
     elpa_cholesky(elpaInstance, M.data(), &status); // output M is upper triangular matrix U, M=U^T U
 
     // std::vector<double> global_U(n*n, 0.0);
@@ -192,7 +195,8 @@ void solve_full(const int my_rank,
     // if (my_rank == 0) {std::cout<<"U:"<<std::endl; printM( global_U, n, n, "U", "U" );}
 
     // step4: compute anti-symmetric matrix UJL = U J U^T
-    std::vector<double> UJ (pM.get_local_size(), 0.0), UJL(pM.get_local_size(), 0.0);
+    ModuleBase::TITLE("HamiltBSE", "elpa_solve_full4");
+    std::vector<double> UJ (pM.get_local_size(), 0.0);
 
     ScalapackConnector::gemm('N', 'N', n, n, n, 1.0,
         M.data(), 1, 1, pM.desc, 
@@ -210,19 +214,22 @@ void solve_full(const int my_rank,
         UJ.data(), 1, 1, pM.desc,
         M.data(), 1, 1, pM.desc,
         0.0,
-        UJL.data(), 1, 1, pM.desc);
+        J.data(), 1, 1, pM.desc); // J is UJL here
+    std::vector<double>().swap(UJ);
 
     // std::vector<double> global_UJL(n*n);
-    // Cpxgemr2d(n, n, UJL.data(), 1, 1, const_cast<int*>(pM.desc),
+    // Cpxgemr2d(n, n, J.data(), 1, 1, const_cast<int*>(pM.desc),
     //             global_UJL.data(), 1, 1, pM_glb.desc,
     //             pM.blacs_ctxt);
     //if (my_rank == 0) {std::cout<<"UJL:"<<std::endl; printM( global_UJL, n, n, "UJL", "UJL" );}
 
     // step5: compute eigenvalues ev and eigenvectors z of UJL
+    ModuleBase::TITLE("HamiltBSE", "elpa_solve_full5");
     std::vector<double> z(2 * pM.get_local_size()); // 2 for elpa_skew stores complex as 2 double
 
-    elpa_skew_eigenvectors(elpaInstance, UJL.data(), ev.data(), z.data(), &status);
+    elpa_skew_eigenvectors(elpaInstance, J.data()/*UJL*/, ev.data(), z.data(), &status);
     assert(status == ELPA_OK);
+    std::vector<double>().swap(J);
     // std::vector<std::complex<double>> global_z(n * n, 0.0);
     // Cpxgemr2d(n, n, z.data(), 1, 1, const_cast<int*>(pM.desc),
     //             global_z.data(), 1, 1, pM_glb.desc,
@@ -238,10 +245,54 @@ void solve_full(const int my_rank,
         //printM(global_z, n, n);
     //}
     // step6: compute normalized eigenvectors v = SQLzΩ^(-1/2), where Ω = diag(ev)
-    std::vector<std::complex<double>> SQ(pM.get_local_size(), 0.0);// SQ = {{I, -i I}, {-I, -i I}} / sqrt(2)
-    std::vector<std::complex<double>> Lz(pM.get_local_size(), 0.0);
+    ModuleBase::TITLE("HamiltBSE", "elpa_solve_full6.1");
     std::vector<double> Lz_real(pM.get_local_size(), 0.0);
     std::vector<double> Lz_imag(pM.get_local_size(), 0.0);
+
+// 6.1: zΩ^(-1/2). NOTE: both positive and negative eigenvalues are handled here
+#ifdef _OPENMP
+#pragma omp parallel for collapse(2)
+#endif
+    for (int j = 0; j < pM.get_col_size(); ++j)
+    {
+        double ev_sqrt = std::sqrt(std::abs(ev[pM.local2global_col(j)]));
+        for (int i = 0; i < pM.get_row_size(); ++i)
+        {
+            z[j * pM.get_row_size() + i] /= ev_sqrt;                       // real part
+            z[j * pM.get_row_size() + i + pM.get_local_size()] /= ev_sqrt; // imaginary part
+        }
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
+
+    // 6.2: LzΩ^(-1/2), combine real and imaginary part
+    ModuleBase::TITLE("HamiltBSE", "elpa_solve_full6.2");
+    ScalapackConnector::gemm('T', 'N', n, n, n, 1.0,
+        M.data(), 1, 1, pM.desc,
+        z.data(), 1, 1, pM.desc,
+        0.0,
+        Lz_real.data(), 1, 1, pM.desc);
+    ScalapackConnector::gemm('T', 'N', n, n, n, 1.0,
+        M.data(), 1, 1, pM.desc,
+        z.data() + pM.get_local_size(), 1, 1, pM.desc,
+        0.0,
+        Lz_imag.data(), 1, 1, pM.desc);
+
+    std::vector<std::complex<double>> Lz(pM.get_local_size(), 0.0);
+#ifdef _OPENMP
+#pragma omp parallel for collapse(2)
+#endif
+    for (int j = 0; j < pM.get_col_size(); ++j)
+    {
+        for (int i = 0; i < pM.get_row_size(); ++i)
+        {
+            Lz[j * pM.get_row_size() + i]
+                = std::complex<double>(Lz_real[j * pM.get_row_size() + i], Lz_imag[j * pM.get_row_size() + i]);
+        }
+    }
+    std::vector<double>().swap(Lz_real);
+    std::vector<double>().swap(Lz_imag);
+
+    std::vector<std::complex<double>> SQ(pM.get_local_size(), 0.0);// SQ = {{I, -i I}, {-I, -i I}} / sqrt(2)
 #ifdef _OPENMP
 #pragma omp parallel for
 #endif
@@ -263,48 +314,9 @@ void solve_full(const int my_rank,
             }
         }
     }
-
-// 6.1: zΩ^(-1/2). NOTE: both positive and negative eigenvalues are handled here
-#ifdef _OPENMP
-#pragma omp parallel for collapse(2)
-#endif
-    for (int j = 0; j < pM.get_col_size(); ++j)
-    {
-        double ev_sqrt = std::sqrt(std::abs(ev[pM.local2global_col(j)]));
-        for (int i = 0; i < pM.get_row_size(); ++i)
-        {
-            z[j * pM.get_row_size() + i] /= ev_sqrt;                       // real part
-            z[j * pM.get_row_size() + i + pM.get_local_size()] /= ev_sqrt; // imaginary part
-        }
-    }
-    MPI_Barrier(MPI_COMM_WORLD);
-
-    // 6.2: LzΩ^(-1/2), combine real and imaginary part
-    ScalapackConnector::gemm('T', 'N', n, n, n, 1.0,
-        M.data(), 1, 1, pM.desc,
-        z.data(), 1, 1, pM.desc,
-        0.0,
-        Lz_real.data(), 1, 1, pM.desc);
-    ScalapackConnector::gemm('T', 'N', n, n, n, 1.0,
-        M.data(), 1, 1, pM.desc,
-        z.data() + pM.get_local_size(), 1, 1, pM.desc,
-        0.0,
-        Lz_imag.data(), 1, 1, pM.desc);
-
-#ifdef _OPENMP
-#pragma omp parallel for collapse(2)
-#endif
-    for (int j = 0; j < pM.get_col_size(); ++j)
-    {
-        for (int i = 0; i < pM.get_row_size(); ++i)
-        {
-            Lz[j * pM.get_row_size() + i]
-                = std::complex<double>(Lz_real[j * pM.get_row_size() + i], Lz_imag[j * pM.get_row_size() + i]);
-        }
-    }
-
     MPI_Barrier(MPI_COMM_WORLD);
     // 6.3: v=SQLzΩ^{-1/2}
+    ModuleBase::TITLE("HamiltBSE", "elpa_solve_full6.3");
     ScalapackConnector::gemm('N', 'N', n, n, n, 1.0,
         SQ.data(), 1, 1, pM.desc,
         Lz.data(), 1, 1, pM.desc,

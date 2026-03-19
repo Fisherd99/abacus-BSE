@@ -10,7 +10,7 @@ void solve_tda(const int my_rank,
                std::vector<double>& ev,
                std::vector<T>& v)
 {
-    ModuleBase::TITLE("HamiltBSE", "elpa_solve_tda");
+    ModuleBase::TITLE("HamiltBSE", "elpa_solve_tda1");
     ModuleBase::timer::tick("HamiltBSE", "elpa_solve_tda");
 
     assert(pA.get_global_row_size() == pA.get_global_col_size());
@@ -32,7 +32,7 @@ void solve_tda(const int my_rank,
         exit(1);
     }
     elpa_set(elpaInstance, "na", nA, &status);
-    elpa_set(elpaInstance, "nev", nA, &status);
+    elpa_set(elpaInstance, "nev", static_cast<int>(ev.size()), &status);
     elpa_set(elpaInstance, "local_nrows", pA.get_row_size(), &status);
     elpa_set(elpaInstance, "local_ncols", pA.get_col_size(), &status);
     elpa_set(elpaInstance, "nblk", pA.get_block_size(), &status);
@@ -51,9 +51,9 @@ void solve_tda(const int my_rank,
     {
         fprintf(stderr, "Could not set up the ELPA object");
     }
-    std::vector<T> A_work = A;
-    elpa_eigenvectors(elpaInstance, A_work.data(), ev.data(), v.data(), &status);
-
+    ModuleBase::TITLE("HamiltBSE", "elpa_solve_tda2");
+    elpa_eigenvectors(elpaInstance, const_cast<T*>(A.data()), ev.data(), v.data(), &status);
+    ModuleBase::TITLE("HamiltBSE", "elpa_solve_tda3");
     elpa_deallocate(elpaInstance, &status);
     elpa_uninit(&status);
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "elpa_solve_tda");

@@ -7,6 +7,7 @@
 #include "source_base/module_external/scalapack_connector.h"
 #include <algorithm>
 #include <cstddef>
+#include <limits>
 namespace LR_Util
 {
     /// =================PHYSICS====================
@@ -99,31 +100,51 @@ namespace LR_Util
     template<typename T>
     bool is_hermitian(const T* mat, const Parallel_2D& pmat, const double threshold){
         bool is_herm = true;
-        std::vector<T> minus_mat(pmat.get_local_size());
-        std::vector<T> sum_mat(pmat.get_local_size());
         int n = pmat.get_global_row_size();
         assert(n == pmat.get_global_col_size());
+        double work_dummy = 0.0;
+        const char norm_type = 'F';
+        double norm1(0.0), norm2(0.0);
 #ifdef __MPI
         const int one = 1;
         T alpha = 1.0;
         T beta = 0.0;
+        if (pmat.get_local_size() > std::numeric_limits<int>::max())
+        {
+            std::cerr<< "Warning: pmat in RANK " + std::to_string(GlobalV::MY_RANK) + " has "
+             + std::to_string(pmat.get_local_size()) + " elements, which may overflow during `tranc`, please use more mpi." << std::endl;
+        }
         std::vector<T> herm_mat(pmat.get_local_size());
         ScalapackConnector::tranc(n, n,
                 alpha, const_cast<T*>(mat), one, one, pmat.desc,
                 beta, herm_mat.data(), one, one, pmat.desc);
-        for (int i = 0;i < pmat.get_local_size();++i) {
-            minus_mat[i] = mat[i] - herm_mat[i];
-            if (std::abs(minus_mat[i]) > threshold) { is_herm = false; }
-            sum_mat[i] = mat[i] + herm_mat[i];
+        ModuleBase::TITLE("LR_Util", "is_hermitian: tranc");
+        ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "is_hermitian: tranc");
+        T diff;
+        for (std::size_t i = 0;i < pmat.get_local_size();++i) {
+            diff = mat[i] - herm_mat[i];
+            if (std::abs(diff) > threshold) { is_herm = false; }
+            norm1 += static_cast<double>(std::norm(diff));
+            norm2 += static_cast<double>(std::norm(mat[i] + herm_mat[i]));
         }
+        MPI_Allreduce(MPI_IN_PLACE, &norm1, 1, MPI_DOUBLE, MPI_SUM, pmat.comm());
+        MPI_Allreduce(MPI_IN_PLACE, &norm2, 1, MPI_DOUBLE, MPI_SUM, pmat.comm());
+        norm1 = std::sqrt(norm1);
+        norm2 = std::sqrt(norm2);
+        // We don't use `lange` here because minus_mat and sum_mat are memory-consuming.
+        // double norm1 = ScalapackConnector::lange(norm_type, n, n, minus_mat.data(), one, one, pmat.desc, &work_dummy);
+        // double norm2 = ScalapackConnector::lange(norm_type, n, n, sum_mat.data(), one, one, pmat.desc, &work_dummy);        
+        ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "Frobenius norm");
         int local_flag = is_herm ? 1 : 0;
         int global_flag = 0;
         MPI_Allreduce(&local_flag, &global_flag, 1, MPI_INT, MPI_LAND, pmat.comm());
         is_herm = (global_flag != 0);
 #else
         assert(pmat.is_serial());
-        for (int i = 0;i < n;++i) {
-            for (int j = i;j < n;++j) {
+        std::vector<T> minus_mat(pmat.get_local_size());
+        std::vector<T> sum_mat(pmat.get_local_size());
+        for (std::size_t i = 0;i < n;++i) {
+            for (std::size_t j = i;j < n;++j) {
                 minus_mat[i * n + j] = mat[i * n + j] - get_conj(mat[j * n + i]);
                 minus_mat[j * n + i] = -get_conj(minus_mat[i * n + j]);
                 if (std::abs(minus_mat[i * n + j]) > threshold) { is_herm = false; }
@@ -131,15 +152,8 @@ namespace LR_Util
                 sum_mat[j * n + i] = get_conj(sum_mat[i * n + j]);
             }
         }
-#endif
-        double work_dummy = 0.0;
-        const char norm_type = 'F';
-#ifdef __MPI
-        double norm1 = ScalapackConnector::lange(norm_type, n, n, minus_mat.data(), one, one, pmat.desc, &work_dummy);
-        double norm2 = ScalapackConnector::lange(norm_type, n, n, sum_mat.data(), one, one, pmat.desc, &work_dummy);
-#else
-        double norm1 = LapackConnector::lange(norm_type, n, n, minus_mat.data(), n, &work_dummy);
-        double norm2 = LapackConnector::lange(norm_type, n, n, sum_mat.data(), n, &work_dummy);
+        norm1 = LapackConnector::lange(norm_type, n, n, minus_mat.data(), n, &work_dummy);
+        norm2 = LapackConnector::lange(norm_type, n, n, sum_mat.data(), n, &work_dummy);
 #endif
         if (GlobalV::MY_RANK == 0) {
             std::cout << "|  Hermitian check: ||A - A^H||_F = " << norm1 << ", ||A + A^H||_F = " << norm2 << std::endl;
@@ -151,31 +165,48 @@ namespace LR_Util
     template<typename T>
     bool is_symmetric(const T* mat, const Parallel_2D& pmat, const double threshold){
         bool is_sym = true;
-        std::vector<T> minus_mat(pmat.get_local_size());
-        std::vector<T> sum_mat(pmat.get_local_size());
         int n = pmat.get_global_row_size();
         assert(n == pmat.get_global_col_size());
+        double work_dummy = 0.0;
+        const char norm_type = 'F';
+        double norm1(0.0), norm2(0.0);
 #ifdef __MPI
         const int one = 1;
         T alpha = 1.0;
         T beta = 0.0;
+        if (pmat.get_local_size() > std::numeric_limits<int>::max())
+        {
+            std::cerr<< "Warning: pmat in RANK " + std::to_string(GlobalV::MY_RANK) + " has "
+             + std::to_string(pmat.get_local_size()) + " elements, which may overflow during `tranu`, please use more mpi." << std::endl;
+        }
         std::vector<T> trans_mat(pmat.get_local_size());
         ScalapackConnector::tranu(n, n,
                 alpha, const_cast<T*>(mat), one, one, pmat.desc,
                 beta, trans_mat.data(), one, one, pmat.desc);
-        for (int i = 0;i < pmat.get_local_size();++i) {
-            minus_mat[i] = mat[i] - trans_mat[i];
-            if (std::abs(minus_mat[i]) > threshold) { is_sym = false; }
-            sum_mat[i] = mat[i] + trans_mat[i];
+        ModuleBase::TITLE("LR_Util", "is_symmetric: tranu");
+        ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "is_hermitian: tranu");
+        T diff;
+        for (std::size_t i = 0;i < pmat.get_local_size();++i) {
+            diff = mat[i] - trans_mat[i];
+            if (std::abs(diff) > threshold) { is_sym = false; }
+            norm1 += static_cast<double>(std::norm(diff));
+            norm2 += static_cast<double>(std::norm(mat[i] + trans_mat[i]));
         }
+        MPI_Allreduce(MPI_IN_PLACE, &norm1, 1, MPI_DOUBLE, MPI_SUM, pmat.comm());
+        MPI_Allreduce(MPI_IN_PLACE, &norm2, 1, MPI_DOUBLE, MPI_SUM, pmat.comm());
+        norm1 = std::sqrt(norm1);
+        norm2 = std::sqrt(norm2);
+        ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "Frobenius norm");
         int local_flag = is_sym ? 1 : 0;
         int global_flag = 0;
         MPI_Allreduce(&local_flag, &global_flag, 1, MPI_INT, MPI_LAND, pmat.comm());
         is_sym = (global_flag != 0);
 #else
         assert(pmat.is_serial());
-        for (int i = 0;i < n;++i) {
-            for (int j = i;j < n;++j) {
+        std::vector<T> minus_mat(pmat.get_local_size());
+        std::vector<T> sum_mat(pmat.get_local_size());
+        for (std::size_t i = 0;i < n;++i) {
+            for (std::size_t j = i;j < n;++j) {
                 minus_mat[i * n + j] = mat[i * n + j] - mat[j * n + i];
                 minus_mat[j * n + i] = -minus_mat[i * n + j];
                 if (std::abs(minus_mat[i * n + j]) > threshold) {is_sym = false; }
@@ -183,15 +214,8 @@ namespace LR_Util
                 sum_mat[j * n + i] = sum_mat[i * n + j];
             }
         }
-#endif
-        double work_dummy = 0.0;
-        const char norm_type = 'F';
-#ifdef __MPI
-        double norm1 = ScalapackConnector::lange(norm_type, n, n, minus_mat.data(), one, one, pmat.desc, &work_dummy);
-        double norm2 = ScalapackConnector::lange(norm_type, n, n, sum_mat.data(), one, one, pmat.desc, &work_dummy);
-#else
-        double norm1 = LapackConnector::lange(norm_type, n, n, minus_mat.data(), n, &work_dummy);
-        double norm2 = LapackConnector::lange(norm_type, n, n, sum_mat.data(), n, &work_dummy);
+        norm1 = LapackConnector::lange(norm_type, n, n, minus_mat.data(), n, &work_dummy);
+        norm2 = LapackConnector::lange(norm_type, n, n, sum_mat.data(), n, &work_dummy);
 #endif
         if (GlobalV::MY_RANK == 0) {
             std::cout << "|  Symmetric check: ||B - B^T||_F = " << norm1 << ", ||B + B^T||_F = " << norm2 << std::endl;
@@ -337,8 +361,8 @@ namespace LR_Util
         ModuleBase::timer::tick("LR_Util", "pA2pX");
         const int nspin_X = openshell ? 2 : 1;
         const std::vector<int> npairs = { nocc[0] * nvirt[0], nocc[1] * nvirt[1] };
-        const int gdim = openshell ? nk * (npairs[0] + npairs[1] ) : nk * npairs[0];
-        const int ldim = openshell ? nk * (pX[0].get_local_size() + pX[1].get_local_size()) : nk * pX[0].get_local_size();
+        const std::size_t gdim = openshell ? nk * (npairs[0] + npairs[1] ) : nk * npairs[0];
+        const std::size_t ldim = openshell ? nk * (pX[0].get_local_size() + pX[1].get_local_size()) : nk * pX[0].get_local_size();
         assert(pA.get_global_row_size() == gdim || pA.get_global_row_size() == 2 * gdim);
         assert(pA.get_global_col_size() == gdim || pA.get_global_col_size() == 2 * gdim);
         for (int is = 0;is < nspin_X;++is)
@@ -377,16 +401,20 @@ namespace LR_Util
             }
         }
         const int lnband = lnbands[GlobalV::MY_RANK];
+        if (lnband == 0)
+        {
+            throw std::runtime_error("rank" + std::to_string(GlobalV::MY_RANK) + "lnband = 0, please check the pA and pX distribution!");
+        }
         const int lb_start = pA.global2local_col(gblist[GlobalV::MY_RANK].front());
         const int lb_end = lb_start + lnband;        
 
         for (int is = 0; is < nspin_X; ++is)
         {
-            const int gspin_base = is * nk * npairs[0];
-            const int lspin_base = is * nk * pX[0].get_local_size();
-            const int nrow = comm_nk * npairs[is];
-            const int grow_start = row_offset + gspin_base;
-            const int grow_end = grow_start + nk * npairs[is];
+            const std::size_t gspin_base = is * nk * npairs[0];
+            const std::size_t lspin_base = is * nk * pX[0].get_local_size();
+            const std::size_t nrow = comm_nk * npairs[is];
+            const std::size_t grow_start = row_offset + gspin_base;
+            const std::size_t grow_end = grow_start + nk * npairs[is];
             for (int irow_start = grow_start; irow_start < grow_end; irow_start += nrow)
             {
                 std::fill(send_head_counts.begin(), send_head_counts.end(), 0);
@@ -406,8 +434,16 @@ namespace LR_Util
                     if (ownerX != GlobalV::MY_RANK)
                     {
                         ++send_head_counts[ownerX];
-                        send_buffer_counts[ownerX] += lnband;
                     }
+                }
+                for (int p = 0; p < GlobalV::NPROC; ++p)
+                {
+                    std::size_t nbuffer = size_t(lnband) * send_head_counts[p];
+                    if (nbuffer > std::numeric_limits<int>::max())
+                    {
+                        throw std::overflow_error("in pA2pX: overflow converting to int!");
+                    }
+                    send_buffer_counts[p] = static_cast<int>(nbuffer);
                 }
 
                 assert(send_head_counts.at(GlobalV::MY_RANK) == 0);
@@ -445,31 +481,31 @@ namespace LR_Util
                 {
                     const int lr = pA.global2local_row(irow);
                     if (lr == -1) continue;
-                    const int ir = irow - row_offset - gspin_base;
-                    const int ik = ir / npairs[is];
+                    const std::size_t ir = irow - row_offset - gspin_base;
+                    const std::size_t ik = ir / npairs[is];
                     const int io = (ir-ik*npairs[is]) / nvirt[is];
                     const int iv = ir % nvirt[is];
                     const int ownerX = pX[is].owner_processor(iv, io);
                     if (ownerX == GlobalV::MY_RANK)
                     {
-                        for (int lb = lb_start; lb < lb_end; ++lb)
+                        for (std::size_t lb = lb_start; lb < lb_end; ++lb)
                         {
                             const int gb = pA.local2global_col(lb);
-                            const int lb_base = (gb - col_offset) * ldim;
-                            const int lrowX = pX[is].global2local_row(iv);
-                            const int lcolX = pX[is].global2local_col(io);
-                            X_pX[lrowX + lcolX * pX[is].get_row_size() + 
-                                lb_base + lspin_base + ik * pX[is].get_local_size()] =
-                                X_pA[lr + lb * pA.get_row_size()];
+                            const std::size_t lb_base = std::size_t(gb - col_offset) * std::size_t(ldim);
+                            const std::size_t lrowX = pX[is].global2local_row(iv);
+                            const std::size_t lcolX = pX[is].global2local_col(io);
+                            const std::size_t lX_indx = lrowX + lcolX * pX[is].get_row_size() + lb_base 
+                                                        + lspin_base + ik * pX[is].get_local_size();
+                            X_pX[lX_indx] = X_pA[static_cast<std::size_t>(lr) + lb * pA.get_row_size()];
                         }
                     }
                     else
                     {
                         BlockHead& head = send_heads[cursor_head[ownerX]++];
                         head.set(iv, io, ik, GlobalV::MY_RANK);
-                        for (int lb = lb_start; lb < lb_end; ++lb)
+                        for (std::size_t lb = lb_start; lb < lb_end; ++lb)
                         {
-                            send_buffers[cursor_buffer[ownerX]++] = X_pA[lr + lb * pA.get_row_size()];
+                            send_buffers[cursor_buffer[ownerX]++] = X_pA[static_cast<std::size_t>(lr) + lb * pA.get_row_size()];
                         }
                     }
                 }
@@ -498,15 +534,15 @@ namespace LR_Util
                     {
                         const BlockHead& rh = recv_heads[iblock];
                         assert(rh.src_rank == src);
-                        const int ik = rh.ik;
-                        const int lr = pX[is].global2local_row(rh.ivirt);
-                        const int lc = pX[is].global2local_col(rh.iocc);
+                        const std::size_t ik = rh.ik;
+                        const std::size_t lr = pX[is].global2local_row(rh.ivirt);
+                        const std::size_t lc = pX[is].global2local_col(rh.iocc);
                         for (int ib = 0; ib < lnbands[src]; ++ib)
                         {
-                            const int lb_base = (gblist[src][ib] - col_offset) * ldim;
-                            X_pX[lr + lc * pX[is].get_row_size() + 
-                                lb_base + lspin_base + ik * pX[is].get_local_size()] =
-                                recv_buffers[ib + buf_cursor];
+                            const std::size_t lb_base = std::size_t(gblist[src][ib] - col_offset) * std::size_t(ldim);
+                            const std::size_t lX_indx = lr + lc * pX[is].get_row_size() + lb_base 
+                                                        + lspin_base + ik * pX[is].get_local_size();
+                            X_pX[lX_indx] = recv_buffers[ib + buf_cursor];
                         }
                         buf_cursor += lnbands[src];
                     }
@@ -520,7 +556,7 @@ namespace LR_Util
 
     template <typename T>
     void gather_2d_to_full(const Parallel_2D& pv, const T* submat, T* fullmat,
-        const bool row_major, const int global_nrow, const int global_ncol, const bool do_reduce)
+        const bool row_major, const std::size_t global_nrow, const std::size_t global_ncol, const bool do_reduce)
     {
         assert(pv.get_global_row_size() == global_nrow);
         assert(pv.get_global_col_size() == global_ncol);
