@@ -1,3 +1,7 @@
+//=======================
+// AUTHOR : Ziqing Guan
+// DATE :   2026-03-22
+//=======================
 #include "molecular_lri.h"
 #include <algorithm>
 #include <cstddef> // offsetof

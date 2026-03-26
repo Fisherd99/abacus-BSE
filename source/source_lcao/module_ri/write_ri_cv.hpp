@@ -103,7 +103,7 @@ namespace LRI_CV_Tools
             std::string fm(ptr->d_name);
             if (fm.find("Cs_data_") == 0)// find file Cs_data_xxx
             {
-                std::cout << "found Cs file:" << fm << std::endl;
+                ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "found Cs file: " + fm + ", start reading...");
                 std::ifstream infile(path + fm);
                 infile >> natom >> ncell;   // no use of ncell
 
@@ -126,6 +126,7 @@ namespace LRI_CV_Tools
             }
         }
         closedir(dir);
+        ModuleBase::TITLE("LRI_CV_Tools", "read_Cs_ao_all done.");
         return Cs;
     }
 

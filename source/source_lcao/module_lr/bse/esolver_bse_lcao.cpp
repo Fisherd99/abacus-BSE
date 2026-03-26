@@ -166,8 +166,8 @@ void ESolver_BSE<T, TR>::lri_init()
     std::map<TA, std::map<TAC, RI::Tensor<T>>> Cs_in;
     std::map<TA, std::map<TAC, RI::Tensor<T>>> Vs_in;
     std::map<TA, std::map<TAC, RI::Tensor<T>>> Ws_in;
-    if (GlobalV::MY_RANK == 0)
-    {
+    // if (GlobalV::MY_RANK == 0) // comment to read from all processes to avoid communication
+    // {
         Cs_in = LRI_CV_Tools::read_Cs_ao_all<T>( "./");
         if (this->input.ri_hartree_benchmark == "aims-librpa" )
         {
@@ -178,7 +178,7 @@ void ESolver_BSE<T, TR>::lri_init()
             Vs_in = LR_IO::read_coulomb_mat_k<T, T>("./", Cs_in, this->kRlist);
         }
         Ws_in = LR_IO::read_Ws<T, T>(Vs_in, this->kRlist.Rlist);
-    }
+    // }
 #ifdef __MPI
     MPI_Barrier(MPI_COMM_WORLD);
 #endif

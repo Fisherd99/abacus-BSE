@@ -23,12 +23,13 @@ RI_kRlist::RI_kRlist(const std::string& file_coarse,
     this->klist_coarse = *this->klist;
     this->period = RI_Util::get_Born_vonKarmen_period(*klist);
     this->Rlist = RI_Util::get_Born_von_Karmen_cells(period);
-    std::cout << "Rlist:" << std::endl;
-    int count = 0;
-    for (const auto& iR: Rlist)
-    {
-        std::cout << "iR=" << count <<": "<< iR[0] << " " << iR[1] << " " << iR[2] << std::endl;
-    }
+    // std::cout << "Rlist:" << std::endl;
+    // int count = 0;
+    // for (const auto& iR: Rlist)
+    // {
+    //     count++;
+    //     std::cout << "iR=" << count <<": "<< iR[0] << " " << iR[1] << " " << iR[2] << std::endl;
+    // }
     if (PARAM.inp.bse_use_fine_kgrid)
     {
         read_kpts_fine(file_fine, ucell, this->klist);
@@ -75,14 +76,15 @@ void RI_kRlist::read_kpts_coarse(const std::string& file, const UnitCell& ucell,
     }
 
     // klist_coarse.wk is read in function `read_coulomb_mat_k`
-
-    std::cout << "After read_kpts: klist(Cartesian|Direct)" << std::endl;
+    std::ofstream ofs_kpts_coarse(PARAM.globalv.global_out_dir + "kpts_coarse.dat");
+    ofs_kpts_coarse << "kpts_coarse:"<< std::setw(16) << "( Cartesian" << std::setw(36) << "|                Direct )" << std::endl;
     for (int ik = 0; ik < nks; ++ik)
     {
-        std::cout << "ik=" << std::setw(5) << ik << std::setw(11) << klist->kvec_c[ik].x << std::setw(11) 
+        ofs_kpts_coarse << std::setw(5) << ik << std::setw(11) << klist->kvec_c[ik].x << std::setw(11) 
         << klist->kvec_c[ik].y << std::setw(11) << klist->kvec_c[ik].z << " | " << std::setw(11)
         << klist->kvec_d[ik].x << std::setw(11) << klist->kvec_d[ik].y << std::setw(11) << klist->kvec_d[ik].z << std::endl;
     }
+    ofs_kpts_coarse.close();
 }
 
 void RI_kRlist::read_kpts_fine(const std::string& file, const UnitCell& ucell, K_Vectors* const klist)
@@ -126,13 +128,15 @@ void RI_kRlist::read_kpts_fine(const std::string& file, const UnitCell& ucell, K
             klist->wk[ik + nk] = klist->wk[ik];
         }
     }
-    std::cout << "read_kpts_fine: klist(Cartesian|Direct)" << std::endl;
+    std::ofstream ofs_kpts_fine(PARAM.globalv.global_out_dir + "kpts_fine.dat");
+    ofs_kpts_fine << "kpts_fine:"<< std::setw(16) << "( Cartesian" << std::setw(36) << "|                Direct )" << std::endl;
     for (int ik = 0; ik < nk; ++ik)
     {
-        std::cout << "ik=" << std::setw(5) << ik << std::setw(11) << klist->kvec_c[ik].x << std::setw(11) 
+        ofs_kpts_fine << std::setw(5) << ik << std::setw(11) << klist->kvec_c[ik].x << std::setw(11) 
         << klist->kvec_c[ik].y << std::setw(11) << klist->kvec_c[ik].z << " | " << std::setw(11)
         << klist->kvec_d[ik].x << std::setw(11) << klist->kvec_d[ik].y << std::setw(11) << klist->kvec_d[ik].z << std::endl;
     }
+    ofs_kpts_fine.close();
 }
 
 void parse_band_out_file(const std::string& file, int& nbands_file, int& nk_file, int& nspin_file, int& nocc_file)
@@ -441,7 +445,6 @@ void read_librpa_eigenvectors_from_band_files(psi::Psi<TK>& wfc_ks,
     assert((ncore + nbands) <= nbands_file);
     const size_t nk = PARAM.inp.nspin == 2 ? wfc_ks.get_nk() / 2 : wfc_ks.get_nk();
     
-    //std::string tmp;
     if (GlobalV::MY_RANK == 0)
     {
         for (int ik = 0; ik < nk; ++ik)
@@ -549,7 +552,7 @@ TLRI<TVs> read_coulomb_mat_k(const std::string& path, const TLRI<TCs>& Cs, LR_IO
     std::cout << "read_coulomb_mat_k: using prefix \"" << prefix << "\" in directory " << path << std::endl;
 
     size_t nk = 0, nabf = 0, istart = 0, jstart = 0, iend = 0, jend = 0;
-    std::string tmp;
+
     K_Vectors* const klist = &(kRlist.klist_coarse);
     int klist_nk = klist->nmp[0] * klist->nmp[1] * klist->nmp[2];
     int ik_readin = -1;
@@ -580,7 +583,7 @@ TLRI<TVs> read_coulomb_mat_k(const std::string& path, const TLRI<TCs>& Cs, LR_IO
         std::string fm(ptr->d_name);
         if (fm.find(prefix) == 0)// find file coulomb_cut_xxx
         {
-            std::cout << "found coulomb file:" << fm << std::endl;
+            ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "found Coulomb file: " + fm + ", start reading...");
             std::ifstream ifs(path  + fm);
             ifs >> nk;//   actual nk
             assert(nk == klist_nk);
@@ -615,18 +618,18 @@ TLRI<TVs> read_coulomb_mat_k(const std::string& path, const TLRI<TCs>& Cs, LR_IO
         }
     }
     closedir(dir);
-
+    ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "read Vq files. Now convert Vq to VR.");
     for (const TC& R : kRlist.Rlist )
     {
         for (int iat1 = 0;iat1 < nat;++iat1)
         {
             for (int iat2 = 0;iat2 < nat;++iat2)
             {
-                Vs[iat1][{iat2, R}] = RI::Tensor<TVs>({ Vq[iat1][{iat2, 0}].shape[0], Vq[iat1][{iat2, 0}].shape[1] });
+                Vs[iat1][{iat2, R}] = RI::Tensor<TVs>(Vq[iat1][{iat2, 0}].shape);
             }
         }
     }
-    ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "read Vq files. Now convert Vq to VR.");
+    ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "VR keys has been prepared.");
 #ifdef _OPENMP
 #pragma omp parallel for schedule(dynamic) collapse(3)
 #endif
@@ -640,7 +643,7 @@ TLRI<TVs> read_coulomb_mat_k(const std::string& path, const TLRI<TCs>& Cs, LR_IO
         {
             for (int iat2 = 0;iat2 < nat;++iat2)
             {
-                Vs[iat1][{iat2, R}] = RI::Tensor<TVs>({ Vq[iat1][{iat2, 0}].shape[0], Vq[iat1][{iat2, 0}].shape[1] });
+                Vs[iat1][{iat2, R}] = RI::Tensor<TVs>(Vq[iat1][{iat2, 0}].shape);
                 for (int ik = 0;ik < nk;++ik)
                 {
                     const ModuleBase::Vector3<double>& kvec = klist->kvec_d.at(ik);
@@ -652,6 +655,7 @@ TLRI<TVs> read_coulomb_mat_k(const std::string& path, const TLRI<TCs>& Cs, LR_IO
         }
     }
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "convert Vq to VR.");
+    ModuleBase::TITLE("LR_IO", "read_Vs done.");
     return Vs;
 }
 
@@ -684,7 +688,7 @@ TLRI<TVs> read_coulomb_mat_general_k(const std::string& path, const TLRI<TCs>& C
     std::map<int,std::vector<std::complex<double>>> Vq_tmp; //<ik, vector> 
 
     size_t nk = 0, nabf = 0, istart = 0, jstart = 0, iend = 0, jend = 0;
-    std::string tmp;
+
     K_Vectors* const klist = &(kRlist.klist_coarse);
     int klist_nk = klist->nmp[0] * klist->nmp[1] * klist->nmp[2];
     int ik_readin = -1;
@@ -693,7 +697,7 @@ TLRI<TVs> read_coulomb_mat_general_k(const std::string& path, const TLRI<TCs>& C
         std::string fm(ptr->d_name);
         if (fm.find(prefix) == 0)// find file coulomb_cut_xxx
         {
-            std::cout << "found coulomb file:" << fm << std::endl;
+            ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "found Coulomb file: " + fm + ", start reading...");
             std::ifstream ifs(path  + fm);
             ifs >> nk;  //   actual nk            
             assert(nk == klist_nk);
@@ -763,6 +767,7 @@ TLRI<TVs> read_coulomb_mat_general_k(const std::string& path, const TLRI<TCs>& C
             }
         }
     }
+    ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "VR keys has been prepared.");
 #ifdef _OPENMP
 #pragma omp parallel for schedule(dynamic) collapse(3)
 #endif
@@ -787,6 +792,7 @@ TLRI<TVs> read_coulomb_mat_general_k(const std::string& path, const TLRI<TCs>& C
         }
     }
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "convert Vq to VR.");
+    ModuleBase::TITLE("LR_IO", "read_Vs done.");
     return Vs;
 }
 
@@ -842,6 +848,7 @@ TLRI<Tdata> read_Ws(const TLRI<TVs>& Vs, const std::vector<TC>& Rlist)
             }
         }
     }
+    ModuleBase::TITLE("LR_IO", "read_Ws done.");
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "read WR files.");
     return Ws;
 }

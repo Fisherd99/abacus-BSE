@@ -92,7 +92,7 @@ void arrayFlatten2(const std::vector<std::complex<double>>& A,
                 pA.blacs_ctxt);
 #else
 #ifdef _OPENMP
-#pragma omp parallel for collapse(2)
+#pragma omp parallel for schedule(static)
 #endif
     for (int j = 0; j < nA; j++ ){
         for (int i = 0; i < nA; i++ ){
@@ -169,7 +169,7 @@ void solve_full(const int my_rank,
     ModuleBase::TITLE("HamiltBSE", "elpa_solve_full2");
     std::vector<double> J(pM.get_local_size(), 0.0);
 #ifdef _OPENMP
-#pragma omp parallel for collapse(2)
+#pragma omp parallel for schedule(static)
 #endif
     for (int j = 0;j < pM.get_col_size();++j)
     {
@@ -251,7 +251,7 @@ void solve_full(const int my_rank,
 
 // 6.1: zΩ^(-1/2). NOTE: both positive and negative eigenvalues are handled here
 #ifdef _OPENMP
-#pragma omp parallel for collapse(2)
+#pragma omp parallel for schedule(static)
 #endif
     for (int j = 0; j < pM.get_col_size(); ++j)
     {
@@ -279,7 +279,7 @@ void solve_full(const int my_rank,
 
     std::vector<std::complex<double>> Lz(pM.get_local_size(), 0.0);
 #ifdef _OPENMP
-#pragma omp parallel for collapse(2)
+#pragma omp parallel for schedule(static)
 #endif
     for (int j = 0; j < pM.get_col_size(); ++j)
     {
