@@ -148,6 +148,9 @@ void parse_band_out_file(const std::string& file, int& nbands_file, int& nk_file
     int nocc_count = 0;
 
     ifs >> nk_file >> nspin_file >> nbands_file;
+    std::cout << "band_out: nk = " << nk_file << std::endl;
+    std::cout << "band_out: nspin = " << nspin_file << std::endl;
+    std::cout << "band_out: nbands = " << nbands_file << std::endl;
     for (int i = 0; i < 4; ++i) {std::getline(ifs, tmp); } //skip 4 lines
 
     while (ifs.peek() != EOF)
@@ -160,6 +163,20 @@ void parse_band_out_file(const std::string& file, int& nbands_file, int& nk_file
         else if (occ < 0.1) break;
     }
     nocc_file = nocc_count;
+    std::cout << "nocc in band_out: " << nocc_file << std::endl;
+
+    if (PARAM.inp.bse_use_fine_kgrid)
+    {
+        std::ifstream ifs("band_kpath_info");
+        if (!ifs) throw std::runtime_error(file + " not found");
+        std::string tmp;
+        ifs >> tmp >> nbands_file >> nspin_file >> nk_file;
+        std::cout << "band_kpath_info: nk = " << nk_file << std::endl;
+        std::cout << "band_kpath_info: nspin = " << nspin_file << std::endl;
+        std::cout << "band_kpath_info: nbands = " << nbands_file << std::endl;
+        std::cout << "BSE will use fine kgrid." << std::endl;
+        ifs.close();
+    }
 }
 
 std::vector<double> read_energy_qp(const std::string& file,
@@ -461,7 +478,7 @@ void read_librpa_eigenvectors_from_band_files(psi::Psi<TK>& wfc_ks,
 
             std::vector<double> double_buffer(total_doubles);
             infile.read(reinterpret_cast<char *>(double_buffer.data()), total_doubles * sizeof(double));
-            if (!infile || infile.gcount() != static_cast<ptrdiff_t>(total_doubles * sizeof(double)))
+            if (infile.gcount() != static_cast<ptrdiff_t>(total_doubles * sizeof(double)))
             {
                 throw std::runtime_error("Error: failed to read " + ss.str());
             }

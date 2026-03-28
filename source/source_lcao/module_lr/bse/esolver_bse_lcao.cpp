@@ -450,11 +450,7 @@ void ESolver_BSE<T, TR>::read_ks_wfc()
     int nspin_tmp = PARAM.inp.nspin == 2 ? 2 : 1;
     LR_IO::parse_band_out_file("band_out", nbands_file, nk_file, nspin_file, nocc_file);
     if (nk_file != this->nk) {
-        std::cout << "nk in `band_out`: " << nk_file << ", nk in BSE: " << this->nk;
-        if (PARAM.inp.bse_use_fine_kgrid)
-            std::cout << ". BSE will use fine kgrid." << std::endl;
-        else
-            ModuleBase::WARNING_QUIT("ESolver_BSE", "The nk in band_out is not consistent with BSE::nk.");
+        ModuleBase::WARNING_QUIT("ESolver_BSE", "The nk is not consistent with BSE::nk.");
     }
     std::vector<double> eig_gw_info;
     if (PARAM.inp.bse_use_fine_kgrid)
