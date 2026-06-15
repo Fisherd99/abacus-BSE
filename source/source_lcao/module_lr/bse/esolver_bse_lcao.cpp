@@ -1,4 +1,5 @@
 #include "source_lcao/module_lr/bse/esolver_bse_lcao.h"
+#include <array>
 
 namespace BSE
 {
@@ -32,12 +33,11 @@ ESolver_BSE<T, TR>::ESolver_BSE(const Input_para& inp, UnitCell& ucell) :
     /// read orbitals and build the interpolation table
     this->two_center_bundle_.build_orb(ucell.ntype, ucell.orbital_fn.data());
 
-    LCAO_Orbitals orb;
-    this->two_center_bundle_.to_LCAO_Orbitals(orb, inp.lcao_ecut, inp.lcao_dk, inp.lcao_dr, inp.lcao_rmax);
-    this->orb_cutoff_ = orb.cutoffs();
+    this->two_center_bundle_.to_LCAO_Orbitals(this->orb_, inp.lcao_ecut, inp.lcao_dk, inp.lcao_dr, inp.lcao_rmax);
+    this->orb_cutoff_ = this->orb_.cutoffs();
     if (LR_Util::tolower(this->input.abs_gauge) == "velocity")
     {
-        this->setup_2center_table(this->two_center_bundle_, orb, ucell);
+        this->setup_2center_table(this->two_center_bundle_, this->orb_, ucell);
     }
 
     this->set_dimension();
@@ -90,7 +90,7 @@ ESolver_BSE<T, TR>::ESolver_BSE(const Input_para& inp, UnitCell& ucell) :
     double search_radius = -1.0;
     search_radius = atom_arrange::set_sr_NL(GlobalV::ofs_running,
                                             PARAM.inp.out_level,
-                                            orb.get_rcutmax_Phi(),
+                                            this->orb_.get_rcutmax_Phi(),
                                             ucell.infoNL.get_rcutmax_Beta(),
                                             PARAM.globalv.gamma_only_local);
     atom_arrange::search(PARAM.globalv.search_pbc,
@@ -114,7 +114,7 @@ ESolver_BSE<T, TR>::ESolver_BSE(const Input_para& inp, UnitCell& ucell) :
             this->pw_big->nbx,
             this->pw_big->nby,
             this->pw_big->nbzp,
-            orb.Phi,
+            this->orb_.Phi,
             ucell,
             this->gd));
             ModuleGint::Gint::set_gint_info(this->gint_info_.get());
@@ -296,7 +296,7 @@ void ESolver_BSE<T, TR>::runner(UnitCell& ucell, const int istep)
         {
             if (GlobalV::MY_RANK == 0) {
                 assert(nst == LR_Util::read_value(efile_in("full_"+label), e, nst));
-                ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "finish reading " + efile_in(label));
+                ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "finish reading " + efile_in("full_"+label));
             }
 #ifdef __MPI
             MPI_Bcast(e, nst, MPI_DOUBLE, 0, MPI_COMM_WORLD);
@@ -354,13 +354,81 @@ void ESolver_BSE<T, TR>::after_all_runners(UnitCell& ucell)
         for (int is = 0;is < this->X.size();++is)
         {
             std::cout << "plot BSE exciton wavefunction for state: " << this->input.plot_istate
-                << ", spin type:" << this->input.bse_spin_types[is] << std::endl;   
+                << ", spin type: " << this->input.bse_spin_types[is] << std::endl;
             LR_Util::ExcitonPlotter<T> eplot(this->nspin, this->nbasis, this->nocc, this->nvirt, *this->psi_ks,
                 this->ucell, this->kv, this->gd, this->orb_cutoff_, this->Pgrid, *this->pw_rho,
                 this->paraX_, this->paraC_, this->paraMat_,
                 &this->tda_ene[is * this->nstates], this->X[is].template data<T>(),
-                false/*openshell*/); 
-            eplot.plot_exciton(this->input.plot_istate, this->input.bse_spin_types[is]);
+                false/*openshell*/, &this->orb_);
+            const std::string plot_type = LR_Util::tolower(this->input.exciton_plot_type);
+            const std::string plot_format = LR_Util::tolower(this->input.exciton_plot_format);
+            const bool write_slice = (plot_format == "slice" || plot_format == "both"
+                || (plot_format == "auto" && plot_type == "conditional"));
+            const bool write_cube = (plot_format == "cube" || plot_format == "both"
+                || (plot_format == "auto" && plot_type == "average"));
+
+            if (plot_format != "auto" && plot_format != "cube"
+                && plot_format != "slice" && plot_format != "both")
+            {
+                ModuleBase::WARNING_QUIT("ESolver_BSE",
+                    "exciton_plot_format must be auto, cube, slice, or both");
+            }
+
+            if (plot_type == "conditional")
+            {
+                const std::array<double, 3> r_h_fix = {this->input.exciton_hole_fix_x,
+                                                       this->input.exciton_hole_fix_y,
+                                                       this->input.exciton_hole_fix_z};
+                const std::array<double, 3> r_e_fix = {this->input.exciton_elec_fix_x,
+                                                       this->input.exciton_elec_fix_y,
+                                                       this->input.exciton_elec_fix_z};
+                if (write_cube)
+                {
+                    eplot.plot_conditional_density(this->input.plot_istate, r_h_fix, "elec");
+                    eplot.plot_conditional_density(this->input.plot_istate, r_e_fix, "hole");
+                }
+                if (write_slice)
+                {
+                    eplot.plot_cond_slice(this->input.plot_istate, r_h_fix,
+                        this->input.exciton_slice_plane,
+                        this->input.exciton_slice_pos,
+                        this->input.exciton_slice_npoints,
+                        this->input.exciton_slice_scale, "elec");
+                    eplot.plot_cond_slice(this->input.plot_istate, r_e_fix,
+                        this->input.exciton_slice_plane,
+                        this->input.exciton_slice_pos,
+                        this->input.exciton_slice_npoints,
+                        this->input.exciton_slice_scale, "hole");
+                }
+            }
+            else if (plot_type == "average")
+            {
+                if (write_cube)
+                {
+                    // Average hole density: integrates out the electron coordinate
+                    eplot.plot_average_density(this->input.plot_istate, "hole");
+                    // Average electron density: integrates out the hole coordinate
+                    eplot.plot_average_density(this->input.plot_istate, "elec");
+                }
+                if (write_slice)
+                {
+                    eplot.plot_average_slice(this->input.plot_istate, "hole",
+                        this->input.exciton_slice_plane,
+                        this->input.exciton_slice_pos,
+                        this->input.exciton_slice_npoints,
+                        this->input.exciton_slice_scale);
+                    eplot.plot_average_slice(this->input.plot_istate, "elec",
+                        this->input.exciton_slice_plane,
+                        this->input.exciton_slice_pos,
+                        this->input.exciton_slice_npoints,
+                        this->input.exciton_slice_scale);
+                }
+            }
+            else
+            {
+                ModuleBase::WARNING_QUIT("ESolver_BSE",
+                    "exciton_plot_type must be average or conditional");
+            }
         }
     }
     if (this->input.lr_solver == "spectrum" || this->input.lr_solver == "elpa")
@@ -391,10 +459,10 @@ void ESolver_BSE<T, TR>::after_all_runners(UnitCell& ucell)
                         "trans_dipole_" + this->input.bse_spin_types[is] + "_tda.dat");
                     // ============================== for test ==============================
                     if (LR_Util::tolower(this->input.abs_gauge) == "velocity")
-                    {
-                        spectrum.test_transition_dipoles_velocity_omega();
-                        spectrum.write_transition_dipole(PARAM.globalv.global_out_dir + 
-                            "trans_dipole_" + this->input.bse_spin_types[is] + "_vomega_tda.dat");
+                    {   //// TEST the formula v/omega rather than v/(e_a-e_i)
+                        // spectrum.test_transition_dipoles_velocity_omega();
+                        // spectrum.write_transition_dipole(PARAM.globalv.global_out_dir + 
+                        //     "trans_dipole_" + spin_types[is] + "_vomega_tda.dat");
                     }
                     // ============================== for test ==============================
                 }
@@ -418,14 +486,6 @@ void ESolver_BSE<T, TR>::after_all_runners(UnitCell& ucell)
                 {
                     spectrum.write_transition_dipole(PARAM.globalv.global_out_dir + 
                         "trans_dipole_" + this->input.bse_spin_types[is] + "_full.dat");
-                    // ============================== for test ==============================
-                    if (LR_Util::tolower(this->input.abs_gauge) == "velocity")
-                    {
-                        spectrum.test_transition_dipoles_velocity_omega();
-                        spectrum.write_transition_dipole(PARAM.globalv.global_out_dir + 
-                            "trans_dipole_" + this->input.bse_spin_types[is] + "_vomega_full.dat");
-                    }
-                    // ============================== for test ==============================
                 }
             }
         }
@@ -575,4 +635,3 @@ void ESolver_BSE<T, TR>::allocate_eigen_infos()
 template class ESolver_BSE<double, double>;
 template class ESolver_BSE<std::complex<double>, double>;
 } // namespace BSE
-

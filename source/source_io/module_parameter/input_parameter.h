@@ -367,7 +367,19 @@ struct Input_para
     int bse_continue = 0; ///< which step to continue from previous BSE calculation
                           ///< 0: new; 1: continue from A_V; 2: A_V and A_W; 3: A_V, A_W and B_V; 4: A_V, A_W, B_V and B_W
     int plot_istate = 0; ///< the index of excited state to be plotted (starting from 0)
-    
+    std::string exciton_plot_type = "average"; ///< exciton density plot type: "average" or "conditional"
+    std::string exciton_plot_format = "auto"; ///< exciton plot format: "auto", "cube", "slice", or "both"
+    double exciton_hole_fix_x = 0.0; ///< fixed hole x position (Bohr) for conditional density
+    double exciton_hole_fix_y = 0.0; ///< fixed hole y position (Bohr) for conditional density
+    double exciton_hole_fix_z = 0.0; ///< fixed hole z position (Bohr) for conditional density
+    double exciton_elec_fix_x = 0.0; ///< fixed electron x position (Bohr) for conditional hole density
+    double exciton_elec_fix_y = 0.0; ///< fixed electron y position (Bohr) for conditional hole density
+    double exciton_elec_fix_z = 0.0; ///< fixed electron z position (Bohr) for conditional hole density
+    std::string exciton_slice_plane = "ab"; ///< cross-section plane for conditional density: "ab", "bc", "ca"
+    double exciton_slice_pos = 0.0; ///< offset along perpendicular direction (Bohr) for slice
+    int exciton_slice_npoints = 200; ///< grid points per dimension for slice
+    double exciton_slice_scale = 1.3; ///< scale relative to BvK supercell for slice
+
     // ==============   #Parameters (11.Output) ===========================
     bool out_stru = false;                ///< outut stru file each ion step
     int out_freq_elec = 0;                ///< the frequency of electronic iter to output charge and wavefunction

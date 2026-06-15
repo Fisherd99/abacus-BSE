@@ -288,16 +288,17 @@ template<typename T>
 void LR::LR_Spectrum<T>::transition_analysis(const std::string& spintype)
 {
     ModuleBase::TITLE("LR::LR_Spectrum", "transition_analysis");
+    ModuleBase::timer::tick("LR_Spectrum", "transition_analysis");
     std::ofstream ofs;
     if (GlobalV::MY_RANK == 0)
     {
         ofs.open(PARAM.globalv.global_out_dir + "trans_analysis_" + spintype + ".dat");
-        ofs << "==================================================================== " << std::endl;
-        ofs << std::setw(40) << spintype << std::endl;
-        ofs << "==================================================================== " << std::endl;
+        ofs << "==================================================================== \n";
+        ofs << std::setw(40) << spintype << '\n';
+        ofs << "==================================================================== \n";
         ofs << std::setw(8) << "State" << std::setw(30) << "Excitation Energy (Ry, eV)" <<
-            std::setw(90) << "Transition dipole x, y, z (a.u.)" << std::setw(30) << "Oscillator strength(a.u.)" << std::endl;
-        ofs << "------------------------------------------------------------------------------------ " << std::endl;
+            std::setw(90) << "Transition dipole x, y, z (a.u.)" << std::setw(30) << "Oscillator strength(a.u.)" << '\n';
+        ofs << "------------------------------------------------------------------------------------ \n";
         for (int istate = 0;istate < nstate;++istate)
             ofs << std::setw(8) << istate << std::setw(15) << std::setprecision(6) << omega[istate]
             << std::setw(15) << omega[istate] * ModuleBase::Ry_to_eV
@@ -308,12 +309,11 @@ void LR::LR_Spectrum<T>::transition_analysis(const std::string& spintype)
         ofs << std::setw(8) << "State" << std::setw(20) << "Occupied orbital"
             << std::setw(20) << "Virtual orbital" << std::setw(30) << "Excitation amplitude"
             << std::setw(30) << "Excitation rate"
-            << std::setw(10) << "k-point" << std::endl;
-        ofs << "------------------------------------------------------------------------------------ " << std::endl;
+            << std::setw(10) << "k-point" << '\n';
+        ofs << "------------------------------------------------------------------------------------ \n";
     }
-    // Communicate per 256 states
+    // Communicate only amplitudes that will be written, in batches of NCOMM states.
     constexpr int NCOMM = 256;
-    std::vector<T> X_batch;
     for (int istart = 0; istart < nstate; istart += NCOMM)
     {
         const int iend = std::min(istart + NCOMM, nstate);
@@ -322,14 +322,13 @@ void LR::LR_Spectrum<T>::transition_analysis(const std::string& spintype)
         {
             throw std::overflow_error("in transition_analysis: overflow converting to int!");
         }
-        const int ncount = static_cast<int>(ncount_c);
-        X_batch.resize(ncount);
-        std::fill(X_batch.begin(), X_batch.end(), T(0));
-        ModuleBase::timer::tick("transition_analysis", "copy");
+
+        std::vector<int> local_indices;
+        std::vector<T> local_amplitudes;
         for (int istate = istart; istate < iend; ++istate)
         {
             const int loffset_b = istate * ldim;
-            const int goffset_b = (istate-istart) * gdim;
+            const int goffset_b = (istate - istart) * gdim;
             for (int is = 0;is < nspin_x;++is)
             {
                 const int loffset_bs = loffset_b + is * nk * pX[0].get_local_size();
@@ -338,61 +337,88 @@ void LR::LR_Spectrum<T>::transition_analysis(const std::string& spintype)
                 {
                     const int loffset_x = loffset_bs + ik * pX[is].get_local_size();
                     const int goffset_x = goffset_bs + ik * nocc[is] * nvirt[is];
-    #ifdef __MPI
-                    LR_Util::gather_2d_to_full(this->pX[is],
-                                            X + loffset_x,
-                                            X_batch.data() + goffset_x,
-                                            false/*col_first*/,
-                                            nvirt[is], nocc[is], false/*no reduce*/);
-    #else
-                    std::copy_n(X + loffset_x, pX[is].get_local_size(), X_batch.data() + goffset_x);
-    #endif
+                    for (int j = 0; j < pX[is].get_col_size(); ++j)
+                    {
+                        const int iocc = pX[is].local2global_col(j);
+                        for (int i = 0; i < pX[is].get_row_size(); ++i)
+                        {
+                            const T amplitude = X[loffset_x + j * pX[is].get_row_size() + i];
+                            if (std::abs(amplitude) > ana_thr)
+                            {
+                                const int ivirt = pX[is].local2global_row(i);
+                                local_indices.push_back(goffset_x + iocc * nvirt[is] + ivirt);
+                                local_amplitudes.push_back(amplitude);
+                            }
+                        }
+                    }
                 }
             }
         }
-        ModuleBase::timer::tick("transition_analysis", "copy");
+
+        std::vector<int> all_indices;
+        std::vector<T> all_amplitudes;
     #ifdef __MPI
-        ModuleBase::timer::tick("transition_analysis", "comm");
-        // Root-only reduction: only rank 0 receives the reduced X_batch.
+        const int local_count = static_cast<int>(local_indices.size());
+        int comm_size = 0;
+        MPI_Comm_size(this->pX[0].comm(), &comm_size);
+        std::vector<int> recv_counts;
+        std::vector<int> displs;
         if (GlobalV::MY_RANK == 0)
         {
-            MPI_Reduce(MPI_IN_PLACE, X_batch.data(), ncount, LR_Util::MPIType<T>::value(), MPI_SUM, 0, this->pX[0].comm());
+            recv_counts.resize(comm_size);
         }
-        else
+        MPI_Gather(&local_count, 1, MPI_INT, recv_counts.data(), 1, MPI_INT, 0, this->pX[0].comm());
+        if (GlobalV::MY_RANK == 0)
         {
-            MPI_Reduce(X_batch.data(), X_batch.data(), ncount, LR_Util::MPIType<T>::value(), MPI_SUM, 0, this->pX[0].comm());
+            displs.resize(comm_size, 0);
+            for (int ip = 1; ip < comm_size; ++ip)
+            {
+                displs[ip] = displs[ip - 1] + recv_counts[ip - 1];
+            }
+            const std::size_t total_count = std::size_t(displs.back()) + recv_counts.back();
+            all_indices.resize(total_count);
+            all_amplitudes.resize(total_count);
         }
-        ModuleBase::timer::tick("transition_analysis", "comm");
+        MPI_Gatherv(local_indices.data(), local_count, MPI_INT,
+                    all_indices.data(), recv_counts.data(), displs.data(), MPI_INT,
+                    0, this->pX[0].comm());
+        MPI_Gatherv(local_amplitudes.data(), local_count, LR_Util::MPIType<T>::value(),
+                    all_amplitudes.data(), recv_counts.data(), displs.data(), LR_Util::MPIType<T>::value(),
+                    0, this->pX[0].comm());
+    #else
+        all_indices = std::move(local_indices);
+        all_amplitudes = std::move(local_amplitudes);
     #endif
         if (GlobalV::MY_RANK != 0) continue; // only rank 0 write the analysis file
 
+        std::vector<std::vector<std::pair<int, T>>> contributions(iend - istart);
+        for (std::size_t i = 0; i < all_indices.size(); ++i)
+        {
+            const int ibatch = all_indices[i] / gdim;
+            contributions[ibatch].emplace_back(all_indices[i] - ibatch * gdim, all_amplitudes[i]);
+        }
+
         for (int istate = istart; istate < iend; ++istate)
         {
-            const T* X_full = X_batch.data() + (istate - istart) * gdim;
-            std::vector<std::pair<double, int>> abs_order;
-            abs_order.reserve(4 * gdim);
-            for (int i = 0;i < gdim;++i) {
-                double abs = std::abs(X_full[i]); // find the main contributions (> ana_thr)
-                if (abs > ana_thr) { abs_order.emplace_back(abs, i); }
-            }
+            auto& state_contributions = contributions[istate - istart];
+            std::sort(state_contributions.begin(), state_contributions.end(),
+                [](const auto& l, const auto& r) { return std::abs(l.second) > std::abs(r.second); });
 
-            std::sort(abs_order.begin(), abs_order.end(),
-                [](const auto& l, const auto& r) { return l.first > r.first; });
-
-            for (auto it = abs_order.cbegin(); it != abs_order.cend(); ++it)
+            for (auto it = state_contributions.cbegin(); it != state_contributions.cend(); ++it)
             {
-                auto pair_info = get_pair_info(it->second);
+                auto pair_info = get_pair_info(it->first);
                 const int& is = pair_info["ispin"];
                 const std::string s = nspin_x == 2 ? (is == 0 ? "a" : "b") : "";
-                ofs << std::setw(8) << (it == abs_order.cbegin() ? std::to_string(istate) : " ")
+                ofs << std::setw(8) << (it == state_contributions.cbegin() ? std::to_string(istate) : " ")
                     << std::setw(20) << std::to_string(pair_info["iocc"] + 1) + s << std::setw(20) << std::to_string(pair_info["ivirt"] + nocc[is] + 1) + s// iocc and ivirt
-                    << std::setw(30) << X_full[it->second]
-                    << std::setw(30) << std::norm(X_full[it->second])
-                    << std::setw(10) << pair_info["ik"] + 1 << std::endl;
+                    << std::setw(30) << it->second
+                    << std::setw(30) << std::norm(it->second)
+                    << std::setw(10) << pair_info["ik"] + 1 << '\n';
             }
         }
     }
     if (GlobalV::MY_RANK == 0) ofs.close();
+    ModuleBase::timer::tick("LR_Spectrum", "transition_analysis");
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "LR::LR_Spectrum::transition_analysis");
 }
 

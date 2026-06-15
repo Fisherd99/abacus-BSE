@@ -461,5 +461,77 @@ void ReadInput::item_lr_tddft()
         read_sync_int(input.plot_istate);
         this->add_item(item);
     }
+    {
+        Input_Item item("exciton_plot_type");
+        item.annotation = "exciton density plot type: average or conditional";
+        read_sync_string(input.exciton_plot_type);
+        this->add_item(item);
+    }
+    {
+        Input_Item item("exciton_plot_format");
+        item.annotation = "exciton plot format: auto, cube, slice, or both";
+        read_sync_string(input.exciton_plot_format);
+        this->add_item(item);
+    }
+    {
+        Input_Item item("exciton_hole_fix_x");
+        item.annotation = "fixed hole x position (Bohr) for conditional density";
+        read_sync_double(input.exciton_hole_fix_x);
+        this->add_item(item);
+    }
+    {
+        Input_Item item("exciton_hole_fix_y");
+        item.annotation = "fixed hole y position (Bohr) for conditional density";
+        read_sync_double(input.exciton_hole_fix_y);
+        this->add_item(item);
+    }
+    {
+        Input_Item item("exciton_hole_fix_z");
+        item.annotation = "fixed hole z position (Bohr) for conditional density";
+        read_sync_double(input.exciton_hole_fix_z);
+        this->add_item(item);
+    }
+    {
+        Input_Item item("exciton_elec_fix_x");
+        item.annotation = "fixed electron x position (Bohr) for conditional hole density";
+        read_sync_double(input.exciton_elec_fix_x);
+        this->add_item(item);
+    }
+    {
+        Input_Item item("exciton_elec_fix_y");
+        item.annotation = "fixed electron y position (Bohr) for conditional hole density";
+        read_sync_double(input.exciton_elec_fix_y);
+        this->add_item(item);
+    }
+    {
+        Input_Item item("exciton_elec_fix_z");
+        item.annotation = "fixed electron z position (Bohr) for conditional hole density";
+        read_sync_double(input.exciton_elec_fix_z);
+        this->add_item(item);
+    }
+    {
+        Input_Item item("exciton_slice_plane");
+        item.annotation = "cross-section plane: ab, bc, or ca";
+        read_sync_string(input.exciton_slice_plane);
+        this->add_item(item);
+    }
+    {
+        Input_Item item("exciton_slice_pos");
+        item.annotation = "offset along perpendicular direction (Bohr) for slice";
+        read_sync_double(input.exciton_slice_pos);
+        this->add_item(item);
+    }
+    {
+        Input_Item item("exciton_slice_npoints");
+        item.annotation = "grid points per dimension for slice";
+        read_sync_int(input.exciton_slice_npoints);
+        this->add_item(item);
+    }
+    {
+        Input_Item item("exciton_slice_scale");
+        item.annotation = "scale relative to BvK supercell for slice";
+        read_sync_double(input.exciton_slice_scale);
+        this->add_item(item);
+    }
 }
 }

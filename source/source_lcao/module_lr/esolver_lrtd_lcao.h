@@ -18,6 +18,7 @@
 #include "source_lcao/module_lr/potentials/pot_hxc_lrtd.h"
 #include "source_lcao/module_lr/hamilt_casida.h"
 #include "source_lcao/module_gint/temp_gint/gint_info.h"
+#include "source_basis/module_ao/ORB_read.h"
 #ifdef __EXX
 // #include <RI/physics/Exx.h>
 #include "source_lcao/module_ri/Exx_LRI.h"
@@ -110,6 +111,7 @@ namespace LR
         Parallel_Orbitals paraMat_;
 
         TwoCenterBundle two_center_bundle_;
+        LCAO_Orbitals orb_; ///< numerical atomic orbital data for single-point evaluation
         std::vector<std::complex<double>> velocity_mo; ///< store the velocity matrix elements in MO basis
 
         int cal_nupdown_form_occ(const ModuleBase::matrix& wg);

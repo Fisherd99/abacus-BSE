@@ -718,10 +718,10 @@ void LR::ESolver_LR<T, TR>::after_all_runners(UnitCell& ucell)
                 "trans_dipole_" + spin_types[is] + "_tda.dat");
 
             if (LR_Util::tolower(input.abs_gauge) == "velocity")
-            {
-                spectrum.test_transition_dipoles_velocity_omega();
-                spectrum.write_transition_dipole(PARAM.globalv.global_out_dir + 
-                    "trans_dipole_" + spin_types[is] + "_vomega_tda.dat");
+            {   //// TEST the formula v/omega rather than v/(e_a-e_i)
+                // spectrum.test_transition_dipoles_velocity_omega();
+                // spectrum.write_transition_dipole(PARAM.globalv.global_out_dir + 
+                //     "trans_dipole_" + spin_types[is] + "_vomega_tda.dat");
             }
 
             // =============================================== for test ====================================================
