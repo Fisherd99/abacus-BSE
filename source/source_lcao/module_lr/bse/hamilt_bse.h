@@ -78,6 +78,7 @@ public:
         ofs << std::setprecision(prec) << std::scientific;
         LR_Util::write_value(ofs, ptr, size1, size2);
         ofs.close();
+        ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "finish writing " + file);
     }
 
     inline void read_AB_matrix(const std::string& file, T* ptr, const int& size1, const int& size2)
@@ -89,6 +90,7 @@ public:
         ifs.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); // skip the first line
         LR_Util::read_value(ifs, ptr, size1, size2);
         ifs.close();
+        ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "finish reading " + file);
     }
 
 private:

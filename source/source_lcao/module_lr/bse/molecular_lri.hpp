@@ -122,9 +122,6 @@ void MolecularLRI<T>::init(TLRI<T>& Cs_in, TLRI<T>& Vs_in, TLRI<T>& Ws_in, const
     ModuleBase::TITLE("MolecularLRI", "before_free_Cs");
     this->LR_lri.free_Cs(); // free Cs_ao to save memory
     ModuleBase::TITLE("MolecularLRI", "after_free_Cs");
-
-    //this->Csk_ao_mo = cal_Csk_ao_mo(ucell, Csk_ao, this->k_list, this->list_IJ);
-    //this->Csk_mo = cal_Csk_mo(ucell, Csk_ao, this->psi_ks, this->k_list, this->list_IJ);
 }
 
 /// @brief calculate Csk_ao_mo by C'^\mu (s,m)[k] = C^\mu (s,t)[k] c(m,t)[k]

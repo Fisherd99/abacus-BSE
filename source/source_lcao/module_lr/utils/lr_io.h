@@ -54,15 +54,15 @@ inline void set_zero_if_close(ModuleBase::Vector3<double>& vec, const double tol
 class RI_kRlist
 {
   public:
-    K_Vectors* klist = nullptr; // store fine kgrid if bse_use_fine_kgrid=true
+    K_Vectors* klist = nullptr; // store fine kgrid if bse_use_fine_kgrid
     K_Vectors klist_coarse;
     TC period;
     std::vector<TC> Rlist;
     RI_kRlist() = default;
-    RI_kRlist(const std::string& fn_coarse, const std::string& file_fine, const UnitCell& ucell, K_Vectors* pkv);
+    RI_kRlist(const UnitCell& ucell, K_Vectors* pkv);
     ~RI_kRlist() = default;
     void read_kpts_coarse(const std::string& file, const UnitCell& ucell, K_Vectors* const klist);
-    void read_kpts_fine(const std::string& file, const UnitCell& ucell, K_Vectors* const klist);
+    void read_kpts_fine(const std::string& file, const UnitCell& ucell, K_Vectors* const klist, const bool is_weighted);
 };
 
 void parse_band_out_file(const std::string& file, int& nbands_file, int& nk_file, int& nspin_file, int& nocc_file);

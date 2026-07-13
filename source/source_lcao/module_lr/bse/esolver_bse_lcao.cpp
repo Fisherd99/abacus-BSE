@@ -24,7 +24,7 @@ ESolver_BSE<T, TR>::ESolver_BSE(const Input_para& inp, UnitCell& ucell) :
     }
     this->kv.set(ucell, ucell.symm, PARAM.inp.kpoint_file, PARAM.inp.nspin, ucell.G, ucell.latvec, GlobalV::ofs_running);
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "INIT K-POINTS");
-    this->kRlist = LR_IO::RI_kRlist("stru_out", "band_kpath_info", this->ucell, &this->kv);
+    this->kRlist = LR_IO::RI_kRlist(this->ucell, &this->kv);
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "Reset K-POINTS and R-list for RI");
     ModuleIO::setup_parameters(ucell, this->kv);
 
@@ -510,7 +510,8 @@ void ESolver_BSE<T, TR>::read_ks_wfc()
     int nspin_tmp = PARAM.inp.nspin == 2 ? 2 : 1;
     LR_IO::parse_band_out_file("band_out", nbands_file, nk_file, nspin_file, nocc_file);
     if (nk_file != this->nk) {
-        ModuleBase::WARNING_QUIT("ESolver_BSE", "The nk is not consistent with BSE::nk.");
+        ModuleBase::WARNING_QUIT("ESolver_BSE", "Inconsistence: The nk in `band_out` is " + std::to_string(nk_file)
+             + ", while BSE::nk is " + std::to_string(this->nk));
     }
     std::vector<double> eig_gw_info;
     if (PARAM.inp.bse_use_fine_kgrid)

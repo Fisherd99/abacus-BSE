@@ -103,7 +103,7 @@ namespace LR
         const UnitCell& ucell;
         const std::vector<double>& orb_cutoff_;
         const TwoCenterBundle& two_center_bundle_;
-        const std::string& gauge;
+        const std::string gauge;
 
         void cal_gint_rho(double** rho, const int& nrxx);
         std::map<std::string, int> get_pair_info(const int i); ///< given the index in X, return its ispin, ik, iocc, ivirt

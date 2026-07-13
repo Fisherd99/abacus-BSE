@@ -11,15 +11,16 @@
 #ifdef _OPENMP
 #include <omp.h>
 #endif
+#define FILE_COARSE "stru_out"
+#define FILE_FINE_UNIFORM "band_kpath_info"
+#define FILE_FINE_NONUNIFORM "KPT_bse"
 namespace LR_IO{
 
-RI_kRlist::RI_kRlist(const std::string& file_coarse,
-                     const std::string& file_fine,
-                     const UnitCell& ucell,
+RI_kRlist::RI_kRlist(const UnitCell& ucell,
                      K_Vectors* const pkv)
     : klist(pkv)
 {
-    read_kpts_coarse(file_coarse, ucell, this->klist);
+    read_kpts_coarse(FILE_COARSE, ucell, this->klist);
     this->klist_coarse = *this->klist;
     this->period = RI_Util::get_Born_vonKarmen_period(*klist);
     this->Rlist = RI_Util::get_Born_von_Karmen_cells(period);
@@ -30,10 +31,16 @@ RI_kRlist::RI_kRlist(const std::string& file_coarse,
     //     count++;
     //     std::cout << "iR=" << count <<": "<< iR[0] << " " << iR[1] << " " << iR[2] << std::endl;
     // }
-    if (PARAM.inp.bse_use_fine_kgrid)
+    if (PARAM.inp.bse_use_fine_kgrid==1)
     {
-        read_kpts_fine(file_fine, ucell, this->klist);
+        read_kpts_fine(FILE_FINE_UNIFORM, ucell, this->klist, false);
     }
+    else if (PARAM.inp.bse_use_fine_kgrid==2)
+    {
+        read_kpts_fine(FILE_FINE_NONUNIFORM, ucell, this->klist, true);
+    }
+    else if (PARAM.inp.bse_use_fine_kgrid!=0)
+        ModuleBase::WARNING_QUIT("LR_IO", "bse_use_fine_kgrid must be 0, 1 or 2");
 };
 
 void RI_kRlist::read_kpts_coarse(const std::string& file, const UnitCell& ucell, K_Vectors* const klist)
@@ -65,6 +72,7 @@ void RI_kRlist::read_kpts_coarse(const std::string& file, const UnitCell& ucell,
         klist->kvec_c[ik] /= ModuleBase::TWO_PI * ModuleBase::BOHR_TO_A; // in unit of 2pi/angstrom
         klist->kvec_d[ik] = klist->kvec_c[ik] * ucell.latvec.Transpose();
         set_zero_if_close(klist->kvec_d[ik]);
+        klist->wk[ik] = 1.0 / double(nk);
     }
     if (PARAM.inp.nspin == 2)
     {
@@ -72,35 +80,40 @@ void RI_kRlist::read_kpts_coarse(const std::string& file, const UnitCell& ucell,
         {
             klist->kvec_c[ik + nk] = klist->kvec_c[ik];
             klist->kvec_d[ik + nk] = klist->kvec_d[ik];
+            klist->wk[ik + nk] = klist->wk[ik];
         }
     }
 
-    // klist_coarse.wk is read in function `read_coulomb_mat_k`
     std::ofstream ofs_kpts_coarse(PARAM.globalv.global_out_dir + "kpts_coarse.dat");
-    ofs_kpts_coarse << "kpts_coarse:"<< std::setw(16) << "( Cartesian" << std::setw(36) << "|                Direct )" << std::endl;
+    ofs_kpts_coarse << "kpts_coarse:"<< std::setw(16) << "( Cartesian" << std::setw(36) 
+        << "|                Direct )" << std::setw(15) << "| wk (normalized as sum = nk)" << std::endl;
     for (int ik = 0; ik < nks; ++ik)
     {
-        ofs_kpts_coarse << std::setw(5) << ik << std::setw(11) << klist->kvec_c[ik].x << std::setw(11) 
-        << klist->kvec_c[ik].y << std::setw(11) << klist->kvec_c[ik].z << " | " << std::setw(11)
-        << klist->kvec_d[ik].x << std::setw(11) << klist->kvec_d[ik].y << std::setw(11) << klist->kvec_d[ik].z << std::endl;
+        ofs_kpts_coarse << std::setw(5) << ik << std::setw(12) << klist->kvec_c[ik].x << std::setw(12) 
+        << klist->kvec_c[ik].y << std::setw(12) << klist->kvec_c[ik].z << " | " << std::setw(12)
+        << klist->kvec_d[ik].x << std::setw(12) << klist->kvec_d[ik].y << std::setw(12) << klist->kvec_d[ik].z 
+        << " | " << klist->wk[ik]*nk << std::endl;
     }
     ofs_kpts_coarse.close();
 }
 
-void RI_kRlist::read_kpts_fine(const std::string& file, const UnitCell& ucell, K_Vectors* const klist)
+void RI_kRlist::read_kpts_fine(const std::string& file, const UnitCell& ucell, K_Vectors* const klist, const bool is_weighted)
 {
+    // band_kpath_info format: first line: nband nbasis nspin nk, then kx ky kz per line (direct coords)
+    // KPT_bse format: first line = nk, then kx ky kz wk per line (direct coords, BSE weight sum=nk)
     std::ifstream ifs;
     ifs.open(file);
     if (!ifs) throw std::runtime_error(file + " not found");
-    std::string tmp;
     int nk;
-    ifs >> tmp >> tmp >> tmp >> nk;
+    if (is_weighted) {ifs >> nk; ifs.ignore(2048, '\n');}
+    else {ifs >> nk >> nk >> nk >> nk;}
+
     int nks = (PARAM.inp.nspin == 2) ? 2 * nk : nk;
     klist->set_nks(nks);
     klist->set_nkstot(nks);
     klist->set_nkstot_full(nk);
 
-    auto klist_reset = [&klist](int kpoint_number){ // similar to K_Vectors::renew
+    auto klist_reset = [&klist](int kpoint_number){
         klist->kvec_c.resize(0);    klist->kvec_c.resize(kpoint_number);
         klist->kvec_d.resize(0);    klist->kvec_d.resize(kpoint_number);
         klist->wk.resize(0);        klist->wk.resize(kpoint_number);
@@ -112,13 +125,15 @@ void RI_kRlist::read_kpts_fine(const std::string& file, const UnitCell& ucell, K
     for (int ik = 0; ik < nk; ++ik)
     {
         ifs >> klist->kvec_d[ik].x >> klist->kvec_d[ik].y >> klist->kvec_d[ik].z;
+        if (is_weighted) {
+            ifs >> klist->wk[ik];
+            klist->wk[ik] /= double(nk);
+        }
+        else {klist->wk[ik] = 1.0 / double(nk);}
         klist->kvec_c[ik] = klist->kvec_d[ik] * ucell.G;
         set_zero_if_close(klist->kvec_c[ik]);
     }
-    for (int ik = 0; ik < nk; ++ik)
-    {
-        ifs >> klist->wk[ik];
-    }
+    std::cout << "Read " << nk << " k-points and weights from " << file << std::endl;
     if (PARAM.inp.nspin == 2)
     {
         for (int ik = 0; ik < nk; ++ik)
@@ -129,12 +144,14 @@ void RI_kRlist::read_kpts_fine(const std::string& file, const UnitCell& ucell, K
         }
     }
     std::ofstream ofs_kpts_fine(PARAM.globalv.global_out_dir + "kpts_fine.dat");
-    ofs_kpts_fine << "kpts_fine:"<< std::setw(16) << "( Cartesian" << std::setw(36) << "|                Direct )" << std::endl;
+    ofs_kpts_fine << "kpts_fine:"<< std::setw(18) << "( Cartesian" << std::setw(36) 
+        << "|                Direct )" << std::setw(15) << "| wk (normalized as sum = nk)" << std::endl;
     for (int ik = 0; ik < nk; ++ik)
     {
-        ofs_kpts_fine << std::setw(5) << ik << std::setw(11) << klist->kvec_c[ik].x << std::setw(11) 
-        << klist->kvec_c[ik].y << std::setw(11) << klist->kvec_c[ik].z << " | " << std::setw(11)
-        << klist->kvec_d[ik].x << std::setw(11) << klist->kvec_d[ik].y << std::setw(11) << klist->kvec_d[ik].z << std::endl;
+        ofs_kpts_fine << std::setw(5) << ik << std::setw(12) << klist->kvec_c[ik].x << std::setw(12) 
+        << klist->kvec_c[ik].y << std::setw(12) << klist->kvec_c[ik].z << " | " << std::setw(12)
+        << klist->kvec_d[ik].x << std::setw(12) << klist->kvec_d[ik].y << std::setw(12) << klist->kvec_d[ik].z
+        << " | " << klist->wk[ik]*nk << std::endl;
     }
     ofs_kpts_fine.close();
 }
@@ -225,10 +242,10 @@ std::vector<double> read_energy_qp(const std::string& file,
                 eig_info[(ikstep + ib)*3] = occ_temps[ncore + ib];
                 eig_info[(ikstep + ib)*3 + 1] = ks_temps[ncore + ib];
                 eig_info[(ikstep + ib)*3 + 2] = gw_temps[ncore + ib];
-                std::cout <<"GW_info: ik=" << std::setw(5) << ik << " ib=" << std::setw(5) << ib
-                        << std::setw(9) << eig_info[(ikstep + ib)*3] << std::setw(11)
-                        << eig_info[(ikstep + ib)*3 + 1] << std::setw(11)
-                        << eig_info[(ikstep + ib)*3 + 2] << std::endl; //check
+                // std::cout <<"GW_info: ik=" << std::setw(5) << ik << " ib=" << std::setw(5) << ib
+                //         << std::setw(9) << eig_info[(ikstep + ib)*3] << std::setw(11)
+                //         << eig_info[(ikstep + ib)*3 + 1] << std::setw(11)
+                //         << eig_info[(ikstep + ib)*3 + 2] << std::endl; //check
             }
             while (ifs_gw.peek() != '-' && ifs_gw.peek() != EOF)
             {
@@ -704,8 +721,8 @@ TLRI<TVs> read_coulomb_mat_general_k(const std::string& path, const TLRI<TCs>& C
     std::map<int, std::map<std::pair<int,int>, RI::Tensor<std::complex<double>>>> Vq; // <iat1, <<iat2,ik>, T>>
     std::map<int,std::vector<std::complex<double>>> Vq_tmp; //<ik, vector> 
 
-    size_t nk = 0, nabf = 0, istart = 0, jstart = 0, iend = 0, jend = 0;
-
+    size_t nabf = 0, istart = 0, jstart = 0, iend = 0, jend = 0;
+    int nk = 0;
     K_Vectors* const klist = &(kRlist.klist_coarse);
     int klist_nk = klist->nmp[0] * klist->nmp[1] * klist->nmp[2];
     int ik_readin = -1;
@@ -721,7 +738,7 @@ TLRI<TVs> read_coulomb_mat_general_k(const std::string& path, const TLRI<TCs>& C
             
             while (ifs.peek() != EOF)
             {
-                ifs >> nabf >> istart >> iend >> jstart >> jend >> ik_readin >> klist->wk[ik_readin-1];
+                ifs >> nabf >> istart >> iend >> jstart >> jend >> ik_readin >> klist->wk[ik_readin-1];// wk is not used
                 if (ifs.peek() == EOF) { break; }
                 int ik = ik_readin - 1;
                 if (Vq_tmp[ik].empty()) { Vq_tmp[ik].resize(nabf * nabf, 0.0); }
@@ -785,6 +802,8 @@ TLRI<TVs> read_coulomb_mat_general_k(const std::string& path, const TLRI<TCs>& C
         }
     }
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "VR keys has been prepared.");
+
+    double reciprocal_nk = 1.0 / double(nk);
 #ifdef _OPENMP
 #pragma omp parallel for schedule(dynamic) collapse(3)
 #endif
@@ -803,7 +822,7 @@ TLRI<TVs> read_coulomb_mat_general_k(const std::string& path, const TLRI<TCs>& C
                     const ModuleBase::Vector3<double>& kvec = klist->kvec_d.at(ik);
                     const double arg = -1.0 * ModuleBase::TWO_PI * (kvec.x * R[0] + kvec.y * R[1] + kvec.z * R[2]);
                     const std::complex<double> kphase (cos(arg), sin(arg));
-                    Vs[iat1][{iat2, R}] += RI::Global_Func::convert<TVs> (Vq[iat1][{iat2, ik}] * kphase) * RI::Global_Func::convert<TVs>(klist->wk[ik]);
+                    Vs[iat1][{iat2, R}] += RI::Global_Func::convert<TVs> (Vq[iat1][{iat2, ik}] * kphase) * RI::Global_Func::convert<TVs>(reciprocal_nk);
                 }
             }
         }
@@ -839,8 +858,15 @@ TLRI<Tdata> read_Ws(const TLRI<TVs>& Vs, const std::vector<TC>& Rlist)
                 int nabf2 = Vs.at(iat).at({jat,{0,0,0}}).shape[1];
 
                 TC R; // iR of Wc file is not equal to iR in Rlist !!!
-                infileW >> filename >> filename >> filename >> filename >> filename >> R[0] >> R[1] >> R[2];
-                infileW.ignore(2048, '\n');
+                infileW.ignore(2048, '\n'); // skip line 1: %%MatrixMarket...
+                std::getline(infileW, temp); // read line 2: "%"
+                std::getline(infileW, temp); // read line 3: "% Wc at iR N ( Rx Ry Rz ) ..."
+                size_t lparen = temp.find('(');
+                size_t rparen = temp.find(')', lparen);
+                if (lparen == std::string::npos || rparen == std::string::npos)
+                    throw std::runtime_error("Failed to parse R coordinates in " + filename);
+                std::istringstream riss(temp.substr(lparen + 1, rparen - lparen - 1));
+                riss >> R[0] >> R[1] >> R[2];
                 while(infileW.peek() == '%') infileW.ignore(2048, '\n');	//skip comments
 
                 infileW >> nabfmu >> nabfnu >> non_zero;

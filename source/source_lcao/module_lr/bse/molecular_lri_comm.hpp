@@ -57,7 +57,7 @@ void MolecularLRI<T>::transform_k_2dlocal(std::vector<T>& m_2d,
     ModuleBase::TITLE("MolecularLRI", "transform_k_2dlocal");
     ModuleBase::timer::tick("MolecularLRI", "transform_k_2dlocal");
     const int npair = this->nocc * this->nvirt;
-    const double fac = beta * 2.0 / static_cast<double>(this->nk); // factor 2 for Ha → Ry
+    const double fac_base = beta * 2.0; // factor 2 for Ha → Ry; k-point weight multiplies below
     const int nb = pm_2d.get_block_size();
 #ifdef __MPI
     MPI_Datatype mpitype_blockhead = mpi_type_blockhead();
@@ -152,6 +152,7 @@ void MolecularLRI<T>::transform_k_2dlocal(std::vector<T>& m_2d,
         {
             if (!this->is_local_k1[kai] ) continue;
             const int row_base = kai * npair;
+            const double fac = fac_base * this->kv.wk[kai]; // k-point weight, normalized as sum = 1
             const Tk k1 = RI_Util::Vector3_to_array3(this->kv.kvec_d.at(kai));
             for (const Tk k2 : this->k2_list)
             {
@@ -270,7 +271,7 @@ void MolecularLRI<T>::transform_k_2dlocal(std::vector<T>& m_2d,
             const int kbj = this->kpoint_index_map.at(k2);
             const int k2_step = kbj * npair;
             const RI::Tensor<T>& m_kai_kbj = m_lri.at(k1).at(k2);
-            gather_matrix(m_2d, *m_kai_kbj.data, k1_step, k2_step, fac);
+            gather_matrix(m_2d, *m_kai_kbj.data, k1_step, k2_step, fac_base * this->kv.wk[kai]);
         }
     }
 #endif

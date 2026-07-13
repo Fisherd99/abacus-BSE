@@ -159,19 +159,20 @@ namespace LR
                     const int goffset_v_ds = (is * 3 + id) * nk * nbands * nbands;
                     for (int ik = 0; ik < nk; ++ik)
                     {
+                        const double wk = this->kv.wk[ik] * nk; // k-point weight, normalized as sum = nk
                         const std::size_t loffset_X = loffset_X_bs + ik * pX[is].get_local_size();
                         const int goffset_v = goffset_v_ds + ik * nbands * nbands;
                         for (int io = 0; io < pX[is].get_col_size(); ++io)    // nocc_local
                         {
+                            int io_g = pX[is].local2global_col(io);
                             for (int iv = 0; iv < pX[is].get_row_size(); ++iv)    // nvirt_local
                             {
-                                int io_g = pX[is].local2global_col(io);
                                 int iv_g = pX[is].local2global_row(iv);
                                 const std::size_t X_index = loffset_X + io * pX[is].get_row_size() + iv;
                                 const int v_index = goffset_v + (iv_g+nocc[is]) * nbands + io_g;
                                 if (use_ks_gap)
                                 {
-                                    td += this->vmo_ptr[v_index] * X[X_index] / eig_ks_diff[X_index - loffset_X_b];
+                                    td += this->vmo_ptr[v_index] * X[X_index] / eig_ks_diff[X_index - loffset_X_b] * wk;
                                     if (this->is_full)
                                     {
                                         // THE HERMITIAN CONJUGATE OF VMO HAS BEEN VERIFIED
@@ -181,15 +182,15 @@ namespace LR
                                         //         <<" v^T:" << vmo_ptr[v_index2]<<std::endl;
                                         //     }
                                         // <ik|v|ak>X_{aik}/(Ea-Ei) + <ak|v|ik>Y_{aik}/(Ei-Ea)
-                                        td -= std::conj(this->vmo_ptr[v_index]) * Y[X_index] / eig_ks_diff[X_index - loffset_X_b];
+                                        td -= std::conj(this->vmo_ptr[v_index]) * Y[X_index] / eig_ks_diff[X_index - loffset_X_b] * wk;
                                     }
                                 }
                                 else
                                 {
-                                    td += this->vmo_ptr[v_index] * X[X_index];
+                                    td += this->vmo_ptr[v_index] * X[X_index] * wk;
                                     if (this->is_full)
                                     {
-                                        td += std::conj(this->vmo_ptr[v_index]) * Y[X_index];
+                                        td += std::conj(this->vmo_ptr[v_index]) * Y[X_index] * wk;
                                     }
                                 }
                             }

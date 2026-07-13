@@ -290,9 +290,13 @@ void LR::LR_Spectrum<T>::transition_analysis(const std::string& spintype)
     ModuleBase::TITLE("LR::LR_Spectrum", "transition_analysis");
     ModuleBase::timer::tick("LR_Spectrum", "transition_analysis");
     std::ofstream ofs;
+    std::ofstream ofs_k;
+    const int nbands = nocc[0] + nvirt[0];
+    const bool use_td_weight = (this->vmo_ptr != nullptr && LR_Util::tolower(this->gauge) == "velocity");
     if (GlobalV::MY_RANK == 0)
     {
         ofs.open(PARAM.globalv.global_out_dir + "trans_analysis_" + spintype + ".dat");
+        ofs_k.open(PARAM.globalv.global_out_dir + "trans_analysis_k_" + spintype + ".dat");
         ofs << "==================================================================== \n";
         ofs << std::setw(40) << spintype << '\n';
         ofs << "==================================================================== \n";
@@ -311,7 +315,22 @@ void LR::LR_Spectrum<T>::transition_analysis(const std::string& spintype)
             << std::setw(30) << "Excitation rate"
             << std::setw(10) << "k-point" << '\n';
         ofs << "------------------------------------------------------------------------------------ \n";
+
+        ofs_k << "# Sum of exciton contribution of k-point.\n";
+        ofs_k << "# weight1(k) = sum_{state,spin,occ,virt} |X(state,spin,k,occ,virt)|^2+|Y(state,spin,k,occ,virt)|^2.\n";
+        ofs_k << "# weight2(k) = sum_{state,spin,direction,occ,virt} |td * X|^2 + |td *Y|^2, where td index as (spin,dir,k,occ,virt).\n";
+        if (!use_td_weight)
+        {
+            ofs_k << "# NOTE: td-weighted statistics require abs_gauge velocity and a valid velocity_mo pointer.\n";
+        }
+        else { ofs_k << "# \n"; }
+        
+        ofs_k << "k-point" << std::setw(10) << "kx" << std::setw(12) << "ky" << std::setw(12) << "kz"
+              << std::setw(12) << "weight1" << std::setw(12) << "weight2" << '\n';
     }
+    std::vector<double> local_k_weight(nk, 0.0);
+    std::vector<double> local_k_td_weight(nk, 0.0);
+    T amp_X(0.0), amp_Y(0.0);
     // Communicate only amplitudes that will be written, in batches of NCOMM states.
     constexpr int NCOMM = 256;
     for (int istart = 0; istart < nstate; istart += NCOMM)
@@ -333,21 +352,44 @@ void LR::LR_Spectrum<T>::transition_analysis(const std::string& spintype)
             {
                 const int loffset_bs = loffset_b + is * nk * pX[0].get_local_size();
                 const int goffset_bs = goffset_b + is * nk * nocc[0] * nvirt[0];
+                const int goffset_v_s = is * 3 * nk * nbands * nbands;
+                const int eig_ks_spin_offset = is * nk * nbands;
                 for (int ik = 0;ik < nk;++ik)
                 {
                     const int loffset_x = loffset_bs + ik * pX[is].get_local_size();
                     const int goffset_x = goffset_bs + ik * nocc[is] * nvirt[is];
-                    for (int j = 0; j < pX[is].get_col_size(); ++j)
+                    const int goffset_v_k = goffset_v_s + ik * nbands * nbands;
+                    const int eig_ks_k_offset = eig_ks_spin_offset + ik * nbands;
+                    for (int io = 0; io < pX[is].get_col_size(); ++io)
                     {
-                        const int iocc = pX[is].local2global_col(j);
-                        for (int i = 0; i < pX[is].get_row_size(); ++i)
+                        const int iocc = pX[is].local2global_col(io);
+                        for (int iv = 0; iv < pX[is].get_row_size(); ++iv)
                         {
-                            const T amplitude = X[loffset_x + j * pX[is].get_row_size() + i];
-                            if (std::abs(amplitude) > ana_thr)
+                            const int ivirt = pX[is].local2global_row(iv);
+                            amp_X = X[loffset_x + io * pX[is].get_row_size() + iv];
+                            if (this->is_full && this->Y ) {
+                                amp_Y = Y[loffset_x + io * pX[is].get_row_size() + iv];
+                            }
+                            local_k_weight[ik] += std::norm(amp_X) + std::norm(amp_Y);
+                            if (use_td_weight)
                             {
-                                const int ivirt = pX[is].local2global_row(i);
+                                const int goffset_v = goffset_v_k + (ivirt + nocc[is]) * nbands + iocc;
+                                const double gap = (eig_ks[eig_ks_k_offset + nocc[is] + ivirt]
+                                                  - eig_ks[eig_ks_k_offset + iocc]) / ModuleBase::e2;  // Ry to Hartree
+                                for (int id = 0; id < 3; ++id)
+                                {
+                                    const int v_index = goffset_v + id * nk * nbands * nbands;;
+                                    std::complex<double> td_X = ModuleBase::IMAG_UNIT * this->vmo_ptr[v_index] * amp_X / gap;
+                                    std::complex<double> td_Y = -1.0 * ModuleBase::IMAG_UNIT * std::conj(this->vmo_ptr[v_index]) * amp_Y / gap;
+                                    // |<ik|v|ak>X_{aik}/(Ea-Ei)|^2 + |<ak|v|ik>Y_{aik}/(Ei-Ea)|^2
+                                    if (this->nspin_x == 1) { td_X *= sqrt(2.0); td_Y *= sqrt(2.0); }
+                                    local_k_td_weight[ik] += std::norm(td_X) + std::norm(td_Y);
+                                }
+                            }
+                            if (std::abs(amp_X) > ana_thr) // only X components temporarily
+                            {
                                 local_indices.push_back(goffset_x + iocc * nvirt[is] + ivirt);
-                                local_amplitudes.push_back(amplitude);
+                                local_amplitudes.push_back(amp_X);
                             }
                         }
                     }
@@ -417,7 +459,26 @@ void LR::LR_Spectrum<T>::transition_analysis(const std::string& spintype)
             }
         }
     }
-    if (GlobalV::MY_RANK == 0) ofs.close();
+    std::vector<double> k_weight(nk, 0.0);
+    std::vector<double> k_td_weight(nk, 0.0);
+#ifdef __MPI
+    MPI_Reduce(local_k_weight.data(), k_weight.data(), nk, MPI_DOUBLE, MPI_SUM, 0, this->pX[0].comm());
+    MPI_Reduce(local_k_td_weight.data(), k_td_weight.data(), nk, MPI_DOUBLE, MPI_SUM, 0, this->pX[0].comm());
+#else
+    k_weight = std::move(local_k_weight);
+    k_td_weight = std::move(local_k_td_weight);
+#endif
+    if (GlobalV::MY_RANK == 0)
+    {
+        for (int ik = 0; ik < nk; ++ik)
+        {
+            ofs_k << std::setw(5) << ik + 1 << std::setw(12) << kv.kvec_d[ik].x
+                  << std::setw(12) << kv.kvec_d[ik].y << std::setw(12) << kv.kvec_d[ik].z
+                  << std::setw(12) << k_weight[ik] << std::setw(12) << k_td_weight[ik] << '\n';
+        }
+        ofs.close();
+        ofs_k.close();
+    }
     ModuleBase::timer::tick("LR_Spectrum", "transition_analysis");
     ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "LR::LR_Spectrum::transition_analysis");
 }
