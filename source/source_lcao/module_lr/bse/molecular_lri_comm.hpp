@@ -51,13 +51,13 @@ inline MPI_Datatype mpi_type_blockhead()
 /// @brief W[k_ai][k_bj] to 2d local matrix WA[aik1, bjk2]
 template <typename T>
 void MolecularLRI<T>::transform_k_2dlocal(std::vector<T>& m_2d,
-    const std::map<Tk, std::map<Tk, RI::Tensor<T>>>& m_lri,
-    const Parallel_2D& pm_2d, const double beta)
+    const std::map<int, std::map<int, RI::Tensor<T>>>& m_lri,
+    const Parallel_2D& pm_2d, const double factor)
 {
     ModuleBase::TITLE("MolecularLRI", "transform_k_2dlocal");
     ModuleBase::timer::tick("MolecularLRI", "transform_k_2dlocal");
     const int npair = this->nocc * this->nvirt;
-    const double fac_base = beta * 2.0; // factor 2 for Ha → Ry; k-point weight multiplies below
+    const double fac_base = factor * 2.0; // factor 2 for Ha → Ry; k-point weight multiplies below
     const int nb = pm_2d.get_block_size();
 #ifdef __MPI
     MPI_Datatype mpitype_blockhead = mpi_type_blockhead();
@@ -86,9 +86,8 @@ void MolecularLRI<T>::transform_k_2dlocal(std::vector<T>& m_2d,
         {
             if ( !this->is_local_k1[kai] ) continue;
             const int row_base = kai * npair;
-            for (const Tk k2 : this->k2_list)
+            for (const int kbj : this->LR_lri.k2_indices)
             {
-                const int kbj = this->kpoint_index_map.at(k2);
                 const int col_base = kbj * npair;
                 for (int j = 0; j < npair; )
                 {
@@ -153,12 +152,10 @@ void MolecularLRI<T>::transform_k_2dlocal(std::vector<T>& m_2d,
             if (!this->is_local_k1[kai] ) continue;
             const int row_base = kai * npair;
             const double fac = fac_base * this->kv.wk[kai]; // k-point weight, normalized as sum = 1
-            const Tk k1 = RI_Util::Vector3_to_array3(this->kv.kvec_d.at(kai));
-            for (const Tk k2 : this->k2_list)
+            for (const int kbj : this->LR_lri.k2_indices)
             {
-                const int kbj = this->kpoint_index_map.at(k2);
                 const int col_base = kbj * npair;
-                const RI::Tensor<T>& m_kai_kbj = m_lri.at(k1).at(k2);
+                const RI::Tensor<T>& m_kai_kbj = m_lri.at(kai).at(kbj);
                 for (int j = 0; j < npair; )
                 {
                     const int global_col = col_base + j;
@@ -262,15 +259,13 @@ void MolecularLRI<T>::transform_k_2dlocal(std::vector<T>& m_2d,
     #ifdef _OPENMP
     #pragma omp parallel for schedule(static) collapse(2)
     #endif
-    for (const Tk k1 : this->k1_list)
+    for (const int kai : this->k1_indices)
     {
-        const int kai = this->kpoint_index_map.at(k1);
         const int k1_step = kai * npair;
-        for (const Tk k2 : this->k2_list)
+        for (const int kbj : this->k2_indices)
         {
-            const int kbj = this->kpoint_index_map.at(k2);
             const int k2_step = kbj * npair;
-            const RI::Tensor<T>& m_kai_kbj = m_lri.at(k1).at(k2);
+            const RI::Tensor<T>& m_kai_kbj = m_lri.at(kai).at(kbj);
             gather_matrix(m_2d, *m_kai_kbj.data, k1_step, k2_step, fac_base * this->kv.wk[kai]);
         }
     }

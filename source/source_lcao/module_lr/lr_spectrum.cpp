@@ -470,6 +470,7 @@ void LR::LR_Spectrum<T>::transition_analysis(const std::string& spintype)
 #endif
     if (GlobalV::MY_RANK == 0)
     {
+        ofs_k << std::fixed << std::setprecision(5);
         for (int ik = 0; ik < nk; ++ik)
         {
             ofs_k << std::setw(5) << ik + 1 << std::setw(12) << kv.kvec_d[ik].x

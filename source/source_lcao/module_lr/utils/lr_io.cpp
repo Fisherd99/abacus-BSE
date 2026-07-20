@@ -85,7 +85,7 @@ void RI_kRlist::read_kpts_coarse(const std::string& file, const UnitCell& ucell,
     }
 
     std::ofstream ofs_kpts_coarse(PARAM.globalv.global_out_dir + "kpts_coarse.dat");
-    ofs_kpts_coarse << "kpts_coarse:"<< std::setw(16) << "( Cartesian" << std::setw(36) 
+    ofs_kpts_coarse << "kpts_coarse:" << nk << std::setw(16) << "( Cartesian" << std::setw(36) 
         << "|                Direct )" << std::setw(15) << "| wk (normalized as sum = nk)" << std::endl;
     for (int ik = 0; ik < nks; ++ik)
     {
@@ -144,7 +144,7 @@ void RI_kRlist::read_kpts_fine(const std::string& file, const UnitCell& ucell, K
         }
     }
     std::ofstream ofs_kpts_fine(PARAM.globalv.global_out_dir + "kpts_fine.dat");
-    ofs_kpts_fine << "kpts_fine:"<< std::setw(18) << "( Cartesian" << std::setw(36) 
+    ofs_kpts_fine << "kpts_fine:" << nk << std::setw(18) << "( Cartesian" << std::setw(36) 
         << "|                Direct )" << std::setw(15) << "| wk (normalized as sum = nk)" << std::endl;
     for (int ik = 0; ik < nk; ++ik)
     {
@@ -216,7 +216,7 @@ std::vector<double> read_energy_qp(const std::string& file,
         for (int ik = 0; ik < nk; ++ik){
             for (int i = 0;i < 2;++i) { std::getline(ifs_gw, temp); } // skip the first 2 lines
             ifs_gw >> temp >> read_ik ;
-            std::cout << "ik: " << ik <<" is:" << is << std::endl;
+            // std::cout << "ik: " << ik <<" is:" << is << std::endl;
             assert(ik == (read_ik-1));
             int ivirt = 0;
             std::getline(ifs_gw, temp); // skip the interval line

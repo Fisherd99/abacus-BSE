@@ -128,29 +128,14 @@ ESolver_BSE<T, TR>::ESolver_BSE(const Input_para& inp, UnitCell& ucell) :
                                                         this->nvirt[0],
                                                         *this->psi_ks_global);
 
+    this->pot.resize(this->nspin, nullptr);
     if (this->input.lr_solver != "spectrum" && this->input.lr_solver != "plot")
     {
         if (!this->input.bse_ri_hartree && this->input.ri_hartree_benchmark == "none")
         {
             this->read_ks_chg(chg_gs);
+            this->init_pot(chg_gs);
         }
-        this->init_pot(chg_gs);
-
-        // this->exx_info.info_global.ccp_type = Conv_Coulomb_Pot_K::Ccp_Type::Hf;
-        // this->exx_info.info_global.hybrid_alpha = 1;
-        // this->exx_info.info_ri.ccp_rmesh_times = 10;
-        // code below is for origianl `cal_exx_ions`, actually not used in BSE, just reserve for reference
-
-        // this->exx_info.info_global.coulomb_param[Conv_Coulomb_Pot_K::Coulomb_Type::Fock].resize(1);
-        // this->exx_info.info_global.coulomb_param[Conv_Coulomb_Pot_K::Coulomb_Type::Fock]
-        //     = {{{"alpha", "1"}, {"singularity_correction", "spencer"}}};
-
-        //this->exx_lri = std::make_shared<Exx_LRI<T>>(this->exx_info.info_ri);
-        std::cout << "check bse_ri_pca_threshold: " << this->exx_info.info_ri.pca_threshold << std::endl;
-        std::cout << "check bse_ri_ccp_rmesh_times: " << this->exx_info.info_ri.ccp_rmesh_times << std::endl;
-        std::cout << "check bse_ri_C_threshold: " << this->exx_info.info_ri.C_threshold << std::endl;
-        std::cout << "check bse_ri_V_threshold: " << this->exx_info.info_ri.V_threshold << std::endl;
-        this->lri_init();
     }
     ModuleBase::timer::tick("ESolver_BSE", "constructor");
 }
@@ -187,6 +172,53 @@ void ESolver_BSE<T, TR>::lri_init()
     ModuleBase::TITLE("ESolver_BSE", "Finish LRI init");
 }
 
+template<typename T, typename TR>
+void ESolver_BSE<T, TR>::ipa_solver()
+{// if ipa, assign X as identity matrix directly
+    ModuleBase::TITLE("ESolver_BSE", "ipa_solver");
+    ModuleBase::timer::tick("ESolver_BSE", "ipa_solver");
+    std::cout << "Independent particle approximation is used, assign X as identity matrix directly." << std::endl;
+    assert(this->input.bse_tda == "tda");
+    std::vector<double> ev(this->nk * this->nocc[0] * this->nvirt[0], 0.0);
+    for (int ik = 0; ik < this->nk; ++ik)
+    {
+        for (int i = 0; i < this->nocc[0]; ++i)
+        {
+            for (int a = 0; a < this->nvirt[0]; ++a)
+            {
+                int index = ik * this->nocc[0] * this->nvirt[0] + i * this->nvirt[0] + a;
+                ev[index] = this->eig_gw(ik, this->nocc[0] + a) - this->eig_gw(ik, i);
+            }
+        }
+    }
+
+    std::vector<int> indices(ev.size());
+    std::iota(indices.begin(), indices.end(), 0); // [0, 1, 2, ..., size-1]
+
+    std::sort(indices.begin(), indices.end(), [&](int lhs, int rhs) {
+        return ev[lhs] < ev[rhs];
+    });
+    std::sort(ev.begin(), ev.end());
+    std::copy_n(ev.data(), this->nstates, this->tda_ene.data());
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
+    for (std::size_t istate = 0; istate < this->nstates; ++istate)
+    {
+        int sorted_index = indices[istate];
+        int ik = sorted_index / (this->nocc[0] * this->nvirt[0]);
+        int loffset_X = (istate * this->nk + ik) * this->paraX_[0].get_local_size();
+        int i = (sorted_index / this->nvirt[0]) % this->nocc[0];
+        int a = sorted_index % this->nvirt[0];
+        int col_loc = this->paraX_[0].global2local_col(i);
+        int row_loc = this->paraX_[0].global2local_row(a);
+        if (col_loc == -1 || row_loc == -1) continue;
+        this->X[0].template data<T>()[loffset_X + col_loc * this->paraX_[0].get_row_size() + row_loc] = 1.0;
+    }
+    ModuleBase::timer::tick("ESolver_BSE", "ipa_solver");
+    ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "IPA solver");
+}
+
 template <typename T, typename TR>
 void ESolver_BSE<T, TR>::runner(UnitCell& ucell, const int istep)
 {
@@ -202,77 +234,84 @@ void ESolver_BSE<T, TR>::runner(UnitCell& ucell, const int istep)
 
     if (this->input.lr_solver == "elpa")
     {
-        std::cout << "Calculating Casida/BSE matrix directly." << std::endl;
-        assert(this->xc_kernel == "bse");
-
-        HamiltBSE<T> bse_matrix(this->nspin, this->nbasis, this->nocc, this->nvirt,
-                                this->ucell, this->orb_cutoff_, this->gd, *this->psi_ks, *this->psi_ks_global, this->eig_gw,
-                                *this->mo_lri,
-                                this->pot[0], this->kv, this->paraX_, this->paraC_, this->paraMat_,
-                                this->input.bse_spin_types,
-                                this->input.bse_tda,
-                                this->input.ri_hartree_benchmark);
-
-        auto write_tda_states = [&](const std::string& label, const Real<T>* e, const T* v, const int& dim, const int& nst, const int& prec = 8)->void
+        if (this->input.bse_spin_types == std::vector<std::string>{"ipa"})
         {
-            if (GlobalV::MY_RANK == 0) {
-                assert(nst == LR_Util::write_value(efile_out(label), prec, e, nst));
-            }
-            assert(nst * dim == LR_Util::write_value(vfile_out(label), prec, v, nst, dim));
-            ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "write tda states " + label);
-        };
-        auto write_full_states = [&](const std::string& label, const Real<T>* e, const T* X, const T* Y, const int& dim, const int& nst, const int& prec = 8)->void
-        {
-            if (GlobalV::MY_RANK == 0) {
-                assert(nst == LR_Util::write_value(efile_out("full_"+label), prec, e, nst));
-            }
-            assert(nst * dim == LR_Util::write_value(vfile_out("full_X_"+label), prec, X, nst, dim));
-            assert(nst * dim == LR_Util::write_value(vfile_out("full_Y_"+label), prec, Y, nst, dim));
-            ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "write full states " + label);
-        };
-
-        if ((this->input.bse_tda == "both" || this->input.bse_tda == "tda")) {
-            for (int is = 0; is < this->input.bse_spin_types.size(); ++is) {
-                bse_matrix.tda_solver(is, this->nstates, &this->tda_ene[is * this->nstates], this->X[is].template data<T>());
-                
-                std::cout << "eigenvalues: (Ry)" << std::endl;
-                int write_nstates = std::min(this->nstates, 20);
-                LR_Util::print_value(&this->tda_ene[is * this->nstates], write_nstates);
-                std::cout << "eigenvalues: (eV)" << std::endl;
-                for (int i = 0;i < write_nstates; ++i)
-                {
-                    std::cout << this->tda_ene[is * this->nstates + i] * ModuleBase::Ry_to_eV << " ";
-                }
-                std::cout << std::endl;
-                std::cout << "Excition binding energies (eV):" << (direct_gap - tda_ene[is * this->nstates]) * ModuleBase::Ry_to_eV << std::endl;
-
-                if (this->input.out_wfc_lr) {
-                    write_tda_states(this->input.bse_spin_types[is], &this->tda_ene[is * this->nstates],
-                        this->X[is].template data<T>(), this->nloc_per_state, this->nstates);
-                }
-                malloc_trim(0);
-            }
+            this->ipa_solver();
         }
-        if ((this->input.bse_tda == "both" || this->input.bse_tda == "full")) {
-            for (int is = 0; is < this->input.bse_spin_types.size(); ++is) {
-                bse_matrix.full_solver(is, this->nstates, &this->full_ene[is * this->nstates],
-                    this->full_X[is].template data<T>(), this->full_Y[is].template data<T>());
+        else
+        {
+            std::cout << "Calculating Casida/BSE matrix directly." << std::endl;
+            assert(this->xc_kernel == "bse");
+            this->lri_init();
+            HamiltBSE<T> bse_matrix(this->nspin, this->nbasis, this->nocc, this->nvirt,
+                                    this->ucell, this->orb_cutoff_, this->gd, *this->psi_ks, *this->psi_ks_global, this->eig_gw,
+                                    *this->mo_lri,
+                                    this->pot[0], this->kv, this->paraX_, this->paraC_, this->paraMat_,
+                                    this->input.bse_spin_types,
+                                    this->input.bse_tda,
+                                    this->input.ri_hartree_benchmark);
 
-                std::cout << "eigenvalues: (Ry)" << std::endl;
-                int write_nstates = std::min(this->nstates, 20);
-                LR_Util::print_value(&this->full_ene[is * this->nstates], write_nstates);
-                for (int i = 0;i < write_nstates; ++i)
-                {
-                    std::cout << this->full_ene[is * this->nstates + i] * ModuleBase::Ry_to_eV << " ";
+            auto write_tda_states = [&](const std::string& label, const Real<T>* e, const T* v, const int& dim, const int& nst, const int& prec = 8)->void
+            {
+                if (GlobalV::MY_RANK == 0) {
+                    assert(nst == LR_Util::write_value(efile_out(label), prec, e, nst));
                 }
-                std::cout << std::endl;
-                std::cout << "Excition binding energies (eV):" << (direct_gap - full_ene[is * this->nstates]) * ModuleBase::Ry_to_eV << std::endl;
+                assert(nst * dim == LR_Util::write_value(vfile_out(label), prec, v, nst, dim));
+                ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "write tda states " + label);
+            };
+            auto write_full_states = [&](const std::string& label, const Real<T>* e, const T* X, const T* Y, const int& dim, const int& nst, const int& prec = 8)->void
+            {
+                if (GlobalV::MY_RANK == 0) {
+                    assert(nst == LR_Util::write_value(efile_out("full_"+label), prec, e, nst));
+                }
+                assert(nst * dim == LR_Util::write_value(vfile_out("full_X_"+label), prec, X, nst, dim));
+                assert(nst * dim == LR_Util::write_value(vfile_out("full_Y_"+label), prec, Y, nst, dim));
+                ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "write full states " + label);
+            };
 
-                if (this->input.out_wfc_lr) {
-                    write_full_states(this->input.bse_spin_types[is], &this->full_ene[is * this->nstates],
-                        this->full_X[is].template data<T>(), this->full_Y[is].template data<T>(), this->nloc_per_state, this->nstates);
+            if ((this->input.bse_tda == "both" || this->input.bse_tda == "tda")) {
+                for (int is = 0; is < this->input.bse_spin_types.size(); ++is) {
+                    bse_matrix.tda_solver(is, this->nstates, &this->tda_ene[is * this->nstates], this->X[is].template data<T>());
+                    
+                    std::cout << "eigenvalues: (Ry)" << std::endl;
+                    int write_nstates = std::min(this->nstates, 20);
+                    LR_Util::print_value(&this->tda_ene[is * this->nstates], write_nstates);
+                    std::cout << "eigenvalues: (eV)" << std::endl;
+                    for (int i = 0;i < write_nstates; ++i)
+                    {
+                        std::cout << this->tda_ene[is * this->nstates + i] * ModuleBase::Ry_to_eV << " ";
+                    }
+                    std::cout << std::endl;
+                    std::cout << "Excition binding energies (eV):" << (direct_gap - tda_ene[is * this->nstates]) * ModuleBase::Ry_to_eV << std::endl;
+
+                    if (this->input.out_wfc_lr) {
+                        write_tda_states(this->input.bse_spin_types[is], &this->tda_ene[is * this->nstates],
+                            this->X[is].template data<T>(), this->nloc_per_state, this->nstates);
+                    }
+                    malloc_trim(0);
                 }
-                malloc_trim(0);
+            }
+            if ((this->input.bse_tda == "both" || this->input.bse_tda == "full")) {
+                for (int is = 0; is < this->input.bse_spin_types.size(); ++is) {
+                    bse_matrix.full_solver(is, this->nstates, &this->full_ene[is * this->nstates],
+                        this->full_X[is].template data<T>(), this->full_Y[is].template data<T>());
+
+                    std::cout << "eigenvalues: (Ry)" << std::endl;
+                    int write_nstates = std::min(this->nstates, 20);
+                    LR_Util::print_value(&this->full_ene[is * this->nstates], write_nstates);
+                    for (int i = 0;i < write_nstates; ++i)
+                    {
+                        std::cout << this->full_ene[is * this->nstates + i] * ModuleBase::Ry_to_eV << " ";
+                    }
+                    std::cout << std::endl;
+                    std::cout << "Excition binding energies (eV):" << (direct_gap - full_ene[is * this->nstates]) * ModuleBase::Ry_to_eV << std::endl;
+
+                    if (this->input.out_wfc_lr) {
+                        write_full_states(this->input.bse_spin_types[is], &this->full_ene[is * this->nstates],
+                            this->full_X[is].template data<T>(), this->full_Y[is].template data<T>(), this->nloc_per_state, this->nstates);
+                    }
+                    malloc_trim(0);
+                }
             }
         }
     }
@@ -577,8 +616,6 @@ void ESolver_BSE<T, TR>::read_ks_wfc()
 template<typename T, typename TR>
 void ESolver_BSE<T, TR>::init_pot(const Charge& chg_gs)
 {
-    this->pot.resize(this->nspin, nullptr);
-    if (this->input.ri_hartree_benchmark != "none") { return; } //no need to initialize potential for Hxc kernel in the RI-benchmark routine
     switch (this->nspin)
     {
         using ST = LR::PotHxcLR::SpinType;

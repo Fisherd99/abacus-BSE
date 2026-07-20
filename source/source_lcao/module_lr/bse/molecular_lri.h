@@ -26,10 +26,6 @@ using TatomR = std::array<double, 3>;
 
 template <typename T>
 using TLRI = std::map<TA, std::map<TAC, RI::Tensor<T>>>;
-template <typename T>
-using TLRIk = std::map<Tk, std::map<TA, std::map<TA, RI::Tensor<T>>>>;
-template <typename T>
-using TCsk_ao_mo = std::map<Tk, std::map<TA, RI::Tensor<T>>>;
 
 template<typename T>
 class MolecularLRI
@@ -47,12 +43,6 @@ public:
     : ucell(ucell), nk(nk), kRlist(kRlist_in), kv(*kRlist_in.klist), nocc(nocc), nvirt(nvirt),
     ndim(nk*nocc*nvirt), psi_ks(psi_ks_in), is_local_k1(nk, false)
     {
-        for (int i = 0; i < nk; ++i) // nk without spin, ignore nspin2 temporarily
-        {
-            Tk k_d = RI_Util::Vector3_to_array3(this->kv.kvec_d.at(i));
-            this->kpoint_index_map[k_d] = i;
-        }
-
         std::map<TA, TatomR> atoms_pos;
         for (int iat = 0; iat < this->ucell.nat; ++iat)
         {
@@ -71,56 +61,53 @@ public:
     /// =============== calculation interface ====================
     void init(TLRI<T>& Cs_in, TLRI<T>& Vs_in, TLRI<T>& Ws_in, const Exx_Info::Exx_Info_RI& info_ri);
 
-    void cal_W_for_A(std::vector<T>& m_2d, const Parallel_2D& pm_2d, const double beta=1.0)
+    void cal_W_for_A(std::vector<T>& m_2d, const Parallel_2D& pm_2d, const double factor=1.0)
     {
         ModuleBase::TITLE("MolecularLRI", "cal_W_for_A");
         ModuleBase::timer::tick("MolecularLRI", "cal_W_for_A");
-        std::map<Tk, std::map<Tk, RI::Tensor<T>>>
-            Wk = LR_lri.lri.cal_cvc_mo_k_onthefly(this->Csk_ao_mo, this->map_psi, k1_list, k2_list, list_I, list_J,
-                {"O","O","V","V"}, (std::size_t)nocc, (std::size_t)nvirt, "Ws_", GlobalV::ofs_running, true); // (jiba) -> (jbia)
+        std::map<int, std::map<int, RI::Tensor<T>>>
+            Wk = this->LR_lri.cal_cvc_mo_k_onthefly({"O","O","V","V"}, "Ws_", true);
         ModuleBase::timer::tick("MolecularLRI", "cal_W_for_A");
-        this->transform_k_2dlocal(m_2d, Wk, pm_2d, beta);
+        this->transform_k_2dlocal(m_2d, Wk, pm_2d, factor);
     }
-    void cal_W_for_B(std::vector<T>& m_2d, const Parallel_2D& pm_2d, const double beta=1.0)
+    void cal_W_for_B(std::vector<T>& m_2d, const Parallel_2D& pm_2d, const double factor=1.0)
     {
         ModuleBase::TITLE("MolecularLRI", "cal_W_for_B");
         ModuleBase::timer::tick("MolecularLRI", "cal_W_for_B");
-        std::map<Tk, std::map<Tk, RI::Tensor<T>>>
-            Wk = LR_lri.lri.cal_cvc_mo_k_onthefly(this->Csk_ao_mo, this->map_psi, k1_list, k2_list, list_I, list_J,
-                {"V","O","O","V"}, (std::size_t)nocc, (std::size_t)nvirt, "Ws_", GlobalV::ofs_running, false); // (bija) -> (jbia)
+        std::map<int, std::map<int, RI::Tensor<T>>>
+            Wk = this->LR_lri.cal_cvc_mo_k_onthefly({"V","O","O","V"}, "Ws_", false);
         ModuleBase::timer::tick("MolecularLRI", "cal_W_for_B");
-        this->transform_k_2dlocal(m_2d, Wk, pm_2d, beta);
+        this->transform_k_2dlocal(m_2d, Wk, pm_2d, factor);
     }
-    void cal_hartree_for_A(std::vector<T>& m_2d, const Parallel_2D& pm_2d, const double beta=1.0)
+    void cal_hartree_for_A(std::vector<T>& m_2d, const Parallel_2D& pm_2d, const double factor=1.0)
     {
         ModuleBase::TITLE("MolecularLRI", "cal_hartree_for_A");
         ModuleBase::timer::tick("MolecularLRI", "cal_hartree_for_A");
-        std::map<Tk, std::map<Tk, RI::Tensor<T>>>
-            Vk = LR_lri.lri.cal_cvc_mo_k_hartree_onthefly(this->Csk_ao_mo, this->map_psi, k1_list, k2_list, list_I, list_J,
-                {"O","V","O","V"}, (std::size_t)nocc, (std::size_t)nvirt, "Vs_", true);
+        std::map<int, std::map<int, RI::Tensor<T>>>
+            Vk = this->LR_lri.cal_cvc_mo_k_hartree_onthefly({"O","V","O","V"}, "Vs_", true);
         ModuleBase::timer::tick("MolecularLRI", "cal_hartree_for_A");
-        this->transform_k_2dlocal(m_2d, Vk, pm_2d, beta);
+        this->transform_k_2dlocal(m_2d, Vk, pm_2d, factor);
     }
-    void cal_hartree_for_B(std::vector<T>& m_2d, const Parallel_2D& pm_2d, const double beta=1.0)
+    void cal_hartree_for_B(std::vector<T>& m_2d, const Parallel_2D& pm_2d, const double factor=1.0)
     {
         ModuleBase::TITLE("MolecularLRI", "cal_hartree_for_B");
         ModuleBase::timer::tick("MolecularLRI", "cal_hartree_for_B");
-        std::map<Tk, std::map<Tk, RI::Tensor<T>>>
-            Vk = LR_lri.lri.cal_cvc_mo_k_hartree_onthefly(this->Csk_ao_mo, this->map_psi, k1_list, k2_list, list_I, list_J,
-                {"O","V","O","V"}, (std::size_t)nocc, (std::size_t)nvirt, "Vs_", false);
+        std::map<int, std::map<int, RI::Tensor<T>>>
+            Vk = this->LR_lri.cal_cvc_mo_k_hartree_onthefly({"O","V","O","V"}, "Vs_", false);
         ModuleBase::timer::tick("MolecularLRI", "cal_hartree_for_B");
-        this->transform_k_2dlocal(m_2d, Vk, pm_2d, beta);
+        this->transform_k_2dlocal(m_2d, Vk, pm_2d, factor);
     }
 
     /// =============== print ====================
-    inline void print_k(std::ostream& ofs, const std::vector<Tk>& vec, const std::string name)
+    inline void print_k(std::ostream& ofs, const std::vector<Tk>& kindex_map, const std::vector<int>& vec, const std::string name)
     {
         ofs << name << ": size = " << vec.size() << std::endl;
         ofs << std::fixed << std::setprecision(4);
         int count = 0;
-        for (auto& v : vec)
+        for (auto v : vec)
         {
-            ofs << "(" << std::setw(6) << v[0] <<", "<< std::setw(6) << v[1] <<", "<< std::setw(6) << v[2] <<") ";
+            Tk k = kindex_map[v];
+            ofs << "(" << std::setw(6) << k[0] <<", "<< std::setw(6) << k[1] <<", "<< std::setw(6) << k[2] <<") ";
             count++;
             if (count % 5 == 0) { ofs << std::endl; }
         }
@@ -143,17 +130,19 @@ public:
 protected:
     /// =============== inner function ====================
     void transform_k_2dlocal(std::vector<T>& m_2d,
-        const std::map<Tk, std::map<Tk, RI::Tensor<T>>>& m_lri,
-        const Parallel_2D& pm_2d, const double beta);
+        const std::map<int, std::map<int, RI::Tensor<T>>>& m_lri,
+        const Parallel_2D& pm_2d, const double factor);
 
     // <k, <iat, tesnor{nabfs, nw, nmo}>>
-    TCsk_ao_mo<T> cal_Csk_ao_mo(const TLRI<T>& CsR_ao,
-        const std::vector<Tk>& k_list,
+    std::map<int, std::map<TA, RI::Tensor<T>>> cal_Csk_ao_mo(const TLRI<T>& CsR_ao,
+        const std::vector<int>& k_list,
         const std::vector<TA>& list_IJ);
     
     // transform total psi to map type according k coordinate and atom index
-    std::map<Tk, std::map<TA, RI::Tensor<T>>> transform_psi_k(const psi::Psi<T>& psi_ks,
-        const std::vector<Tk>& k_list);
+    std::map<int, std::map<TA, RI::Tensor<T>>> transform_psi_k(const psi::Psi<T>& psi_ks,
+        const std::vector<int>& k_list);
+
+    void build_q_to_kpair_map(int mode, double threshold);
 
     const UnitCell& ucell;
     const int nk;
@@ -164,16 +153,8 @@ protected:
     const int nvirt;
     const int ndim;
     const psi::Psi<T>& psi_ks;
-    std::map<Tk, std::map<TA, RI::Tensor<T>>> map_psi;
-    std::vector<int> list_I;
-    std::vector<int> list_J;
-    std::vector<int> list_IJ;
     std::vector<bool> is_local_k1;
-    std::vector<Tk> k1_list;
-    std::vector<Tk> k2_list;
-    std::vector<Tk> k_list;
-    std::map<Tk, int> kpoint_index_map;
-    TCsk_ao_mo<T> Csk_ao_mo;
+    
 };// class MolecularLRI
 
 }// namespace BSE

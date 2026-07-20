@@ -444,6 +444,18 @@ void ReadInput::item_lr_tddft()
         this->add_item(item);
     }
     {
+        Input_Item item("bse_q_approx_mode");
+        item.annotation = "q->kpair mapping mode: 0=exact, 1=coarse q grid, 2=mixed";
+        read_sync_int(input.bse_q_approx_mode);
+        this->add_item(item);
+    }
+    {
+        Input_Item item("bse_q_approx_threshold");
+        item.annotation = "threshold radius (Bohr^-1) for exact q mapping in mode 2";
+        read_sync_double(input.bse_q_approx_threshold);
+        this->add_item(item);
+    }
+    {
         Input_Item item("bse_write_ab");
         item.annotation = "whether to write the AB matrix to file";
         read_sync_bool(input.bse_write_ab);
