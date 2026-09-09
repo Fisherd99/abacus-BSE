@@ -711,6 +711,12 @@ void ModuleIO::save_sparse(
         }
     }
 
+    // all_R_coor is synchronized across MPI ranks, while smat only contains
+    // the R vectors owned by the current rank. Keep every rank in the
+    // output_single_R collective even when its local sparse map has no entry
+    // for the current R vector.
+    const std::map<size_t, std::map<size_t, Tdata>> empty_R;
+
     std::stringstream sss;
     sss << filename;
     std::ofstream ofs;
@@ -765,7 +771,13 @@ void ModuleIO::save_sparse(
             }
         }
 
-        output_single_R(ofs, smat.at(R_coor), sparse_thr, binary, pv, reduce);
+        const auto iter = smat.find(R_coor);
+        output_single_R(ofs,
+                        iter == smat.end() ? empty_R : iter->second,
+                        sparse_thr,
+                        binary,
+                        pv,
+                        reduce);
         ++count;
     }
     if (!reduce || GlobalV::DRANK == 0) {

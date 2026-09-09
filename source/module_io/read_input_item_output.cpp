@@ -268,8 +268,29 @@ void ReadInput::item_output()
         this->add_item(item);
     }
     {
+        Input_Item item("out_hsr");
+        item.annotation = "output H(R) and S(R): 0 disabled, 1 text CSR, 2 binary CSR";
+        item.read_value = [](const Input_Item& item, Parameter& para) {
+            const size_t count = item.get_size();
+            if (count != 1 && count != 2)
+            {
+                ModuleBase::WARNING_QUIT("ReadInput", "out_hsr should have 1 or 2 values");
+            }
+            para.input.out_hsr[0] = std::stoi(item.str_values[0]);
+            para.input.out_hsr[1] = (count == 2) ? std::stoi(item.str_values[1]) : 8;
+        };
+        item.check_value = [](const Input_Item& item, const Parameter& para) {
+            if (para.input.out_hsr[0] < 0 || para.input.out_hsr[0] > 2)
+            {
+                ModuleBase::WARNING_QUIT("ReadInput", "out_hsr format should be 0, 1, or 2");
+            }
+        };
+        sync_intvec(input.out_hsr, 2, 0);
+        this->add_item(item);
+    }
+    {
         Input_Item item("out_mat_hs2");
-        item.annotation = "output H(R) and S(R) matrix";
+        item.annotation = "legacy alias for text H(R) and S(R) output";
         read_sync_bool(input.out_mat_hs2);
         item.check_value = [](const Input_Item& item, const Parameter& para) {
             if (para.input.out_mat_r && para.sys.gamma_only_local)
@@ -377,7 +398,7 @@ void ReadInput::item_output()
         item.annotation = "output r(R) matrix";
         read_sync_bool(input.out_mat_r);
         item.check_value = [](const Input_Item& item, const Parameter& para) {
-            if ((para.inp.out_mat_r || para.inp.out_mat_hs2 || para.inp.out_mat_t 
+            if ((para.inp.out_mat_r || para.inp.out_hsr[0] || para.inp.out_mat_t
                     || para.inp.out_mat_dh || para.inp.out_hr_npz
                     || para.inp.out_dm_npz || para.inp.dm_to_rho)
                 && para.sys.gamma_only_local)

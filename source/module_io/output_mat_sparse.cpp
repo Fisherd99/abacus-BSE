@@ -7,7 +7,7 @@ namespace ModuleIO
 {
 
 template <>
-void output_mat_sparse(const bool& out_mat_hsR,
+void output_mat_sparse(const int& out_hsr,
                        const bool& out_mat_dh,
                        const bool& out_mat_t,
                        const bool& out_mat_r,
@@ -25,7 +25,7 @@ void output_mat_sparse(const bool& out_mat_hsR,
 }
 
 template <>
-void output_mat_sparse(const bool& out_mat_hsR,
+void output_mat_sparse(const int& out_hsr,
                        const bool& out_mat_dh,
                        const bool& out_mat_t,
                        const bool& out_mat_r,
@@ -43,9 +43,26 @@ void output_mat_sparse(const bool& out_mat_hsR,
     LCAO_HS_Arrays HS_Arrays; // store sparse arrays
 
     //! generate a file containing the Hamiltonian and S(overlap) matrices
-    if (out_mat_hsR)
+    if (out_hsr != 0)
     {
-        output_HSR(ucell,istep, v_eff, pv, HS_Arrays, grid, kv, p_ham);
+        const bool binary = out_hsr == 2;
+        const std::string suffix = binary ? ".dat" : "";
+        output_HSR(ucell,
+                   istep,
+                   v_eff,
+                   pv,
+                   HS_Arrays,
+                   grid,
+                   kv,
+                   p_ham,
+#ifdef __EXX
+                   nullptr,
+                   nullptr,
+#endif
+                   "data-SR-sparse_SPIN0.csr" + suffix,
+                   "data-HR-sparse_SPIN0.csr" + suffix,
+                   "data-HR-sparse_SPIN1.csr" + suffix,
+                   binary);
     }
 
     //! generate a file containing the kinetic energy matrix
@@ -74,7 +91,7 @@ void output_mat_sparse(const bool& out_mat_hsR,
     {
         cal_r_overlap_R r_matrix;
         r_matrix.init(ucell, pv, orb);
-        if (out_mat_hsR)
+        if (out_hsr != 0)
         {
             r_matrix.out_rR_other(ucell,istep, HS_Arrays.output_R_coor);
         }

@@ -335,6 +335,7 @@ struct Input_para
     bool out_bandgap = false;             ///< QO added for bandgap printing
     std::vector<int> out_mat_hs = {0, 8}; ///< output H matrix and S matrix in local basis.
     std::vector<int> out_mat_tk = {0, 8}; ///< output T(k) matrix in local basis.
+    std::vector<int> out_hsr = {0, 8};    ///< output H(R) and S(R): 0 off, 1 text, 2 binary
     bool out_mat_hs2 = false;             ///< LiuXh add 2019-07-16, output H(R) matrix and
                                           ///< S(R) matrix in local basis.
     bool out_mat_dh = false;

@@ -144,7 +144,7 @@ void ReadInput::create_directory(const Parameter& param)
     //----------------------------------------------------------
     bool out_dir = false;
     if (!param.input.out_app_flag
-        && (param.input.out_mat_hs2 || param.input.out_mat_r || param.input.out_mat_t || param.input.out_mat_dh))
+        && (param.input.out_hsr[0] || param.input.out_mat_r || param.input.out_mat_t || param.input.out_mat_dh))
     {
         out_dir = true;
     }
@@ -282,6 +282,21 @@ void ReadInput::read_txt_input(Parameter& param, const std::string& filename)
         if (resetvalue_item->reset_value != nullptr) {
             resetvalue_item->reset_value(*resetvalue_item, param);
         }
+    }
+
+    const auto item_is_read = [this](const std::string& label) {
+        const auto iter = std::find_if(this->input_lists.begin(),
+                                       this->input_lists.end(),
+                                       [&label](const auto& entry) { return entry.first == label; });
+        return iter != this->input_lists.end() && iter->second.is_read();
+    };
+    if (!item_is_read("out_hsr") && param.input.out_mat_hs2)
+    {
+        param.input.out_hsr[0] = 1;
+    }
+    else if (item_is_read("out_hsr") && item_is_read("out_mat_hs2"))
+    {
+        ModuleBase::WARNING("ReadInput", "both out_hsr and out_mat_hs2 are set; out_hsr takes precedence");
     }
     this->set_globalv(param);
 

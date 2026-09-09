@@ -63,7 +63,7 @@ void Input_Conv::read_td_efield()
     } else {
         TD_Velocity::tddft_velocity = false;
     }
-    if (PARAM.inp.out_mat_hs2 == 1)
+    if (PARAM.inp.out_hsr[0] != 0)
     {
         TD_Velocity::out_mat_R = true;
     } else {

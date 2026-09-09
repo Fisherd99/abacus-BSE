@@ -80,7 +80,7 @@ void hamilt::OverlapNew<hamilt::OperatorLCAO<TK, TR>>::calculate_SR()
     ModuleBase::TITLE("OverlapNew", "calculate_SR");
     ModuleBase::timer::tick("OverlapNew", "calculate_SR");
 #ifdef _OPENMP
-#pragma omp parallel for
+#pragma omp parallel for schedule(dynamic, 1)
 #endif
     for (int iap = 0; iap < this->SR->size_atom_pairs(); ++iap)
     {

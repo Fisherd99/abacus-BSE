@@ -148,6 +148,7 @@
     - [out\_level](#out_level)
     - [out\_alllog](#out_alllog)
     - [out\_mat\_hs](#out_mat_hs)
+    - [out\_hsr](#out_hsr)
     - [out\_mat\_tk](#out_mat_tk)
     - [out\_mat\_r](#out_mat_r)
     - [out\_mat\_hs2](#out_mat_hs2)
@@ -1774,11 +1775,18 @@ These variables are used to control the output of properties.
 - **Description**: Whether to print the matrix representation of the position matrix (in Bohr) into a file named `data-rR-tr` in the directory `OUT.${suffix}`. If [calculation](#calculation) is set to `get_S`, the position matrix can be obtained without scf iterations. For more information, please refer to [position_matrix.md](../elec_properties/position_matrix.md#extracting-position-matrices).
 - **Default**: False
 
+### out_hsr
+
+- **Type**: Integer [Integer](optional)
+- **Availability**: Numerical atomic orbital basis
+- **Description**: Controls H(R)/S(R) output format. `0` disables regular H(R)/S(R) output, `1` selects text CSR, and `2` selects binary CSR. For `calculation = get_S`, output is always enabled: formats `0` and `1` write `SR.csr`, while format `2` writes `SR.csr.dat`. The optional second value is reserved for text precision and defaults to 8. MPI `get_S` calculations use distributed CSR construction and collective MPI-IO.
+- **Default**: 0 8
+
 ### out_mat_hs2
 
 - **Type**: Boolean
 - **Availability**: Numerical atomic orbital basis (not gamma-only algorithm)
-- **Description**: Whether to print files containing the Hamiltonian matrix $H(R)$ (in Ry) and overlap matrix $S(R)$ into files in the directory `OUT.${suffix}`. For more information, please refer to [hs_matrix.md](../elec_properties/hs_matrix.md#out_mat_hs2).
+- **Description**: Legacy alias for `out_hsr 1`. Whether to print text files containing the Hamiltonian matrix $H(R)$ (in Ry) and overlap matrix $S(R)$ into files in the directory `OUT.${suffix}`. If both parameters are present, `out_hsr` takes precedence. For more information, please refer to [hs_matrix.md](../elec_properties/hs_matrix.md#out_mat_hs2).
 - **Default**: False
 
 ### out_mat_t

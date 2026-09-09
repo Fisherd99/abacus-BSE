@@ -2,7 +2,6 @@
 
 #include "module_base/timer.h"
 #include "module_cell/module_neighbor/sltk_atom_arrange.h"
-#include "module_elecstate/elecstate_lcao.h"
 #include "module_elecstate/read_pseudo.h"
 #include "module_hamilt_lcao/hamilt_lcaodft/LCAO_domain.h"
 #include "module_hamilt_lcao/hamilt_lcaodft/hamilt_lcao.h"
@@ -45,21 +44,7 @@ void ESolver_GetS::before_all_runners(UnitCell& ucell, const Input_para& inp)
 
     ModuleIO::setup_parameters(ucell, this->kv);
 
-    // 2) init ElecState
-    // autoset nbands in ElecState, it should before basis_init (for Psi 2d division)
-    if (this->pelec == nullptr)
-    {
-        // TK stands for double and complex<double>?
-        this->pelec = new elecstate::ElecStateLCAO<std::complex<double>>(&(this->chr), // use which parameter?
-                                                                         &(this->kv),
-                                                                         this->kv.get_nks(),
-                                                                         nullptr, // mohan add 2024-04-01
-                                                                         nullptr, // mohan add 2024-04-01
-                                                                         this->pw_rho,
-                                                                         this->pw_big);
-    }
-
-    // 3) init LCAO basis
+    // 2) init LCAO basis
     // reading the localized orbitals/projectors
     // construct the interpolation tables.
     LCAO_domain::init_basis_lcao(this->pv,
@@ -71,12 +56,6 @@ void ESolver_GetS::before_all_runners(UnitCell& ucell, const Input_para& inp)
                                  ucell,
                                  two_center_bundle_,
                                  orb_);
-
-    // 4) initialize the density matrix
-    // DensityMatrix is allocated here, DMK is also initialized here
-    // DMR is not initialized here, it will be constructed in each before_scf
-    dynamic_cast<elecstate::ElecStateLCAO<std::complex<double>>*>(this->pelec)
-        ->init_DM(&this->kv, &(this->pv), inp.nspin);
 
     ModuleBase::timer::tick("ESolver_GetS", "before_all_runners");
 }
@@ -132,9 +111,10 @@ void ESolver_GetS::runner(UnitCell& ucell, const int istep)
         }
     }
 
-    const std::string fn = PARAM.globalv.global_out_dir + "SR.csr";
+    const bool binary = PARAM.inp.out_hsr[0] == 2;
+    const std::string fn = PARAM.globalv.global_out_dir + (binary ? "SR.csr.dat" : "SR.csr");
     std::cout << " The file is saved in " << fn << std::endl;
-    ModuleIO::output_SR(pv, gd, this->p_hamilt, fn);
+    ModuleIO::output_SR(pv, gd, this->p_hamilt, fn, binary);
 
     if (PARAM.inp.out_mat_r)
     {

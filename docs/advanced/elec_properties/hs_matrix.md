@@ -59,7 +59,7 @@ The CSR format stores a sparse m × n matrix M in row form using three (one-dime
 ## get_S
 We also offer the option of only calculating the overlap matrix without running SCF. For that purpose, in `INPUT` file we need to set the value keyword [calculation](../input_files/input-main.md#calculation) to be `get_S`.
 
-A file named `SR.csr` will be generated in the working directory, which contains the overlap matrix.
+The file is written in text format as `SR.csr` by default. Set `out_hsr` to `2` to write the same CSR data in binary format as `SR.csr.dat`; `out_hsr 1` explicitly selects text format.
 
 > When `nspin` is set to 1 or 2, the dimension of the overlap matrix is nlocal $\times$ nlocal, where nlocal is the total number of numerical atomic orbitals. 
 These numerical atomic orbitals are ordered from outer to inner loop as atom, angular quantum number $l$, zeta (multiple radial orbitals corresponding to each $l$), and magnetic quantum number $m$. 

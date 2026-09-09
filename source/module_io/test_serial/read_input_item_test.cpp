@@ -859,6 +859,18 @@ TEST_F(InputTest, Item_test)
         output = testing::internal::GetCapturedStdout();
         EXPECT_THAT(output, testing::HasSubstr("available"));
     }
+    { // out_hsr
+        auto it = find_label("out_hsr", readinput.input_lists);
+        it->second.str_values = {"2"};
+        it->second.read_value(it->second, param);
+        EXPECT_EQ(param.input.out_hsr[0], 2);
+        EXPECT_EQ(param.input.out_hsr[1], 8);
+
+        it->second.str_values = {"1", "12"};
+        it->second.read_value(it->second, param);
+        EXPECT_EQ(param.input.out_hsr[0], 1);
+        EXPECT_EQ(param.input.out_hsr[1], 12);
+    }
     { // lcao_ecut
         auto it = find_label("lcao_ecut", readinput.input_lists);
         param.input.lcao_ecut = 0;
