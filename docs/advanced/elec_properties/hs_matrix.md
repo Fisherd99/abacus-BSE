@@ -75,3 +75,16 @@ We provide [examples](https://github.com/deepmodeling/abacus-develop/tree/develo
 - out_s_multik : running get_S for multi-k calculation
 
 Reference output files are provided in each directory.
+
+Regular LCAO `out_hsr` output is built directly from the H(R)/S(R) containers.
+In MPI calculations, CSR rows remain distributed and are written collectively
+with MPI-IO, avoiding nested sparse maps and a gather of every row on rank 0.
+Velocity-gauge TDDFT combines its spin-independent complex correction H(R)
+with each spin channel's regular H(R) during CSR construction.
+For `dft_plus_u = 2`, the output-only Hubbard contribution
+$\frac{1}{2}[V_U S(R)+S(R)V_U]$ is evaluated in the native distributed
+matrix layout and merged into H(R) before CSR filtering. This distributed
+DFT+U output path supports `nspin = 1`, `2`, and `4` in MPI calculations.
+Serial `dft_plus_u = 2`, exact-exchange calculations, and calculations
+combining velocity-gauge TDDFT with `dft_plus_u = 2` retain the legacy
+sparse-output path.

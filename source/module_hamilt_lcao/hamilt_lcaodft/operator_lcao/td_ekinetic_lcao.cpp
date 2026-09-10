@@ -355,6 +355,7 @@ void TDEkinetic<OperatorLCAO<TK, TR>>::contributeHR()
         }
         // calculate the values in hR_tmp
         this->calculate_HR();
+        td_velocity.set_HR_pointer(this->hR_tmp);
         this->hR_tmp_done = true;
     }
 
@@ -383,7 +384,7 @@ void TDEkinetic<OperatorLCAO<std::complex<double>, double>>::contributeHk(int ik
         int spin_tot = PARAM.inp.nspin;
         if (spin_tot == 4)
             ;
-        else if (!output_hR_done && TD_Velocity::out_mat_R)
+        else if (!output_hR_done && TD_Velocity::out_mat_R && PARAM.inp.dft_plus_u == 2)
         {
             for (int spin_now = 0; spin_now < spin_tot; spin_now++)
             {

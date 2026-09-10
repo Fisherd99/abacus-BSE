@@ -1779,7 +1779,7 @@ These variables are used to control the output of properties.
 
 - **Type**: Integer [Integer](optional)
 - **Availability**: Numerical atomic orbital basis
-- **Description**: Controls H(R)/S(R) output format. `0` disables regular H(R)/S(R) output, `1` selects text CSR, and `2` selects binary CSR. For `calculation = get_S`, output is always enabled: formats `0` and `1` write `SR.csr`, while format `2` writes `SR.csr.dat`. The optional second value is reserved for text precision and defaults to 8. MPI `get_S` calculations use distributed CSR construction and collective MPI-IO.
+- **Description**: Controls H(R)/S(R) output format. `0` disables regular H(R)/S(R) output, `1` selects text CSR, and `2` selects binary CSR. For `calculation = get_S`, output is always enabled: formats `0` and `1` write `SR.csr`, while format `2` writes `SR.csr.dat`. The optional second value is reserved for text precision and defaults to 8. MPI calculations construct CSR rows distributively and use collective MPI-IO for both `get_S` and regular H(R)/S(R) output, including velocity-gauge TDDFT and `dft_plus_u = 2` with `nspin = 1`, `2`, or `4`. Serial `dft_plus_u = 2`, exact-exchange calculations, and the combined velocity-gauge TDDFT plus `dft_plus_u = 2` case retain the legacy sparse-output path.
 - **Default**: 0 8
 
 ### out_mat_hs2

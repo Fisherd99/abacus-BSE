@@ -5,7 +5,7 @@
 #include "module_hamilt_lcao/module_hcontainer/hcontainer.h"
 
 #include <map>
-// Class to store TDDFT velocity gague infos.
+// Class to store TDDFT velocity-gauge information.
 class TD_Velocity
 {
   public:
@@ -49,10 +49,25 @@ class TD_Velocity
         return this->current_term[i];
     }
 
-    // For TDDFT velocity gague, to fix the output of HR
+    /// @brief Keep a non-owning pointer to the velocity-gauge correction H(R).
+    void set_HR_pointer(const hamilt::HContainer<std::complex<double>>* hR_in)
+    {
+        this->hR = hR_in;
+    }
+
+    /// @brief Return the velocity-gauge correction H(R) used for matrix output.
+    const hamilt::HContainer<std::complex<double>>* get_HR_pointer() const
+    {
+        return this->hR;
+    }
+
+    // For TDDFT velocity gauge, to fix the output of HR
     std::map<Abfs::Vector3_Order<int>, std::map<size_t, std::map<size_t, std::complex<double>>>> HR_sparse_td_vel[2];
 
   private:
+    /// @brief Complex real-space Hamiltonian used by the velocity-gauge operators.
+    const hamilt::HContainer<std::complex<double>>* hR = nullptr;
+
     /// @brief read At from output file
     void read_cart_At();
 
