@@ -84,7 +84,8 @@ with each spin channel's regular H(R) during CSR construction.
 For `dft_plus_u = 2`, the output-only Hubbard contribution
 $\frac{1}{2}[V_U S(R)+S(R)V_U]$ is evaluated in the native distributed
 matrix layout and merged into H(R) before CSR filtering. This distributed
-DFT+U output path supports `nspin = 1`, `2`, and `4` in MPI calculations.
-Serial `dft_plus_u = 2`, exact-exchange calculations, and calculations
-combining velocity-gauge TDDFT with `dft_plus_u = 2` retain the legacy
+DFT+U output path supports `nspin = 1`, `2`, and `4` in MPI calculations and
+can be combined with velocity-gauge TDDFT for `nspin = 1` and `2`. Exact
+exchange is already included in the regular H(R) container and therefore uses
+the same direct CSR path. Serial `dft_plus_u = 2` retains the legacy
 sparse-output path.

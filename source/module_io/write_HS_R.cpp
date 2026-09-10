@@ -1097,6 +1097,86 @@ DistributedSparseMatrix<T> prepare_dftu_distributed_matrix(
     return result;
 }
 
+DistributedSparseMatrix<std::complex<double>> add_td_correction(
+    const DistributedSparseMatrix<double>& base_matrix,
+    const hamilt::HContainer<std::complex<double>>& td_hR,
+    const Parallel_Orbitals& pv,
+    const std::vector<ModuleBase::Vector3<int>>& r_vectors,
+    const double sparse_thr)
+{
+    int rank = 0;
+    int nproc = 1;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &nproc);
+    const int nlocal = PARAM.globalv.nlocal;
+    const RowRange row_range = get_row_range(nlocal, rank, nproc);
+    // TD velocity-gauge matrices were historically cached at this threshold.
+    const auto td_blocks = redistribute_sparse_rows(td_hR, pv, r_vectors, nlocal, 1.0e-10, row_range);
+
+    DistributedSparseMatrix<std::complex<double>> result;
+    result.blocks.resize(r_vectors.size());
+    std::vector<int> local_nnz(r_vectors.size(), 0);
+    for (size_t ir = 0; ir < r_vectors.size(); ++ir)
+    {
+        auto& output = result.blocks[ir];
+        output.row_counts.resize(row_range.end - row_range.begin, 0);
+        size_t base_pos = 0;
+        size_t td_pos = 0;
+        for (size_t local_row = 0; local_row < output.row_counts.size(); ++local_row)
+        {
+            const size_t base_end = base_pos + base_matrix.blocks[ir].row_counts[local_row];
+            const size_t td_end = td_pos + td_blocks[ir].row_counts[local_row];
+            while (base_pos < base_end || td_pos < td_end)
+            {
+                int column = 0;
+                std::complex<double> value = 0.0;
+                if (td_pos == td_end
+                    || (base_pos < base_end
+                        && base_matrix.blocks[ir].columns[base_pos] < td_blocks[ir].columns[td_pos]))
+                {
+                    column = base_matrix.blocks[ir].columns[base_pos];
+                    value = base_matrix.blocks[ir].values[base_pos++];
+                }
+                else if (base_pos == base_end
+                         || td_blocks[ir].columns[td_pos] < base_matrix.blocks[ir].columns[base_pos])
+                {
+                    column = td_blocks[ir].columns[td_pos];
+                    value = td_blocks[ir].values[td_pos++];
+                }
+                else
+                {
+                    column = base_matrix.blocks[ir].columns[base_pos];
+                    value = base_matrix.blocks[ir].values[base_pos++] + td_blocks[ir].values[td_pos++];
+                }
+                if (std::abs(value) > sparse_thr)
+                {
+                    output.columns.push_back(column);
+                    output.values.push_back(value);
+                    ++output.row_counts[local_row];
+                }
+            }
+        }
+        local_nnz[ir] = static_cast<int>(output.values.size());
+    }
+
+    result.global_nnz.resize(r_vectors.size());
+    MPI_Allreduce(local_nnz.data(),
+                  result.global_nnz.data(),
+                  static_cast<int>(r_vectors.size()),
+                  MPI_INT,
+                  MPI_SUM,
+                  MPI_COMM_WORLD);
+    result.nnz_by_rank.resize(nproc * r_vectors.size());
+    MPI_Allgather(local_nnz.data(),
+                  static_cast<int>(r_vectors.size()),
+                  MPI_INT,
+                  result.nnz_by_rank.data(),
+                  static_cast<int>(r_vectors.size()),
+                  MPI_INT,
+                  MPI_COMM_WORLD);
+    return result;
+}
+
 template <typename T>
 DistributedSparseMatrix<T> prepare_distributed_matrix(
     const hamilt::HContainer<T>& hR,
@@ -1216,16 +1296,13 @@ void ModuleIO::output_HSR(const UnitCell& ucell,
     const auto* td_hR = TD_Velocity::tddft_velocity && TD_Velocity::td_vel_op != nullptr
                             ? TD_Velocity::td_vel_op->get_HR_pointer()
                             : nullptr;
-    // Velocity-gauge TDDFT and dft_plus_u=2 both add output-only terms outside
-    // HamiltLCAO::hR. Each term can be combined during CSR assembly; their
-    // simultaneous use remains on the legacy path for now.
-    bool use_direct_hcontainer
-        = !TD_Velocity::tddft_velocity || ((nspin == 1 || nspin == 2) && td_hR != nullptr);
-    use_direct_hcontainer = use_direct_hcontainer && !(PARAM.inp.dft_plus_u == 2 && TD_Velocity::tddft_velocity);
-#ifdef __EXX
-    // Exact exchange is still accumulated only in the legacy sparse maps.
-    use_direct_hcontainer = use_direct_hcontainer && !GlobalC::exx_info.info_global.cal_exx;
-#endif
+    if (TD_Velocity::tddft_velocity && (nspin == 1 || nspin == 2) && td_hR == nullptr)
+    {
+        ModuleBase::WARNING_QUIT(
+            "ModuleIO::output_HSR",
+            "velocity-gauge TDDFT H(R) is unavailable; cannot write a complete Hamiltonian");
+    }
+    bool use_direct_hcontainer = !TD_Velocity::tddft_velocity || nspin == 1 || nspin == 2;
 #ifndef __MPI
     // The DFT+U R-space multiplication is implemented with ScaLAPACK.
     if (PARAM.inp.dft_plus_u == 2)
@@ -1265,7 +1342,16 @@ void ModuleIO::output_HSR(const UnitCell& ucell,
 #ifdef __MPI
                 auto r_vectors = merge_R_vectors(collect_global_R(hR), collect_global_R(sR));
                 r_vectors = merge_R_vectors(r_vectors, collect_global_R(*td_hR));
-                const auto h_down = prepare_td_distributed_matrix(hR, *td_hR, pv, r_vectors, sparse_thr);
+                const auto make_td_matrix = [&](const int spin) {
+                    if (PARAM.inp.dft_plus_u == 2)
+                    {
+                        const auto h_dftu
+                            = prepare_dftu_distributed_matrix(hR, sR, pv, r_vectors, spin, sparse_thr);
+                        return add_td_correction(h_dftu, *td_hR, pv, r_vectors, sparse_thr);
+                    }
+                    return prepare_td_distributed_matrix(hR, *td_hR, pv, r_vectors, sparse_thr);
+                };
+                const auto h_down = make_td_matrix(nspin == 2 ? 1 : 0);
                 DistributedSparseMatrix<std::complex<double>> h_up;
                 if (nspin == 2)
                 {
@@ -1273,7 +1359,7 @@ void ModuleIO::output_HSR(const UnitCell& ucell,
                     {
                         p_ham->refresh();
                         p_ham->updateHk(0);
-                        h_up = prepare_td_distributed_matrix(hR, *td_hR, pv, r_vectors, sparse_thr);
+                        h_up = make_td_matrix(0);
                     }
                     else
                     {
