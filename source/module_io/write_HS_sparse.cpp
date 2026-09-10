@@ -772,12 +772,8 @@ void ModuleIO::save_sparse(
         }
 
         const auto iter = smat.find(R_coor);
-        output_single_R(ofs,
-                        iter == smat.end() ? empty_R : iter->second,
-                        sparse_thr,
-                        binary,
-                        pv,
-                        reduce);
+        const auto* R_map = (iter == smat.end()) ? &empty_R : &iter->second;
+        output_single_R(ofs, *R_map, sparse_thr, binary, pv, reduce);
         ++count;
     }
     if (!reduce || GlobalV::DRANK == 0) {
