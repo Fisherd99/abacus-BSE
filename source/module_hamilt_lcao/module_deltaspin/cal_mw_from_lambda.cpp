@@ -41,8 +41,8 @@ void spinconstrain::SpinConstrain<std::complex<double>>::calculate_delta_hcc(std
     {
         const int nproj = nh_iat[iat];
         const std::complex<double> coefficients0(delta_lambda[iat][2], 0.0);
-        const std::complex<double> coefficients1(delta_lambda[iat][0] , delta_lambda[iat][1]);
-        const std::complex<double> coefficients2(delta_lambda[iat][0] , -1 * delta_lambda[iat][1]);
+        const std::complex<double> coefficients1(delta_lambda[iat][0] , -1 * delta_lambda[iat][1]);
+        const std::complex<double> coefficients2(delta_lambda[iat][0] , delta_lambda[iat][1]);
         const std::complex<double> coefficients3(-1 * delta_lambda[iat][2], 0.0);
         // each atom has nproj, means this is with structure factor;
         // each projector (each atom) must multiply coefficient
