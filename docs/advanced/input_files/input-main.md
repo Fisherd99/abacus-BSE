@@ -2552,6 +2552,7 @@ These variables are relevant when using hybrid functionals.
 - **Description**: 
   - False: only rotate k-space density matrix D(k) from irreducible k-points to accelerate diagonalization
   - True: rotate both D(k) and Hexx(R) to accelerate both diagonalization and EXX calculation
+  For multi-k calculations, D(k) is averaged over the unitary little group of each irreducible k point before star expansion, for either setting.
 - **Default**: True
 
 ### out_ri_cv

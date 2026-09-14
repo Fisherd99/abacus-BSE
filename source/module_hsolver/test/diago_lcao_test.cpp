@@ -10,6 +10,7 @@
 #include <vector>
 #ifdef __ELPA
 #include "module_hsolver/diago_elpa.h"
+#include "module_hsolver/diago_elpa_native.h"
 #include "module_hsolver/genelpa/elpa_solver.h"
 #endif
 
@@ -138,6 +139,43 @@ class DiagoPrepare
 
         return ok;
     }
+
+#ifdef __ELPA
+    void diago_native_with_poisoned_lower()
+    {
+        this->pb2d();
+        this->distribute_data();
+        int nprows, npcols, myprow, mypcol;
+        Cblacs_gridinfo(icontxt, &nprows, &npcols, &myprow, &mypcol);
+        for (int col = 0; col < hmtest.ncol; ++col)
+        {
+            const int global_col = (col / nb2d * npcols + mypcol) * nb2d + col % nb2d;
+            for (int row = 0; row < hmtest.nrow; ++row)
+            {
+                const int global_row = (row / nb2d * nprows + myprow) * nb2d + row % nb2d;
+                if (global_row > global_col)
+                {
+                    const int index = row + col * hmtest.nrow;
+                    h_local[index] = T(123.0 + global_row + global_col);
+                    s_local[index] = T(0.0);
+                }
+            }
+        }
+        hmtest.h_local = h_local;
+        hmtest.s_local = s_local;
+        ModuleBase::MatrixBlock<T> h_mat;
+        ModuleBase::MatrixBlock<T> s_mat;
+        hmtest.matrix(h_mat, s_mat);
+        hsolver::DiagoElpaNative<T> solver;
+        MPI_Comm comm = MPI_COMM_WORLD;
+        solver.diag_pool(h_mat, s_mat, psi, e_solver.data(), comm);
+        EXPECT_EQ(hmtest.h_local, h_local);
+        EXPECT_EQ(hmtest.s_local, s_local);
+        solver.diag_pool(h_mat, s_mat, psi, e_solver.data(), comm);
+        EXPECT_EQ(hmtest.h_local, h_local);
+        EXPECT_EQ(hmtest.s_local, s_local);
+    }
+#endif
 
     void print_hs()
     {
@@ -349,6 +387,26 @@ INSTANTIATE_TEST_SUITE_P(
         DiagoPrepare<std::complex<double>>(0, 0, 32, 0, "scalapack_gvx", "H-KPoints-Si64.dat", "S-KPoints-Si64.dat")));
 
 #ifdef __ELPA
+class DiagoElpaNativeUpperTest : public ::testing::TestWithParam<int>
+{
+};
+
+TEST_P(DiagoElpaNativeUpperTest, PreservesInputsAndIgnoresLowerTriangle)
+{
+    DiagoPrepare<std::complex<double>> dp(0, 0, GetParam(), 0, "genelpa",
+                                          "H-KPoints-Si2.dat", "S-KPoints-Si2.dat");
+    ASSERT_TRUE(dp.produce_HS());
+    dp.diago_native_with_poisoned_lower();
+    if (dp.myrank == 0)
+    {
+        dp.diago_lapack();
+        std::stringstream out_info;
+        EXPECT_TRUE(dp.compare_eigen(out_info)) << out_info.str();
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(BlockSizes, DiagoElpaNativeUpperTest, ::testing::Values(1, 2, 3));
+
 TEST(DiagoElpaComplexTest, UsesAuthoritativeUpperTriangle)
 {
     std::stringstream out_info;

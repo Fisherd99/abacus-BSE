@@ -56,6 +56,17 @@ namespace ModuleSymmetry
         std::vector<std::complex<double>> rot_matrix_ao(const std::vector<std::complex<double>>& DMkibz,
             const int ik_ibz, const int kstar_size, const int isym, const Parallel_2D& pv, const bool TRS_conj = false) const;
 
+        /// Inject synthetic AO rotations for density-restoration regression tests.
+        void set_density_rotations_for_testing(
+            const std::vector<std::map<int, std::vector<std::complex<double>>>>& rotations,
+            const std::vector<std::vector<int>>& little_groups,
+            const int nrot)
+        {
+            this->Ms_ = rotations;
+            this->little_groups_ = little_groups;
+            this->nsym_ = nrot;
+        }
+
         /// calculate Wigner D matrix
         double wigner_d(const double beta, const int l, const int m1, const int m2) const;
         std::complex<double> wigner_D(const TCdouble& euler_angle, const int l, const int m1, const int m2, const bool inv) const;
@@ -163,6 +174,9 @@ namespace ModuleSymmetry
         /// size: [nks_ibz][nsym][nbasis*nbasis], only need to calculate once.
         std::vector<std::map<int, std::vector<std::complex<double>>>> Ms_;
 
+        /// Unitary operations fixing each IBZ k point modulo reciprocal lattice vectors.
+        std::vector<std::vector<int>> little_groups_;
+
         /// irreducible sector
         Irreducible_Sector irs_;
 
@@ -170,4 +184,4 @@ namespace ModuleSymmetry
 }
 
 #include "symmetry_rotation_R.hpp"
-#include "symmetry_rotation_R_hcontainer.hpp"      
+#include "symmetry_rotation_R_hcontainer.hpp"

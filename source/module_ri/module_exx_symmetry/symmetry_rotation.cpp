@@ -40,31 +40,34 @@ namespace ModuleSymmetry
 }
         this->cal_rotmat_Slm(gmatc.data(), reduce_Cs_ ? std::max(this->abfs_Lmax_, ucell.lmax) : ucell.lmax);
 
-        // 2. calculate the rotation matrix in AO-representation for each ibz_kpoint and symmetry operation: M(k, isym)
-        auto restrict_kpt = [](const TCdouble& kvec, const double& symm_prec) -> TCdouble
-            {// in (-0.5, 0.5]
-                TCdouble kvec_res;
-                kvec_res.x = fmod(kvec.x + 100.5 - 0.5 * symm_prec, 1) - 0.5 + 0.5 * symm_prec;
-                kvec_res.y = fmod(kvec.y + 100.5 - 0.5 * symm_prec, 1) - 0.5 + 0.5 * symm_prec;
-                kvec_res.z = fmod(kvec.z + 100.5 - 0.5 * symm_prec, 1) - 0.5 + 0.5 * symm_prec;
-                if (std::abs(kvec_res.x) < symm_prec) { kvec_res.x = 0.0;
-}
-                if (std::abs(kvec_res.y) < symm_prec) { kvec_res.y = 0.0;
-}
-                if (std::abs(kvec_res.z) < symm_prec) { kvec_res.z = 0.0;
-}
-                return kvec_res;
-            };
-        int nks_ibz = kv.kstars.size(); // kv.nks = 2 * kv.nks_ibz when nspin=2
-        this->Ms_.resize(nks_ibz);
-        for (int ik_ibz = 0;ik_ibz < nks_ibz;++ik_ibz)
+        // A k-star stores one operation per distinct k point. Also construct
+        // all unitary operations fixing k, which form its little group.
+        const int nks_ibz = kv.kstars.size();
+        this->Ms_.assign(nks_ibz, {});
+        this->little_groups_.assign(nks_ibz, {});
+        for (int ik_ibz = 0; ik_ibz < nks_ibz; ++ik_ibz)
         {
-            // const TCdouble& kvec_d_ibz = restrict_kpt((*kstars[ik_ibz].begin()).second * ucell.symm.kgmatrix[(*kstars[ik_ibz].begin()).first], ucell.symm.epsilon);
-            for (auto& isym_kvd : kv.kstars[ik_ibz]) {
-                if (isym_kvd.first < nsym_) {
-                    this->Ms_[ik_ibz][isym_kvd.first] = this->contruct_2d_rot_mat_ao(ucell.symm, ucell.atoms, ucell.st, kv.kvec_d[ik_ibz], isym_kvd.first, pv);
-}
-}
+            std::set<int> needed;
+            for (const auto& member : kv.kstars[ik_ibz])
+            {
+                needed.insert(member.first < nsym_ ? member.first : member.first - nsym_);
+            }
+            for (int op = 0; op < nsym_; ++op)
+            {
+                const auto delta = kv.kvec_d[ik_ibz] * ucell.symm.kgmatrix[op] - kv.kvec_d[ik_ibz];
+                if (std::abs(delta.x - std::round(delta.x)) < this->eps_
+                    && std::abs(delta.y - std::round(delta.y)) < this->eps_
+                    && std::abs(delta.z - std::round(delta.z)) < this->eps_)
+                {
+                    this->little_groups_[ik_ibz].push_back(op);
+                    needed.insert(op);
+                }
+            }
+            for (const int op : needed)
+            {
+                this->Ms_[ik_ibz][op] = this->contruct_2d_rot_mat_ao(
+                    ucell.symm, ucell.atoms, ucell.st, kv.kvec_d[ik_ibz], op, pv);
+            }
         }
 
         // output Ms of isym=1
@@ -104,20 +107,36 @@ namespace ModuleSymmetry
         int nk = kv.get_nkstot() / nspin0;
         for (int is = 0;is < nspin0;++is) {
             for (int ik_ibz = 0;ik_ibz < nk;++ik_ibz) {
+                const auto& little_group = this->little_groups_.at(ik_ibz);
+                assert(!little_group.empty());
+                std::vector<std::complex<double>> projected = dm_k_ibz[ik_ibz + is * nk];
+                if (little_group.size() > 1)
+                {
+                    std::fill(projected.begin(), projected.end(), 0.0);
+                    for (const int op : little_group)
+                    {
+                        const auto rotated = this->rot_matrix_ao(
+                            dm_k_ibz[ik_ibz + is * nk], ik_ibz, little_group.size(), op, pv);
+                        for (size_t i = 0; i < projected.size(); ++i)
+                        {
+                            projected[i] += rotated[i];
+                        }
+                    }
+                }
                 for (auto& isym_kvd : kv.kstars[ik_ibz]) {
                     if (isym_kvd.first == 0)
                     {
                         double factor = 1.0 / static_cast<double>(kv.kstars[ik_ibz].size());
                         std::vector<std::complex<double>> dm_scaled(pv.get_local_size());
-                        for (int i = 0;i < pv.get_local_size();++i) { dm_scaled[i] = factor * dm_k_ibz[ik_ibz + is * nk][i]; }
+                        for (int i = 0;i < pv.get_local_size();++i) { dm_scaled[i] = factor * projected[i]; }
                         dm_k_full.push_back(dm_scaled);
                     }
                     else if (vec3_eq(isym_kvd.second, -kv.kvec_d[ik_ibz], this->eps_) && this->TRS_first_) {
-                        dm_k_full.push_back(vec_conj(dm_k_ibz[ik_ibz + is * nk], 1.0 / static_cast<double>(kv.kstars[ik_ibz].size())));
+                        dm_k_full.push_back(vec_conj(projected, 1.0 / static_cast<double>(kv.kstars[ik_ibz].size())));
                     } else if (isym_kvd.first < nsym_) { //space group operations
-                        dm_k_full.push_back(this->rot_matrix_ao(dm_k_ibz[ik_ibz + is * nk], ik_ibz, kv.kstars[ik_ibz].size(), isym_kvd.first, pv));
+                        dm_k_full.push_back(this->rot_matrix_ao(projected, ik_ibz, kv.kstars[ik_ibz].size(), isym_kvd.first, pv));
                     } else {    // TRS*spacegroup operations
-                        dm_k_full.push_back(this->rot_matrix_ao(dm_k_ibz[ik_ibz + is * nk], ik_ibz, kv.kstars[ik_ibz].size(), isym_kvd.first - nsym_, pv, true));
+                        dm_k_full.push_back(this->rot_matrix_ao(projected, ik_ibz, kv.kstars[ik_ibz].size(), isym_kvd.first - nsym_, pv, true));
 }
 }
 }
