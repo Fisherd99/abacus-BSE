@@ -32,6 +32,8 @@ class ESolver_KS_LCAO : public ESolver_KS<TK> {
 
     void before_all_runners(UnitCell& ucell, const Input_para& inp) override;
 
+    void runner(UnitCell& ucell, const int istep) override;
+
     double cal_energy() override;
 
     void cal_force(UnitCell& ucell, ModuleBase::matrix& force) override;

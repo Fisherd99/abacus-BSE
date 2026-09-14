@@ -1357,8 +1357,7 @@ void ModuleIO::output_HSR(const UnitCell& ucell,
                 {
                     if (PARAM.inp.vl_in_h)
                     {
-                        p_ham->refresh();
-                        p_ham->updateHk(0);
+                        p_ham_lcao->updateHR(0);
                         h_up = make_td_matrix(0);
                     }
                     else
@@ -1402,8 +1401,7 @@ void ModuleIO::output_HSR(const UnitCell& ucell,
                 {
                     if (PARAM.inp.vl_in_h)
                     {
-                        p_ham->refresh();
-                        p_ham->updateHk(0);
+                        p_ham_lcao->updateHR(0);
                         h_up = make_td_sparse_blocks(hR, *td_hR, pv, r_vectors, PARAM.globalv.nlocal, sparse_thr);
                     }
                     else
@@ -1458,8 +1456,7 @@ void ModuleIO::output_HSR(const UnitCell& ucell,
             {
                 if (PARAM.inp.vl_in_h)
                 {
-                    p_ham->refresh();
-                    p_ham->updateHk(0);
+                    p_ham_lcao->updateHR(0);
                     h_up = PARAM.inp.dft_plus_u == 2
                                ? prepare_dftu_distributed_matrix(hR, sR, pv, r_vectors, 0, sparse_thr)
                                : prepare_distributed_matrix(hR, pv, r_vectors, sparse_thr);
@@ -1500,8 +1497,7 @@ void ModuleIO::output_HSR(const UnitCell& ucell,
             {
                 if (PARAM.inp.vl_in_h)
                 {
-                    p_ham->refresh();
-                    p_ham->updateHk(0);
+                    p_ham_lcao->updateHR(0);
                     h_up = make_sparse_blocks(hR, pv, r_vectors, PARAM.globalv.nlocal, sparse_thr);
                 }
                 else

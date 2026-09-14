@@ -460,7 +460,7 @@ These variables are used to control general system parameters.
 - **Description**: Specify the type of calculation.
 
   - **scf**: perform self-consistent electronic structure calculations
-  - **nscf**: perform non-self-consistent electronic structure calculations. A charge density file is required
+  - **nscf**: perform non-self-consistent electronic structure calculations. A charge density file is normally required. For an LCAO calculation with `init_chg = atomic`, ABACUS instead constructs one atom-initialized H(R)/S(R) and exits without constructing H(k)/S(k) or diagonalizing. Set `out_hsr = 1` or `2` to write the matrices.
   - **relax**: perform structure relaxation calculations, the `relax_nmax` parameter depicts the maximal number of ionic iterations
   - **cell-relax**: perform cell relaxation calculations
   - **md**: perform molecular dynamics simulations

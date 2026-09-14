@@ -95,15 +95,17 @@ void Gint::cal_meshball_vlocal(
                 }
                 else
                 {
+                    const int unit_stride = 1;
                     for(int ib=first_ib; ib<last_ib; ++ib)
                     {
                         if(cal_flag[ib][ia1] && cal_flag[ib][ia2])
                         {
-                            int k=1;
-                            dgemm_(&transa, &transb, &n, &m, &k, &alpha,
-                                &psir_vlbr3[ib][block_index[ia2]], &LD_pool,
-                                &psir_ylm[ib][block_index[ia1]], &LD_pool,
-                                &beta, tmp_matrix->get_pointer(), &n);                          
+                            // Each valid grid point is a rank-1 update, so use
+                            // DGER instead of paying DGEMM setup costs with k=1.
+                            dger_(&n, &m, &alpha,
+                                &psir_vlbr3[ib][block_index[ia2]], &unit_stride,
+                                &psir_ylm[ib][block_index[ia1]], &unit_stride,
+                                tmp_matrix->get_pointer(), &n);
                         }
                     }
                 }

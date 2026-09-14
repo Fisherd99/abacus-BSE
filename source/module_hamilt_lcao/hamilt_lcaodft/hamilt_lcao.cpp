@@ -465,6 +465,32 @@ void HamiltLCAO<TK, TR>::updateHk(const int ik)
 }
 
 template <typename TK, typename TR>
+void HamiltLCAO<TK, TR>::updateHR(const int spin)
+{
+    ModuleBase::TITLE("HamiltLCAO", "updateHR");
+    ModuleBase::timer::tick("HamiltLCAO", "updateHR");
+
+    auto* op = dynamic_cast<OperatorLCAO<TK, TR>*>(this->ops);
+    assert(op != nullptr);
+    if (PARAM.inp.nspin == 2)
+    {
+        if (spin < 0 || spin > 1)
+        {
+            ModuleBase::WARNING_QUIT("HamiltLCAO::updateHR", "spin must be 0 or 1 when nspin is 2");
+        }
+        this->hR->allocate(this->hRS2.data() + this->hRS2.size() / 2 * spin, 0);
+        this->current_spin = spin;
+        op->set_current_spin(spin);
+    }
+    op->set_hr_done(false);
+    // Force reconstruction even when a preceding k-space operation marked
+    // the real-space chain as complete. No H(R)-to-H(k) folding follows.
+    op->initHR();
+
+    ModuleBase::timer::tick("HamiltLCAO", "updateHR");
+}
+
+template <typename TK, typename TR>
 void HamiltLCAO<TK, TR>::refresh()
 {
     ModuleBase::TITLE("HamiltLCAO", "refresh");

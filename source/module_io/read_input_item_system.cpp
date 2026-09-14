@@ -515,7 +515,9 @@ void ReadInput::item_system()
             {
                 para.input.init_chg = "atomic";
             }
-            if (para.input.calculation == "nscf" || para.input.calculation == "get_S")
+            if ((para.input.calculation == "nscf"
+                 && !(para.input.basis_type == "lcao" && para.input.init_chg == "atomic"))
+                || para.input.calculation == "get_S")
             {
                 if (para.input.init_chg != "file")
                 {

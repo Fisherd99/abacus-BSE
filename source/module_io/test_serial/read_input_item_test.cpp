@@ -318,13 +318,35 @@ TEST_F(InputTest, Item_test)
     }
     { // init_chg
         auto it = find_label("init_chg", readinput.input_lists);
-        param.input.init_chg = "get_pchg";
+        param.input.calculation = "get_pchg";
         param.input.init_chg = "";
         it->second.reset_value(it->second, param);
         EXPECT_EQ(param.input.init_chg, "atomic");
 
+        param.input.basis_type = "lcao";
         param.input.init_chg = "";
         param.input.calculation = "nscf";
+        param.input.out_hsr = {0, 8};
+        it->second.reset_value(it->second, param);
+        EXPECT_EQ(param.input.init_chg, "file");
+
+        param.input.init_chg = "atomic";
+        param.input.basis_type = "lcao";
+        param.input.calculation = "nscf";
+        param.input.out_hsr = {0, 8};
+        it->second.reset_value(it->second, param);
+        EXPECT_EQ(param.input.init_chg, "atomic");
+
+        param.input.init_chg = "file";
+        param.input.calculation = "nscf";
+        param.input.out_hsr = {1, 8};
+        it->second.reset_value(it->second, param);
+        EXPECT_EQ(param.input.init_chg, "file");
+
+        param.input.init_chg = "atomic";
+        param.input.basis_type = "pw";
+        param.input.calculation = "nscf";
+        param.input.out_hsr = {1, 8};
         it->second.reset_value(it->second, param);
         EXPECT_EQ(param.input.init_chg, "file");
 

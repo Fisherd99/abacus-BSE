@@ -101,6 +101,9 @@ class HamiltLCAO : public Hamilt<TK>
     // for target K point, update consequence of hPsi() and matrix()
     virtual void updateHk(const int ik) override;
 
+    /** Build H(R) and S(R) for one spin channel without constructing H(k) or S(k). */
+    void updateHR(const int spin = 0);
+
     /**
      * @brief special for LCAO, update SK only
      *

@@ -32,6 +32,9 @@ class OperatorLCAO : public Operator<TK> {
     class, but must override in derived class */
     virtual void init(const int ik_in) override;
 
+    /** Build the real-space operator chain without folding H(R)/S(R) to k space. */
+    void initHR();
+
     void refresh_h();
 
     /* Function getHR() is designed to update HR matrix only, it will loop all
@@ -115,6 +118,8 @@ class OperatorLCAO : public Operator<TK> {
     bool hr_done = false;
 
   private:
+    /// Add this node's real-space contribution, including any sub-chain.
+    void contributeHRChain();
 
     void get_hs_pointers();
 

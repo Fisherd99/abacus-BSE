@@ -246,7 +246,8 @@ void ESolver_KS_LCAO<TK, TR>::before_scf(UnitCell& ucell, const int istep)
 
     // Peize Lin add 2016-12-03
 #ifdef __EXX // set xc type before the first cal of xc in pelec->init_scf
-    if (PARAM.inp.calculation != "nscf")
+    if (PARAM.inp.calculation != "nscf"
+        || (PARAM.inp.basis_type == "lcao" && PARAM.inp.init_chg == "atomic"))
     {
         if (GlobalC::exx_info.info_ri.real_number)
         {

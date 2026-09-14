@@ -103,7 +103,9 @@ OperatorEXX<OperatorLCAO<TK, TR>>::OperatorEXX(HS_Matrix_K<TK>* hsk_in,
     this->cal_type = calculation_type::lcao_exx;
     const Parallel_Orbitals* const pv = hR_in->get_paraV();
 
-    if (PARAM.inp.calculation == "nscf" && GlobalC::exx_info.info_global.cal_exx)
+    if (PARAM.inp.calculation == "nscf"
+        && !(PARAM.inp.basis_type == "lcao" && PARAM.inp.init_chg == "atomic")
+        && GlobalC::exx_info.info_global.cal_exx)
     {    // if nscf, read HexxR first and reallocate hR according to the read-in HexxR
         auto file_name_list_csr = []() -> std::vector<std::string>
         {
@@ -285,7 +287,8 @@ void OperatorEXX<OperatorLCAO<TK, TR>>::contributeHR()
     ModuleBase::TITLE("OperatorEXX", "contributeHR");
     // Peize Lin add 2016-12-03
     if (this->istep == 0
-        && PARAM.inp.calculation != "nscf"
+        && (PARAM.inp.calculation != "nscf"
+            || (PARAM.inp.basis_type == "lcao" && PARAM.inp.init_chg == "atomic"))
         && this->two_level_step != nullptr && *this->two_level_step == 0
         && PARAM.inp.init_wfc != "file"
         && !this->restart)

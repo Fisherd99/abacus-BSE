@@ -77,6 +77,10 @@ We provide [examples](https://github.com/deepmodeling/abacus-develop/tree/develo
 Reference output files are provided in each directory.
 
 Regular LCAO `out_hsr` output is built directly from the H(R)/S(R) containers.
+For a construction-only run, use `calculation = nscf` and `init_chg = atomic`.
+This mode follows the SCF atomic charge initialization, builds H(R) and S(R)
+once, and returns before any Fourier transform to H(k)/S(k) or eigensolver
+call. Set `out_hsr = 1` (text) or `2` (binary) to write the CSR files.
 In MPI calculations, CSR rows remain distributed and are written collectively
 with MPI-IO, avoiding nested sparse maps and a gather of every row on rank 0.
 Velocity-gauge TDDFT combines its spin-independent complex correction H(R)

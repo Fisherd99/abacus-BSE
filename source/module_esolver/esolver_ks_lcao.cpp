@@ -104,6 +104,49 @@ ESolver_KS_LCAO<TK, TR>::~ESolver_KS_LCAO()
 {
 }
 
+template <typename TK, typename TR>
+void ESolver_KS_LCAO<TK, TR>::runner(UnitCell& ucell, const int istep)
+{
+    if (!(PARAM.inp.basis_type == "lcao" && PARAM.inp.calculation == "nscf" && PARAM.inp.init_chg == "atomic"))
+    {
+        ESolver_KS<TK>::runner(ucell, istep);
+        return;
+    }
+
+    ModuleBase::TITLE("ESolver_KS_LCAO", "runner_atomic_nscf");
+    ModuleBase::timer::tick("ESolver_KS_LCAO", "runner_atomic_nscf");
+
+    // Reuse the SCF initialization up to the point where the atom-initialized
+    // density, effective potential, grids, and real-space operator chain are ready.
+    this->before_scf(ucell, istep);
+
+    auto* p_ham_lcao = dynamic_cast<hamilt::HamiltLCAO<TK, TR>*>(this->p_hamilt);
+    assert(p_ham_lcao != nullptr);
+    // output_HSR captures the current spin channel first, then rebuilds spin
+    // 0 when nspin == 2. Prime it with spin 1 to preserve that contract.
+    const int initial_spin = PARAM.inp.nspin == 2 ? 1 : 0;
+    p_ham_lcao->updateHR(initial_spin);
+
+    ModuleIO::output_mat_sparse(PARAM.inp.out_hsr[0],
+                                false,
+                                false,
+                                false,
+                                istep,
+                                this->pelec->pot->get_effective_v(),
+                                this->pv,
+                                this->GK,
+                                two_center_bundle_,
+                                orb_,
+                                ucell,
+                                this->gd,
+                                this->kv,
+                                this->p_hamilt);
+
+    this->RA.delete_grid();
+    ModuleBase::GlobalFunc::DONE(GlobalV::ofs_running, "CONSTRUCT H(R) AND S(R)");
+    ModuleBase::timer::tick("ESolver_KS_LCAO", "runner_atomic_nscf");
+}
+
 //------------------------------------------------------------------------------
 //! the 3rd function of ESolver_KS_LCAO: init
 //! 1) calculate overlap matrix S or initialize
@@ -169,7 +212,9 @@ void ESolver_KS_LCAO<TK, TR>::before_all_runners(UnitCell& ucell, const Input_pa
     // 6) initialize exx
     // PLEASE simplify the Exx_Global interface
     if (PARAM.inp.calculation == "scf" || PARAM.inp.calculation == "relax" || PARAM.inp.calculation == "cell-relax"
-        || PARAM.inp.calculation == "md")
+        || PARAM.inp.calculation == "md"
+        || (PARAM.inp.basis_type == "lcao" && PARAM.inp.calculation == "nscf"
+            && PARAM.inp.init_chg == "atomic"))
     {
         if (GlobalC::exx_info.info_global.cal_exx)
         {
@@ -369,6 +414,14 @@ void ESolver_KS_LCAO<TK, TR>::after_all_runners(UnitCell& ucell)
 {
     ModuleBase::TITLE("ESolver_KS_LCAO", "after_all_runners");
     ModuleBase::timer::tick("ESolver_KS_LCAO", "after_all_runners");
+
+    // No eigenvalues, wavefunctions, or total energy exist in the
+    // construction-only atomic NSCF path.
+    if (PARAM.inp.basis_type == "lcao" && PARAM.inp.calculation == "nscf" && PARAM.inp.init_chg == "atomic")
+    {
+        ModuleBase::timer::tick("ESolver_KS_LCAO", "after_all_runners");
+        return;
+    }
 
     GlobalV::ofs_running << "\n\n --------------------------------------------" << std::endl;
     GlobalV::ofs_running << std::setprecision(16);
