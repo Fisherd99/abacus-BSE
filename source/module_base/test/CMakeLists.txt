@@ -6,6 +6,11 @@ AddTest(
   SOURCES blas_connector_test.cpp ../blas_connector.cpp
 )
 AddTest(
+  TARGET base_blas_threading
+  LIBS parameter ${math_libs}
+  SOURCES blas_threading_test.cpp ../blas_threading.cpp
+)
+AddTest(
   TARGET base_atom_in
   LIBS parameter 
   SOURCES atom_in_test.cpp

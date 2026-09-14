@@ -11,6 +11,7 @@ add_library(
     OBJECT
     assoc_laguerre.cpp
     blas_connector.cpp
+    blas_threading.cpp
     clebsch_gordan_coeff.cpp
     complexarray.cpp
     complexmatrix.cpp

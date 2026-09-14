@@ -8,16 +8,13 @@
 #endif
 
 #include "module_base/memory.h"
+#include "module_base/blas_threading.h"
 #include "module_base/timer.h"
 #include "module_basis/module_ao/ORB_read.h"
 #include "module_hamilt_lcao/module_hcontainer/hcontainer_funcs.h"
 #include "module_hamilt_pw/hamilt_pwdft/global.h"
 #ifdef _OPENMP
 #include <omp.h>
-#endif
-
-#ifdef __MKL
-#include <mkl_service.h>
 #endif
 
 Gint::~Gint() {
@@ -62,10 +59,10 @@ void Gint::cal_gint(Gint_inout* inout) {
         } else
 #endif
         {
-#ifdef __MKL
-            const int mkl_threads = mkl_get_max_threads();
-            mkl_set_num_threads(mkl_threads);
-#endif
+            // Gint already parallelizes its kernels with OpenMP. Keep BLAS
+            // calls inside that region single-threaded to avoid nested
+            // MKL/OpenBLAS parallelism, then restore the caller's setting.
+            ModuleBase::BlasThreading::ScopedThreadLimit blas_threads(1);
             {
                 if (inout->job == Gint_Tools::job_type::vlocal) {
                     gint_kernel_vlocal(inout);
