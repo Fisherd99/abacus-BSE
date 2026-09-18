@@ -19,7 +19,6 @@
 #include <iterator>
 #include <numeric>
 #include <sstream>
-#include <stdexcept>
 #include <tuple>
 
 namespace
@@ -144,7 +143,7 @@ std::vector<SparseRBlock<T>> make_sparse_blocks(
     {
         for (auto& row : block_rows)
         {
-            std::sort(row.begin(), row.end(), [](const auto& lhs, const auto& rhs) {
+            std::sort(row.begin(), row.end(), [](const std::pair<int, T>& lhs, const std::pair<int, T>& rhs) {
                 return lhs.first < rhs.first;
             });
         }
@@ -321,6 +320,23 @@ RowRange get_row_range(const int nlocal, const int rank, const int nproc)
     return {begin, begin + quotient + (rank < remainder ? 1 : 0)};
 }
 
+struct DistributionContext
+{
+    int rank;
+    int nproc;
+    int nlocal;
+    RowRange row_range;
+};
+
+DistributionContext make_distribution_context()
+{
+    DistributionContext context{0, 1, PARAM.globalv.nlocal, {0, PARAM.globalv.nlocal}};
+    MPI_Comm_rank(MPI_COMM_WORLD, &context.rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &context.nproc);
+    context.row_range = get_row_range(context.nlocal, context.rank, context.nproc);
+    return context;
+}
+
 int get_row_owner(const int row, const int nlocal, const int nproc)
 {
     const int quotient = nlocal / nproc;
@@ -334,11 +350,9 @@ int get_row_owner(const int row, const int nlocal, const int nproc)
 }
 
 template <typename T>
-std::vector<ModuleBase::Vector3<int>> collect_global_R(const hamilt::HContainer<T>& hR)
+std::vector<ModuleBase::Vector3<int>> collect_global_R(const hamilt::HContainer<T>& hR,
+                                                       const DistributionContext& context)
 {
-    int nproc = 1;
-    MPI_Comm_size(MPI_COMM_WORLD, &nproc);
-
     std::vector<int> local_R;
     const size_t nr = hR.size_R_loop();
     local_R.reserve(3 * nr);
@@ -352,10 +366,10 @@ std::vector<ModuleBase::Vector3<int>> collect_global_R(const hamilt::HContainer<
     }
 
     const int local_size = static_cast<int>(local_R.size());
-    std::vector<int> counts(nproc);
+    std::vector<int> counts(context.nproc);
     MPI_Allgather(&local_size, 1, MPI_INT, counts.data(), 1, MPI_INT, MPI_COMM_WORLD);
-    std::vector<int> displs(nproc, 0);
-    for (int ip = 1; ip < nproc; ++ip)
+    std::vector<int> displs(context.nproc, 0);
+    for (int ip = 1; ip < context.nproc; ++ip)
     {
         displs[ip] = displs[ip - 1] + counts[ip - 1];
     }
@@ -401,10 +415,9 @@ template <typename T>
 std::vector<DistributedRBlock<T>> redistribute_entries(
     const std::vector<std::vector<DistributedEntry<T>>>& outgoing,
     const std::vector<ModuleBase::Vector3<int>>& r_vectors,
-    const RowRange row_range)
+    const DistributionContext& context)
 {
-    int nproc = 1;
-    MPI_Comm_size(MPI_COMM_WORLD, &nproc);
+    const int nproc = context.nproc;
     std::vector<int> send_counts(nproc), recv_counts(nproc), send_displs(nproc, 0), recv_displs(nproc, 0);
     for (int ip = 0; ip < nproc; ++ip)
     {
@@ -479,14 +492,14 @@ std::vector<DistributedRBlock<T>> redistribute_entries(
     std::vector<DistributedRBlock<T>> blocks(r_vectors.size());
     for (auto& block : blocks)
     {
-        block.row_counts.assign(row_range.end - row_range.begin, 0);
+        block.row_counts.assign(context.row_range.end - context.row_range.begin, 0);
     }
     for (const auto& entry : received)
     {
         auto& block = blocks[entry.ir];
         block.values.push_back(entry.value);
         block.columns.push_back(entry.column);
-        ++block.row_counts[entry.row - row_range.begin];
+        ++block.row_counts[entry.row - context.row_range.begin];
     }
     return blocks;
 }
@@ -496,13 +509,10 @@ std::vector<DistributedRBlock<T>> redistribute_sparse_rows(
     const hamilt::HContainer<T>& hR,
     const Parallel_Orbitals& pv,
     const std::vector<ModuleBase::Vector3<int>>& r_vectors,
-    const int nlocal,
     const double sparse_thr,
-    const RowRange row_range)
+    const DistributionContext& context)
 {
-    int nproc = 1;
-    MPI_Comm_size(MPI_COMM_WORLD, &nproc);
-    std::vector<std::vector<DistributedEntry<T>>> outgoing(nproc);
+    std::vector<std::vector<DistributedEntry<T>>> outgoing(context.nproc);
 
     for (int iap = 0; iap < hR.size_atom_pairs(); ++iap)
     {
@@ -522,7 +532,7 @@ std::vector<DistributedRBlock<T>> redistribute_sparse_rows(
             for (int local_row = 0; local_row < indexes[1]; ++local_row)
             {
                 const int row = pv.local2global_row(indexes[0] + local_row);
-                const int owner = get_row_owner(row, nlocal, nproc);
+                const int owner = get_row_owner(row, context.nlocal, context.nproc);
                 for (int local_col = 0; local_col < indexes[3]; ++local_col)
                 {
                     const T value = data[local_row * indexes[3] + local_col];
@@ -536,14 +546,21 @@ std::vector<DistributedRBlock<T>> redistribute_sparse_rows(
         }
     }
 
-    return redistribute_entries(outgoing, r_vectors, row_range);
+    return redistribute_entries(outgoing, r_vectors, context);
 }
+
+struct FileFragment
+{
+    // Location in the contiguous send buffer and in the sparse matrix file.
+    size_t buffer_offset;
+    size_t byte_count;
+    MPI_Aint file_offset;
+};
 
 struct FileFragments
 {
     std::vector<char> data;
-    std::vector<int> lengths;
-    std::vector<MPI_Aint> offsets;
+    std::vector<FileFragment> fragments;
 
     void append(const MPI_Offset offset, const void* source, const size_t size)
     {
@@ -551,15 +568,10 @@ struct FileFragments
         {
             return;
         }
-        if (size > INT_MAX || data.size() + size > INT_MAX)
-        {
-            throw std::runtime_error("Distributed CSR output exceeds the MPI count limit");
-        }
         const size_t old_size = data.size();
         data.resize(old_size + size);
         std::memcpy(data.data() + old_size, source, size);
-        lengths.push_back(static_cast<int>(size));
-        offsets.push_back(static_cast<MPI_Aint>(offset));
+        fragments.push_back({old_size, size, static_cast<MPI_Aint>(offset)});
     }
 
     void append(const MPI_Offset offset, const std::string& source)
@@ -567,6 +579,38 @@ struct FileFragments
         append(offset, source.data(), source.size());
     }
 };
+
+struct ChunkFileView
+{
+    std::vector<int> block_lengths;
+    std::vector<MPI_Aint> file_offsets;
+};
+
+constexpr size_t mpi_io_chunk_size = static_cast<size_t>(INT_MAX);
+
+ChunkFileView make_chunk_file_view(const std::vector<FileFragment>& fragments,
+                                   const size_t chunk_begin,
+                                   const size_t chunk_size,
+                                   const MPI_Offset base_offset)
+{
+    ChunkFileView view;
+    const size_t chunk_end = chunk_begin + chunk_size;
+    for (const auto& fragment : fragments)
+    {
+        const size_t fragment_end = fragment.buffer_offset + fragment.byte_count;
+        const size_t overlap_begin = std::max(fragment.buffer_offset, chunk_begin);
+        const size_t overlap_end = std::min(fragment_end, chunk_end);
+        if (overlap_begin >= overlap_end)
+        {
+            continue;
+        }
+
+        view.block_lengths.push_back(static_cast<int>(overlap_end - overlap_begin));
+        view.file_offsets.push_back(fragment.file_offset + base_offset
+                                    + static_cast<MPI_Aint>(overlap_begin - fragment.buffer_offset));
+    }
+    return view;
+}
 
 void write_MPI_fragments(const std::string& filename,
                          const MPI_Offset file_size,
@@ -586,34 +630,47 @@ void write_MPI_fragments(const std::string& filename,
     }
     MPI_File_set_size(file, base_offset + file_size);
 
-    MPI_Datatype filetype = MPI_DATATYPE_NULL;
-    if (fragments.lengths.empty())
+    const auto local_size = static_cast<unsigned long long>(fragments.data.size());
+    unsigned long long max_size = 0;
+    MPI_Allreduce(&local_size, &max_size, 1, MPI_UNSIGNED_LONG_LONG, MPI_MAX, MPI_COMM_WORLD);
+
+    // MPI_File_write_all takes an int count, so split large buffers into
+    // synchronized rounds based on the largest buffer among all ranks.
+    const unsigned long long round_count
+        = max_size == 0 ? 0 : (max_size - 1) / mpi_io_chunk_size + 1;
+    for (unsigned long long round = 0; round < round_count; ++round)
     {
-        MPI_File_set_view(file, 0, MPI_BYTE, MPI_BYTE, const_cast<char*>("native"), MPI_INFO_NULL);
-    }
-    else
-    {
-        std::vector<MPI_Aint> offsets = fragments.offsets;
-        for (auto& offset : offsets)
+        const size_t chunk_begin = static_cast<size_t>(round * mpi_io_chunk_size);
+        const size_t remaining = chunk_begin < fragments.data.size() ? fragments.data.size() - chunk_begin : 0;
+        const size_t chunk_size = std::min(mpi_io_chunk_size, remaining);
+        const auto view = make_chunk_file_view(fragments.fragments, chunk_begin, chunk_size, base_offset);
+
+        MPI_Datatype filetype = MPI_DATATYPE_NULL;
+        if (view.block_lengths.empty())
         {
-            offset += base_offset;
+            // A rank with no data must still join every collective write.
+            MPI_File_set_view(file, 0, MPI_BYTE, MPI_BYTE, const_cast<char*>("native"), MPI_INFO_NULL);
         }
-        MPI_Type_create_hindexed(static_cast<int>(fragments.lengths.size()),
-                                 fragments.lengths.data(),
-                                 offsets.data(),
-                                 MPI_BYTE,
-                                 &filetype);
-        MPI_Type_commit(&filetype);
-        MPI_File_set_view(file, 0, MPI_BYTE, filetype, const_cast<char*>("native"), MPI_INFO_NULL);
-    }
-    MPI_File_write_all(file,
-                       fragments.data.empty() ? nullptr : fragments.data.data(),
-                       static_cast<int>(fragments.data.size()),
-                       MPI_BYTE,
-                       MPI_STATUS_IGNORE);
-    if (filetype != MPI_DATATYPE_NULL)
-    {
-        MPI_Type_free(&filetype);
+        else
+        {
+            MPI_Type_create_hindexed(static_cast<int>(view.block_lengths.size()),
+                                     view.block_lengths.data(),
+                                     view.file_offsets.data(),
+                                     MPI_BYTE,
+                                     &filetype);
+            MPI_Type_commit(&filetype);
+            MPI_File_set_view(file, 0, MPI_BYTE, filetype, const_cast<char*>("native"), MPI_INFO_NULL);
+        }
+
+        MPI_File_write_all(file,
+                           chunk_size == 0 ? nullptr : fragments.data.data() + chunk_begin,
+                           static_cast<int>(chunk_size),
+                           MPI_BYTE,
+                           MPI_STATUS_IGNORE);
+        if (filetype != MPI_DATATYPE_NULL)
+        {
+            MPI_Type_free(&filetype);
+        }
     }
     MPI_File_close(&file);
 }
@@ -836,6 +893,81 @@ struct DistributedSparseMatrix
     std::vector<int> nnz_by_rank;
 };
 
+template <typename T>
+void collect_nnz_metadata(DistributedSparseMatrix<T>& matrix, const DistributionContext& context)
+{
+    std::vector<int> local_nnz(matrix.blocks.size());
+    for (size_t ir = 0; ir < matrix.blocks.size(); ++ir)
+    {
+        local_nnz[ir] = static_cast<int>(matrix.blocks[ir].values.size());
+    }
+
+    matrix.global_nnz.resize(matrix.blocks.size());
+    MPI_Allreduce(local_nnz.data(),
+                  matrix.global_nnz.data(),
+                  static_cast<int>(local_nnz.size()),
+                  MPI_INT,
+                  MPI_SUM,
+                  MPI_COMM_WORLD);
+    matrix.nnz_by_rank.resize(context.nproc * local_nnz.size());
+    MPI_Allgather(local_nnz.data(),
+                  static_cast<int>(local_nnz.size()),
+                  MPI_INT,
+                  matrix.nnz_by_rank.data(),
+                  static_cast<int>(local_nnz.size()),
+                  MPI_INT,
+                  MPI_COMM_WORLD);
+}
+
+template <typename Result, typename Left, typename Right>
+std::vector<DistributedRBlock<Result>> merge_distributed_blocks(
+    const std::vector<DistributedRBlock<Left>>& lhs,
+    const std::vector<DistributedRBlock<Right>>& rhs,
+    const double sparse_thr)
+{
+    std::vector<DistributedRBlock<Result>> result(lhs.size());
+    for (size_t ir = 0; ir < lhs.size(); ++ir)
+    {
+        auto& output = result[ir];
+        output.row_counts.resize(lhs[ir].row_counts.size(), 0);
+        size_t lhs_pos = 0;
+        size_t rhs_pos = 0;
+        for (size_t row = 0; row < output.row_counts.size(); ++row)
+        {
+            const size_t lhs_end = lhs_pos + lhs[ir].row_counts[row];
+            const size_t rhs_end = rhs_pos + rhs[ir].row_counts[row];
+            while (lhs_pos < lhs_end || rhs_pos < rhs_end)
+            {
+                int column = 0;
+                Result value{};
+                if (rhs_pos == rhs_end
+                    || (lhs_pos < lhs_end && lhs[ir].columns[lhs_pos] < rhs[ir].columns[rhs_pos]))
+                {
+                    column = lhs[ir].columns[lhs_pos];
+                    value = lhs[ir].values[lhs_pos++];
+                }
+                else if (lhs_pos == lhs_end || rhs[ir].columns[rhs_pos] < lhs[ir].columns[lhs_pos])
+                {
+                    column = rhs[ir].columns[rhs_pos];
+                    value = rhs[ir].values[rhs_pos++];
+                }
+                else
+                {
+                    column = lhs[ir].columns[lhs_pos];
+                    value = lhs[ir].values[lhs_pos++] + rhs[ir].values[rhs_pos++];
+                }
+                if (std::abs(value) > sparse_thr)
+                {
+                    output.columns.push_back(column);
+                    output.values.push_back(value);
+                    ++output.row_counts[row];
+                }
+            }
+        }
+    }
+    return result;
+}
+
 void calculate_dftu_R(const int spin, double* sr, double* hr)
 {
     GlobalC::dftu.cal_eff_pot_mat_R_double(spin, sr, hr);
@@ -851,77 +983,16 @@ DistributedSparseMatrix<std::complex<double>> prepare_td_distributed_matrix(
     const hamilt::HContainer<std::complex<double>>& td_hR,
     const Parallel_Orbitals& pv,
     const std::vector<ModuleBase::Vector3<int>>& r_vectors,
-    const double sparse_thr)
+    const double sparse_thr,
+    const DistributionContext& context)
 {
-    int rank = 0;
-    int nproc = 1;
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &nproc);
-    const int nlocal = PARAM.globalv.nlocal;
-    const RowRange row_range = get_row_range(nlocal, rank, nproc);
-    const auto base_blocks = redistribute_sparse_rows(hR, pv, r_vectors, nlocal, sparse_thr, row_range);
+    const auto base_blocks = redistribute_sparse_rows(hR, pv, r_vectors, sparse_thr, context);
     // TD velocity-gauge matrices were historically cached at this threshold.
-    const auto td_blocks = redistribute_sparse_rows(td_hR, pv, r_vectors, nlocal, 1.0e-10, row_range);
+    const auto td_blocks = redistribute_sparse_rows(td_hR, pv, r_vectors, 1.0e-10, context);
 
     DistributedSparseMatrix<std::complex<double>> result;
-    result.blocks.resize(r_vectors.size());
-    std::vector<int> local_nnz(r_vectors.size());
-    for (size_t ir = 0; ir < r_vectors.size(); ++ir)
-    {
-        auto& output = result.blocks[ir];
-        output.row_counts.resize(row_range.end - row_range.begin, 0);
-        size_t base_pos = 0;
-        size_t td_pos = 0;
-        for (size_t local_row = 0; local_row < output.row_counts.size(); ++local_row)
-        {
-            const size_t base_end = base_pos + base_blocks[ir].row_counts[local_row];
-            const size_t td_end = td_pos + td_blocks[ir].row_counts[local_row];
-            while (base_pos < base_end || td_pos < td_end)
-            {
-                int column = 0;
-                std::complex<double> value = 0.0;
-                if (td_pos == td_end
-                    || (base_pos < base_end && base_blocks[ir].columns[base_pos] < td_blocks[ir].columns[td_pos]))
-                {
-                    column = base_blocks[ir].columns[base_pos];
-                    value = base_blocks[ir].values[base_pos++];
-                }
-                else if (base_pos == base_end || td_blocks[ir].columns[td_pos] < base_blocks[ir].columns[base_pos])
-                {
-                    column = td_blocks[ir].columns[td_pos];
-                    value = td_blocks[ir].values[td_pos++];
-                }
-                else
-                {
-                    column = base_blocks[ir].columns[base_pos];
-                    value = base_blocks[ir].values[base_pos++] + td_blocks[ir].values[td_pos++];
-                }
-                if (std::abs(value) > sparse_thr)
-                {
-                    output.columns.push_back(column);
-                    output.values.push_back(value);
-                    ++output.row_counts[local_row];
-                }
-            }
-        }
-        local_nnz[ir] = static_cast<int>(output.values.size());
-    }
-
-    result.global_nnz.resize(r_vectors.size());
-    MPI_Allreduce(local_nnz.data(),
-                  result.global_nnz.data(),
-                  static_cast<int>(r_vectors.size()),
-                  MPI_INT,
-                  MPI_SUM,
-                  MPI_COMM_WORLD);
-    result.nnz_by_rank.resize(nproc * r_vectors.size());
-    MPI_Allgather(local_nnz.data(),
-                  static_cast<int>(r_vectors.size()),
-                  MPI_INT,
-                  result.nnz_by_rank.data(),
-                  static_cast<int>(r_vectors.size()),
-                  MPI_INT,
-                  MPI_COMM_WORLD);
+    result.blocks = merge_distributed_blocks<std::complex<double>>(base_blocks, td_blocks, sparse_thr);
+    collect_nnz_metadata(result, context);
     return result;
 }
 
@@ -932,15 +1003,10 @@ DistributedSparseMatrix<T> prepare_dftu_distributed_matrix(
     const Parallel_Orbitals& pv,
     const std::vector<ModuleBase::Vector3<int>>& r_vectors,
     const int spin,
-    const double sparse_thr)
+    const double sparse_thr,
+    const DistributionContext& context)
 {
-    int rank = 0;
-    int nproc = 1;
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &nproc);
-    const int nlocal = PARAM.globalv.nlocal;
-    const RowRange row_range = get_row_range(nlocal, rank, nproc);
-    const auto base_blocks = redistribute_sparse_rows(hR, pv, r_vectors, nlocal, sparse_thr, row_range);
+    const auto base_blocks = redistribute_sparse_rows(hR, pv, r_vectors, sparse_thr, context);
 
     // Reproduce the legacy DFT+U output formula using the native block-cyclic
     // matrix layout required by ScaLAPACK. S(R) is filtered before the
@@ -990,7 +1056,7 @@ DistributedSparseMatrix<T> prepare_dftu_distributed_matrix(
                   MPI_SUM,
                   MPI_COMM_WORLD);
 
-    std::vector<std::vector<DistributedEntry<T>>> outgoing(nproc);
+    std::vector<std::vector<DistributedEntry<T>>> outgoing(context.nproc);
     std::vector<T> sr_tmp(pv.nloc);
     std::vector<T> hu_tmp(pv.nloc);
     for (size_t ir = 0; ir < r_vectors.size(); ++ir)
@@ -1007,15 +1073,15 @@ DistributedSparseMatrix<T> prepare_dftu_distributed_matrix(
         }
         calculate_dftu_R(spin, sr_tmp.data(), hu_tmp.data());
 
-        for (int row = 0; row < nlocal; ++row)
+        for (int row = 0; row < context.nlocal; ++row)
         {
             const int local_row = pv.global2local_row(row);
             if (local_row < 0)
             {
                 continue;
             }
-            const int owner = get_row_owner(row, nlocal, nproc);
-            for (int col = 0; col < nlocal; ++col)
+            const int owner = get_row_owner(row, context.nlocal, context.nproc);
+            for (int col = 0; col < context.nlocal; ++col)
             {
                 const int local_col = pv.global2local_col(col);
                 if (local_col < 0)
@@ -1033,67 +1099,11 @@ DistributedSparseMatrix<T> prepare_dftu_distributed_matrix(
             }
         }
     }
-    const auto u_blocks = redistribute_entries(outgoing, r_vectors, row_range);
+    const auto u_blocks = redistribute_entries(outgoing, r_vectors, context);
 
     DistributedSparseMatrix<T> result;
-    result.blocks.resize(r_vectors.size());
-    std::vector<int> local_nnz(r_vectors.size(), 0);
-    for (size_t ir = 0; ir < r_vectors.size(); ++ir)
-    {
-        auto& output = result.blocks[ir];
-        output.row_counts.resize(row_range.end - row_range.begin, 0);
-        size_t base_pos = 0;
-        size_t u_pos = 0;
-        for (size_t local_row = 0; local_row < output.row_counts.size(); ++local_row)
-        {
-            const size_t base_end = base_pos + base_blocks[ir].row_counts[local_row];
-            const size_t u_end = u_pos + u_blocks[ir].row_counts[local_row];
-            while (base_pos < base_end || u_pos < u_end)
-            {
-                int column = 0;
-                T value{};
-                if (u_pos == u_end
-                    || (base_pos < base_end && base_blocks[ir].columns[base_pos] < u_blocks[ir].columns[u_pos]))
-                {
-                    column = base_blocks[ir].columns[base_pos];
-                    value = base_blocks[ir].values[base_pos++];
-                }
-                else if (base_pos == base_end || u_blocks[ir].columns[u_pos] < base_blocks[ir].columns[base_pos])
-                {
-                    column = u_blocks[ir].columns[u_pos];
-                    value = u_blocks[ir].values[u_pos++];
-                }
-                else
-                {
-                    column = base_blocks[ir].columns[base_pos];
-                    value = base_blocks[ir].values[base_pos++] + u_blocks[ir].values[u_pos++];
-                }
-                if (std::abs(value) > sparse_thr)
-                {
-                    output.columns.push_back(column);
-                    output.values.push_back(value);
-                    ++output.row_counts[local_row];
-                }
-            }
-        }
-        local_nnz[ir] = static_cast<int>(output.values.size());
-    }
-
-    result.global_nnz.resize(r_vectors.size());
-    MPI_Allreduce(local_nnz.data(),
-                  result.global_nnz.data(),
-                  static_cast<int>(r_vectors.size()),
-                  MPI_INT,
-                  MPI_SUM,
-                  MPI_COMM_WORLD);
-    result.nnz_by_rank.resize(nproc * r_vectors.size());
-    MPI_Allgather(local_nnz.data(),
-                  static_cast<int>(r_vectors.size()),
-                  MPI_INT,
-                  result.nnz_by_rank.data(),
-                  static_cast<int>(r_vectors.size()),
-                  MPI_INT,
-                  MPI_COMM_WORLD);
+    result.blocks = merge_distributed_blocks<T>(base_blocks, u_blocks, sparse_thr);
+    collect_nnz_metadata(result, context);
     return result;
 }
 
@@ -1102,78 +1112,16 @@ DistributedSparseMatrix<std::complex<double>> add_td_correction(
     const hamilt::HContainer<std::complex<double>>& td_hR,
     const Parallel_Orbitals& pv,
     const std::vector<ModuleBase::Vector3<int>>& r_vectors,
-    const double sparse_thr)
+    const double sparse_thr,
+    const DistributionContext& context)
 {
-    int rank = 0;
-    int nproc = 1;
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &nproc);
-    const int nlocal = PARAM.globalv.nlocal;
-    const RowRange row_range = get_row_range(nlocal, rank, nproc);
     // TD velocity-gauge matrices were historically cached at this threshold.
-    const auto td_blocks = redistribute_sparse_rows(td_hR, pv, r_vectors, nlocal, 1.0e-10, row_range);
+    const auto td_blocks = redistribute_sparse_rows(td_hR, pv, r_vectors, 1.0e-10, context);
 
     DistributedSparseMatrix<std::complex<double>> result;
-    result.blocks.resize(r_vectors.size());
-    std::vector<int> local_nnz(r_vectors.size(), 0);
-    for (size_t ir = 0; ir < r_vectors.size(); ++ir)
-    {
-        auto& output = result.blocks[ir];
-        output.row_counts.resize(row_range.end - row_range.begin, 0);
-        size_t base_pos = 0;
-        size_t td_pos = 0;
-        for (size_t local_row = 0; local_row < output.row_counts.size(); ++local_row)
-        {
-            const size_t base_end = base_pos + base_matrix.blocks[ir].row_counts[local_row];
-            const size_t td_end = td_pos + td_blocks[ir].row_counts[local_row];
-            while (base_pos < base_end || td_pos < td_end)
-            {
-                int column = 0;
-                std::complex<double> value = 0.0;
-                if (td_pos == td_end
-                    || (base_pos < base_end
-                        && base_matrix.blocks[ir].columns[base_pos] < td_blocks[ir].columns[td_pos]))
-                {
-                    column = base_matrix.blocks[ir].columns[base_pos];
-                    value = base_matrix.blocks[ir].values[base_pos++];
-                }
-                else if (base_pos == base_end
-                         || td_blocks[ir].columns[td_pos] < base_matrix.blocks[ir].columns[base_pos])
-                {
-                    column = td_blocks[ir].columns[td_pos];
-                    value = td_blocks[ir].values[td_pos++];
-                }
-                else
-                {
-                    column = base_matrix.blocks[ir].columns[base_pos];
-                    value = base_matrix.blocks[ir].values[base_pos++] + td_blocks[ir].values[td_pos++];
-                }
-                if (std::abs(value) > sparse_thr)
-                {
-                    output.columns.push_back(column);
-                    output.values.push_back(value);
-                    ++output.row_counts[local_row];
-                }
-            }
-        }
-        local_nnz[ir] = static_cast<int>(output.values.size());
-    }
-
-    result.global_nnz.resize(r_vectors.size());
-    MPI_Allreduce(local_nnz.data(),
-                  result.global_nnz.data(),
-                  static_cast<int>(r_vectors.size()),
-                  MPI_INT,
-                  MPI_SUM,
-                  MPI_COMM_WORLD);
-    result.nnz_by_rank.resize(nproc * r_vectors.size());
-    MPI_Allgather(local_nnz.data(),
-                  static_cast<int>(r_vectors.size()),
-                  MPI_INT,
-                  result.nnz_by_rank.data(),
-                  static_cast<int>(r_vectors.size()),
-                  MPI_INT,
-                  MPI_COMM_WORLD);
+    result.blocks
+        = merge_distributed_blocks<std::complex<double>>(base_matrix.blocks, td_blocks, sparse_thr);
+    collect_nnz_metadata(result, context);
     return result;
 }
 
@@ -1182,37 +1130,13 @@ DistributedSparseMatrix<T> prepare_distributed_matrix(
     const hamilt::HContainer<T>& hR,
     const Parallel_Orbitals& pv,
     const std::vector<ModuleBase::Vector3<int>>& r_vectors,
-    const double sparse_thr)
+    const double sparse_thr,
+    const DistributionContext& context)
 {
-    int rank = 0;
-    int nproc = 1;
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &nproc);
-    const int nlocal = PARAM.globalv.nlocal;
-    const RowRange row_range = get_row_range(nlocal, rank, nproc);
     DistributedSparseMatrix<T> result;
-    result.blocks = redistribute_sparse_rows(hR, pv, r_vectors, nlocal, sparse_thr, row_range);
+    result.blocks = redistribute_sparse_rows(hR, pv, r_vectors, sparse_thr, context);
 
-    std::vector<int> local_nnz(r_vectors.size());
-    result.global_nnz.resize(r_vectors.size());
-    for (size_t ir = 0; ir < r_vectors.size(); ++ir)
-    {
-        local_nnz[ir] = static_cast<int>(result.blocks[ir].values.size());
-    }
-    MPI_Allreduce(local_nnz.data(),
-                  result.global_nnz.data(),
-                  static_cast<int>(r_vectors.size()),
-                  MPI_INT,
-                  MPI_SUM,
-                  MPI_COMM_WORLD);
-    result.nnz_by_rank.resize(nproc * r_vectors.size());
-    MPI_Allgather(local_nnz.data(),
-                  static_cast<int>(r_vectors.size()),
-                  MPI_INT,
-                  result.nnz_by_rank.data(),
-                  static_cast<int>(r_vectors.size()),
-                  MPI_INT,
-                  MPI_COMM_WORLD);
+    collect_nnz_metadata(result, context);
     return result;
 }
 
@@ -1224,14 +1148,9 @@ void write_distributed_matrix(const std::vector<ModuleBase::Vector3<int>>& r_vec
                               const std::string& matrix_name,
                               const int step,
                               const bool binary,
-                              const bool append)
+                              const bool append,
+                              const DistributionContext& context)
 {
-    int rank = 0;
-    int nproc = 1;
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &nproc);
-    const int nlocal = PARAM.globalv.nlocal;
-    const RowRange row_range = get_row_range(nlocal, rank, nproc);
     if (binary)
     {
         write_distributed_binary_matrix(r_vectors,
@@ -1239,10 +1158,10 @@ void write_distributed_matrix(const std::vector<ModuleBase::Vector3<int>>& r_vec
                                         matrix.global_nnz,
                                         matrix.nnz_by_rank,
                                         output_blocks,
-                                        row_range,
-                                        nlocal,
-                                        rank,
-                                        nproc,
+                                        context.row_range,
+                                        context.nlocal,
+                                        context.rank,
+                                        context.nproc,
                                         step,
                                         filename,
                                         append);
@@ -1254,10 +1173,10 @@ void write_distributed_matrix(const std::vector<ModuleBase::Vector3<int>>& r_vec
                                       matrix.global_nnz,
                                       matrix.nnz_by_rank,
                                       output_blocks,
-                                      row_range,
-                                      nlocal,
-                                      rank,
-                                      nproc,
+                                      context.row_range,
+                                      context.nlocal,
+                                      context.rank,
+                                      context.nproc,
                                       step,
                                       matrix_name,
                                       filename,
@@ -1265,6 +1184,403 @@ void write_distributed_matrix(const std::vector<ModuleBase::Vector3<int>>& r_vec
     }
 }
 #endif
+
+template <typename HasEntries>
+std::vector<bool> select_output_blocks(const std::vector<ModuleBase::Vector3<int>>& r_vectors,
+                                       LCAO_HS_Arrays& arrays,
+                                       HasEntries has_entries)
+{
+    std::vector<bool> output_blocks(r_vectors.size(), false);
+    for (size_t ir = 0; ir < r_vectors.size(); ++ir)
+    {
+        output_blocks[ir] = has_entries(ir);
+        if (output_blocks[ir])
+        {
+            const auto& r = r_vectors[ir];
+            arrays.output_R_coor.insert(Abfs::Vector3_Order<int>(r.x, r.y, r.z));
+        }
+    }
+    return output_blocks;
+}
+
+std::string make_matrix_output_path(const std::string& filename, const int step)
+{
+    std::ostringstream path;
+    if (PARAM.inp.calculation == "md" && !PARAM.inp.out_app_flag)
+    {
+        path << PARAM.globalv.global_matrix_dir << step << "_" << filename;
+    }
+    else
+    {
+        path << PARAM.globalv.global_out_dir << filename;
+    }
+    return path.str();
+}
+
+template <typename T>
+std::vector<SparseRBlock<T>> make_empty_sparse_blocks(
+    const std::vector<ModuleBase::Vector3<int>>& r_vectors)
+{
+    std::vector<SparseRBlock<T>> blocks(r_vectors.size());
+    for (size_t ir = 0; ir < r_vectors.size(); ++ir)
+    {
+        blocks[ir].r = r_vectors[ir];
+    }
+    return blocks;
+}
+
+#ifdef __MPI
+template <typename T>
+DistributedSparseMatrix<T> make_empty_distributed_matrix(const size_t block_count,
+                                                         const DistributionContext& context)
+{
+    DistributedSparseMatrix<T> matrix;
+    matrix.blocks.resize(block_count);
+    for (auto& block : matrix.blocks)
+    {
+        block.row_counts.assign(context.row_range.end - context.row_range.begin, 0);
+    }
+    matrix.global_nnz.assign(block_count, 0);
+    matrix.nnz_by_rank.assign(context.nproc * block_count, 0);
+    return matrix;
+}
+#endif
+
+template <typename H, typename S>
+void write_serial_hsr_matrices(const std::vector<SparseRBlock<H>>& h_down,
+                               const std::vector<SparseRBlock<H>>* h_up,
+                               const std::vector<SparseRBlock<S>>& overlap,
+                               const std::vector<bool>& output_blocks,
+                               const std::string& hr_up_path,
+                               const std::string& hr_down_path,
+                               const std::string& sr_path,
+                               const int step,
+                               const bool binary,
+                               const bool append)
+{
+    if (h_up != nullptr)
+    {
+        write_serial_matrix(*h_up, output_blocks, hr_up_path, "H", step, binary, append);
+        write_serial_matrix(h_down, output_blocks, hr_down_path, "H", step, binary, append);
+    }
+    else
+    {
+        write_serial_matrix(h_down, output_blocks, hr_up_path, "H", step, binary, append);
+    }
+    write_serial_matrix(overlap, output_blocks, sr_path, "S", step, binary, append);
+}
+
+#ifdef __MPI
+template <typename H, typename S>
+void write_distributed_hsr_matrices(const std::vector<ModuleBase::Vector3<int>>& r_vectors,
+                                    const DistributedSparseMatrix<H>& h_down,
+                                    const DistributedSparseMatrix<H>* h_up,
+                                    const DistributedSparseMatrix<S>& overlap,
+                                    const std::vector<bool>& output_blocks,
+                                    const std::string& hr_up_path,
+                                    const std::string& hr_down_path,
+                                    const std::string& sr_path,
+                                    const int step,
+                                    const bool binary,
+                                    const bool append,
+                                    const DistributionContext& context)
+{
+    if (h_up != nullptr)
+    {
+        write_distributed_matrix(r_vectors, *h_up, output_blocks, hr_up_path, "H", step, binary, append, context);
+        write_distributed_matrix(
+            r_vectors, h_down, output_blocks, hr_down_path, "H", step, binary, append, context);
+    }
+    else
+    {
+        write_distributed_matrix(r_vectors, h_down, output_blocks, hr_up_path, "H", step, binary, append, context);
+    }
+    write_distributed_matrix(r_vectors, overlap, output_blocks, sr_path, "S", step, binary, append, context);
+}
+#endif
+
+struct HsrOutputOptions
+{
+    std::string hr_up_path;
+    std::string hr_down_path;
+    std::string sr_path;
+    int step;
+    int nspin;
+    bool binary;
+    bool append;
+    double sparse_thr;
+};
+
+HsrOutputOptions make_hsr_output_options(const std::string& hr_up_filename,
+                                         const std::string& hr_down_filename,
+                                         const std::string& sr_filename,
+                                         const int step,
+                                         const int nspin,
+                                         const bool binary,
+                                         const double sparse_thr)
+{
+    return {make_matrix_output_path(hr_up_filename, step),
+            make_matrix_output_path(hr_down_filename, step),
+            make_matrix_output_path(sr_filename, step),
+            step,
+            nspin,
+            binary,
+            PARAM.inp.calculation == "md" && PARAM.inp.out_app_flag && step != 0,
+            sparse_thr};
+}
+
+template <typename T>
+void output_direct_hsr(hamilt::HamiltLCAO<std::complex<double>, T>& hamiltonian,
+                       const Parallel_Orbitals& pv,
+                       LCAO_HS_Arrays& arrays,
+                       const HsrOutputOptions& options)
+{
+    auto& hR = *hamiltonian.getHR();
+    auto& sR = *hamiltonian.getSR();
+#ifdef __MPI
+    const auto context = make_distribution_context();
+    auto r_vectors = PARAM.inp.dft_plus_u == 2
+                         ? collect_global_R(hR, context)
+                         : merge_R_vectors(collect_global_R(hR, context), collect_global_R(sR, context));
+    const auto make_h_matrix = [&](const int spin) {
+        return PARAM.inp.dft_plus_u == 2
+                   ? prepare_dftu_distributed_matrix(
+                         hR, sR, pv, r_vectors, spin, options.sparse_thr, context)
+                   : prepare_distributed_matrix(hR, pv, r_vectors, options.sparse_thr, context);
+    };
+    const auto h_down = make_h_matrix(options.nspin == 2 ? 1 : 0);
+    DistributedSparseMatrix<T> h_up;
+    if (options.nspin == 2)
+    {
+        h_up = make_empty_distributed_matrix<T>(r_vectors.size(), context);
+        if (PARAM.inp.vl_in_h)
+        {
+            hamiltonian.updateHR(0);
+            h_up = make_h_matrix(0);
+        }
+    }
+    const auto overlap = prepare_distributed_matrix(sR, pv, r_vectors, options.sparse_thr, context);
+    const auto output_blocks = select_output_blocks(r_vectors, arrays, [&](const size_t ir) {
+        return h_down.global_nnz[ir] > 0 || overlap.global_nnz[ir] > 0
+               || (options.nspin == 2 && h_up.global_nnz[ir] > 0);
+    });
+    write_distributed_hsr_matrices(r_vectors,
+                                   h_down,
+                                   options.nspin == 2 ? &h_up : nullptr,
+                                   overlap,
+                                   output_blocks,
+                                   options.hr_up_path,
+                                   options.hr_down_path,
+                                   options.sr_path,
+                                   options.step,
+                                   options.binary,
+                                   options.append,
+                                   context);
+#else
+    const auto r_vectors = merge_R_vectors(collect_local_R(hR), collect_local_R(sR));
+    const auto h_down
+        = make_sparse_blocks(hR, pv, r_vectors, PARAM.globalv.nlocal, options.sparse_thr);
+    std::vector<SparseRBlock<T>> h_up;
+    if (options.nspin == 2)
+    {
+        h_up = make_empty_sparse_blocks<T>(r_vectors);
+        if (PARAM.inp.vl_in_h)
+        {
+            hamiltonian.updateHR(0);
+            h_up = make_sparse_blocks(hR, pv, r_vectors, PARAM.globalv.nlocal, options.sparse_thr);
+        }
+    }
+    const auto overlap
+        = make_sparse_blocks(sR, pv, r_vectors, PARAM.globalv.nlocal, options.sparse_thr);
+    const auto output_blocks = select_output_blocks(r_vectors, arrays, [&](const size_t ir) {
+        return !h_down[ir].values.empty() || !overlap[ir].values.empty()
+               || (options.nspin == 2 && !h_up[ir].values.empty());
+    });
+    write_serial_hsr_matrices(h_down,
+                              options.nspin == 2 ? &h_up : nullptr,
+                              overlap,
+                              output_blocks,
+                              options.hr_up_path,
+                              options.hr_down_path,
+                              options.sr_path,
+                              options.step,
+                              options.binary,
+                              options.append);
+#endif
+}
+
+void output_td_hsr(hamilt::HamiltLCAO<std::complex<double>, double>& hamiltonian,
+                   const hamilt::HContainer<std::complex<double>>& td_hR,
+                   const Parallel_Orbitals& pv,
+                   LCAO_HS_Arrays& arrays,
+                   const HsrOutputOptions& options)
+{
+    auto& hR = *hamiltonian.getHR();
+    auto& sR = *hamiltonian.getSR();
+    // The velocity-gauge correction is spin independent. For nspin=2,
+    // combine the same correction with both spin channels.
+#ifdef __MPI
+    const auto context = make_distribution_context();
+    auto r_vectors = merge_R_vectors(collect_global_R(hR, context), collect_global_R(sR, context));
+    r_vectors = merge_R_vectors(r_vectors, collect_global_R(td_hR, context));
+    const auto make_h_matrix = [&](const int spin) {
+        if (PARAM.inp.dft_plus_u == 2)
+        {
+            const auto h_dftu = prepare_dftu_distributed_matrix(
+                hR, sR, pv, r_vectors, spin, options.sparse_thr, context);
+            return add_td_correction(h_dftu, td_hR, pv, r_vectors, options.sparse_thr, context);
+        }
+        return prepare_td_distributed_matrix(hR, td_hR, pv, r_vectors, options.sparse_thr, context);
+    };
+    const auto h_down = make_h_matrix(options.nspin == 2 ? 1 : 0);
+    DistributedSparseMatrix<std::complex<double>> h_up;
+    if (options.nspin == 2)
+    {
+        h_up = make_empty_distributed_matrix<std::complex<double>>(r_vectors.size(), context);
+        if (PARAM.inp.vl_in_h)
+        {
+            hamiltonian.updateHR(0);
+            h_up = make_h_matrix(0);
+        }
+    }
+    const auto overlap = prepare_distributed_matrix(sR, pv, r_vectors, options.sparse_thr, context);
+    const auto output_blocks = select_output_blocks(r_vectors, arrays, [&](const size_t ir) {
+        return h_down.global_nnz[ir] > 0 || overlap.global_nnz[ir] > 0
+               || (options.nspin == 2 && h_up.global_nnz[ir] > 0);
+    });
+    write_distributed_hsr_matrices(r_vectors,
+                                   h_down,
+                                   options.nspin == 2 ? &h_up : nullptr,
+                                   overlap,
+                                   output_blocks,
+                                   options.hr_up_path,
+                                   options.hr_down_path,
+                                   options.sr_path,
+                                   options.step,
+                                   options.binary,
+                                   options.append,
+                                   context);
+#else
+    auto r_vectors = merge_R_vectors(collect_local_R(hR), collect_local_R(sR));
+    r_vectors = merge_R_vectors(r_vectors, collect_local_R(td_hR));
+    const auto h_down
+        = make_td_sparse_blocks(hR, td_hR, pv, r_vectors, PARAM.globalv.nlocal, options.sparse_thr);
+    std::vector<SparseRBlock<std::complex<double>>> h_up;
+    if (options.nspin == 2)
+    {
+        h_up = make_empty_sparse_blocks<std::complex<double>>(r_vectors);
+        if (PARAM.inp.vl_in_h)
+        {
+            hamiltonian.updateHR(0);
+            h_up = make_td_sparse_blocks(hR, td_hR, pv, r_vectors, PARAM.globalv.nlocal, options.sparse_thr);
+        }
+    }
+    const auto overlap
+        = make_sparse_blocks(sR, pv, r_vectors, PARAM.globalv.nlocal, options.sparse_thr);
+    const auto output_blocks = select_output_blocks(r_vectors, arrays, [&](const size_t ir) {
+        return !h_down[ir].values.empty() || !overlap[ir].values.empty()
+               || (options.nspin == 2 && !h_up[ir].values.empty());
+    });
+    write_serial_hsr_matrices(h_down,
+                              options.nspin == 2 ? &h_up : nullptr,
+                              overlap,
+                              output_blocks,
+                              options.hr_up_path,
+                              options.hr_down_path,
+                              options.sr_path,
+                              options.step,
+                              options.binary,
+                              options.append);
+#endif
+}
+
+void output_legacy_hsr(
+    const UnitCell& ucell,
+    const int step,
+    const Parallel_Orbitals& pv,
+    LCAO_HS_Arrays& arrays,
+    const Grid_Driver& grid,
+    const K_Vectors& kv,
+    hamilt::Hamilt<std::complex<double>>* hamiltonian,
+#ifdef __EXX
+    const std::vector<std::map<int, std::map<ModuleIO::TAC, RI::Tensor<double>>>>* hexx_real,
+    const std::vector<std::map<int, std::map<ModuleIO::TAC, RI::Tensor<std::complex<double>>>>>* hexx_complex,
+#endif
+    const std::string& sr_filename,
+    const std::string& hr_up_filename,
+    const std::string& hr_down_filename,
+    const bool binary,
+    const double sparse_thr)
+{
+    const int nspin = PARAM.inp.nspin;
+    if (nspin == 1 || nspin == 4)
+    {
+        sparse_format::cal_HSR(ucell, pv, arrays, grid, 0, sparse_thr, kv.nmp, hamiltonian
+#ifdef __EXX
+                               , hexx_real, hexx_complex
+#endif
+        );
+    }
+    else if (nspin == 2)
+    {
+        int spin = 1;
+        sparse_format::cal_HSR(ucell, pv, arrays, grid, spin, sparse_thr, kv.nmp, hamiltonian
+#ifdef __EXX
+                               , hexx_real, hexx_complex
+#endif
+        );
+        if (PARAM.inp.vl_in_h)
+        {
+            hamiltonian->refresh();
+            hamiltonian->updateHk(0);
+            spin = 0;
+        }
+        sparse_format::cal_HSR(ucell, pv, arrays, grid, spin, sparse_thr, kv.nmp, hamiltonian
+#ifdef __EXX
+                               , hexx_real, hexx_complex
+#endif
+        );
+    }
+
+    ModuleIO::save_HSR_sparse(step,
+                              pv,
+                              arrays,
+                              sparse_thr,
+                              binary,
+                              sr_filename,
+                              hr_up_filename,
+                              hr_down_filename);
+    sparse_format::destroy_HS_R_sparse(arrays);
+}
+
+template <typename T>
+void output_overlap_matrix(const hamilt::HContainer<T>& sR,
+                           const Parallel_Orbitals& pv,
+                           const std::string& filename,
+                           const bool binary,
+                           const double sparse_thr)
+{
+#ifdef __MPI
+    const auto context = make_distribution_context();
+    const auto r_vectors = collect_global_R(sR, context);
+    const auto matrix = prepare_distributed_matrix(sR, pv, r_vectors, sparse_thr, context);
+    std::vector<bool> output_blocks(r_vectors.size(), false);
+    for (size_t ir = 0; ir < r_vectors.size(); ++ir)
+    {
+        output_blocks[ir] = matrix.global_nnz[ir] > 0;
+    }
+    write_distributed_matrix(r_vectors, matrix, output_blocks, filename, "S", 0, binary, false, context);
+#else
+    const auto r_vectors = collect_local_R(sR);
+    const auto blocks = make_sparse_blocks(sR, pv, r_vectors, PARAM.globalv.nlocal, sparse_thr);
+    std::vector<bool> output_blocks(r_vectors.size(), false);
+    for (size_t ir = 0; ir < r_vectors.size(); ++ir)
+    {
+        output_blocks[ir] = !blocks[ir].values.empty();
+    }
+    write_serial_matrix(blocks, output_blocks, filename, "S", 0, binary, false);
+#endif
+}
 } // namespace
 
 // if 'binary=true', output binary file.
@@ -1312,323 +1628,48 @@ void ModuleIO::output_HSR(const UnitCell& ucell,
 #endif
     if (use_direct_hcontainer)
     {
-        const bool append = PARAM.inp.calculation == "md" && PARAM.inp.out_app_flag && istep;
-        const auto make_filename = [istep](const std::string& filename) {
-            std::ostringstream path;
-            if (PARAM.inp.calculation == "md" && !PARAM.inp.out_app_flag)
-            {
-                path << PARAM.globalv.global_matrix_dir << istep << "_" << filename;
-            }
-            else
-            {
-                path << PARAM.globalv.global_out_dir << filename;
-            }
-            return path.str();
-        };
-        const std::string sr_path = make_filename(SR_filename);
-        const std::string hr_up_path = make_filename(HR_filename_up);
-        const std::string hr_down_path = make_filename(HR_filename_down);
+        const auto options = make_hsr_output_options(
+            HR_filename_up, HR_filename_down, SR_filename, istep, nspin, binary, sparse_thr);
         HS_Arrays.output_R_coor.clear();
 
         if (nspin == 1 || nspin == 2)
         {
             auto* p_ham_lcao = dynamic_cast<hamilt::HamiltLCAO<std::complex<double>, double>*>(p_ham);
-            auto& hR = *(p_ham_lcao->getHR());
-            auto& sR = *(p_ham_lcao->getSR());
             if (TD_Velocity::tddft_velocity)
             {
-                // The velocity-gauge correction is spin independent. For nspin=2,
-                // combine the same td_hR with the spin-down and spin-up base hR.
-#ifdef __MPI
-                auto r_vectors = merge_R_vectors(collect_global_R(hR), collect_global_R(sR));
-                r_vectors = merge_R_vectors(r_vectors, collect_global_R(*td_hR));
-                const auto make_td_matrix = [&](const int spin) {
-                    if (PARAM.inp.dft_plus_u == 2)
-                    {
-                        const auto h_dftu
-                            = prepare_dftu_distributed_matrix(hR, sR, pv, r_vectors, spin, sparse_thr);
-                        return add_td_correction(h_dftu, *td_hR, pv, r_vectors, sparse_thr);
-                    }
-                    return prepare_td_distributed_matrix(hR, *td_hR, pv, r_vectors, sparse_thr);
-                };
-                const auto h_down = make_td_matrix(nspin == 2 ? 1 : 0);
-                DistributedSparseMatrix<std::complex<double>> h_up;
-                if (nspin == 2)
-                {
-                    if (PARAM.inp.vl_in_h)
-                    {
-                        p_ham_lcao->updateHR(0);
-                        h_up = make_td_matrix(0);
-                    }
-                    else
-                    {
-                        h_up.blocks.resize(r_vectors.size());
-                        h_up.global_nnz.assign(r_vectors.size(), 0);
-                        h_up.nnz_by_rank.assign(h_down.nnz_by_rank.size(), 0);
-                    }
-                }
-                const auto s_matrix = prepare_distributed_matrix(sR, pv, r_vectors, sparse_thr);
-                std::vector<bool> output_blocks(r_vectors.size(), false);
-                for (size_t ir = 0; ir < r_vectors.size(); ++ir)
-                {
-                    output_blocks[ir] = h_down.global_nnz[ir] > 0 || s_matrix.global_nnz[ir] > 0
-                                        || (nspin == 2 && h_up.global_nnz[ir] > 0);
-                    if (output_blocks[ir])
-                    {
-                        HS_Arrays.output_R_coor.insert(
-                            Abfs::Vector3_Order<int>(r_vectors[ir].x, r_vectors[ir].y, r_vectors[ir].z));
-                    }
-                }
-                if (nspin == 2)
-                {
-                    write_distributed_matrix(r_vectors, h_up, output_blocks, hr_up_path, "H", istep, binary, append);
-                    write_distributed_matrix(
-                        r_vectors, h_down, output_blocks, hr_down_path, "H", istep, binary, append);
-                }
-                else
-                {
-                    write_distributed_matrix(
-                        r_vectors, h_down, output_blocks, hr_up_path, "H", istep, binary, append);
-                }
-                write_distributed_matrix(r_vectors, s_matrix, output_blocks, sr_path, "S", istep, binary, append);
-#else
-                auto r_vectors = merge_R_vectors(collect_local_R(hR), collect_local_R(sR));
-                r_vectors = merge_R_vectors(r_vectors, collect_local_R(*td_hR));
-                const auto h_down
-                    = make_td_sparse_blocks(hR, *td_hR, pv, r_vectors, PARAM.globalv.nlocal, sparse_thr);
-                std::vector<SparseRBlock<std::complex<double>>> h_up;
-                if (nspin == 2)
-                {
-                    if (PARAM.inp.vl_in_h)
-                    {
-                        p_ham_lcao->updateHR(0);
-                        h_up = make_td_sparse_blocks(hR, *td_hR, pv, r_vectors, PARAM.globalv.nlocal, sparse_thr);
-                    }
-                    else
-                    {
-                        h_up.resize(r_vectors.size());
-                        for (size_t ir = 0; ir < r_vectors.size(); ++ir)
-                        {
-                            h_up[ir].r = r_vectors[ir];
-                        }
-                    }
-                }
-                const auto s_matrix = make_sparse_blocks(sR, pv, r_vectors, PARAM.globalv.nlocal, sparse_thr);
-                std::vector<bool> output_blocks(r_vectors.size(), false);
-                for (size_t ir = 0; ir < r_vectors.size(); ++ir)
-                {
-                    output_blocks[ir] = !h_down[ir].values.empty() || !s_matrix[ir].values.empty()
-                                        || (nspin == 2 && !h_up[ir].values.empty());
-                    if (output_blocks[ir])
-                    {
-                        HS_Arrays.output_R_coor.insert(
-                            Abfs::Vector3_Order<int>(r_vectors[ir].x, r_vectors[ir].y, r_vectors[ir].z));
-                    }
-                }
-                if (nspin == 2)
-                {
-                    write_serial_matrix(h_up, output_blocks, hr_up_path, "H", istep, binary, append);
-                    write_serial_matrix(h_down, output_blocks, hr_down_path, "H", istep, binary, append);
-                }
-                else
-                {
-                    write_serial_matrix(h_down, output_blocks, hr_up_path, "H", istep, binary, append);
-                }
-                write_serial_matrix(s_matrix, output_blocks, sr_path, "S", istep, binary, append);
-#endif
-                ModuleBase::timer::tick("ModuleIO", "output_HSR");
-                return;
-            }
-#ifdef __MPI
-            auto r_vectors = PARAM.inp.dft_plus_u == 2 ? collect_global_R(hR)
-                                                       : merge_R_vectors(collect_global_R(hR), collect_global_R(sR));
-#else
-            auto r_vectors = merge_R_vectors(collect_local_R(hR), collect_local_R(sR));
-#endif
-
-#ifdef __MPI
-            const int down_spin = nspin == 2 ? 1 : 0;
-            const auto h_down = PARAM.inp.dft_plus_u == 2
-                                    ? prepare_dftu_distributed_matrix(hR, sR, pv, r_vectors, down_spin, sparse_thr)
-                                    : prepare_distributed_matrix(hR, pv, r_vectors, sparse_thr);
-            DistributedSparseMatrix<double> h_up;
-            if (nspin == 2)
-            {
-                if (PARAM.inp.vl_in_h)
-                {
-                    p_ham_lcao->updateHR(0);
-                    h_up = PARAM.inp.dft_plus_u == 2
-                               ? prepare_dftu_distributed_matrix(hR, sR, pv, r_vectors, 0, sparse_thr)
-                               : prepare_distributed_matrix(hR, pv, r_vectors, sparse_thr);
-                }
-                else
-                {
-                    h_up.blocks.resize(r_vectors.size());
-                    h_up.global_nnz.assign(r_vectors.size(), 0);
-                    h_up.nnz_by_rank.assign(h_down.nnz_by_rank.size(), 0);
-                }
-            }
-            const auto s_matrix = prepare_distributed_matrix(sR, pv, r_vectors, sparse_thr);
-            std::vector<bool> output_blocks(r_vectors.size(), false);
-            for (size_t ir = 0; ir < r_vectors.size(); ++ir)
-            {
-                output_blocks[ir] = h_down.global_nnz[ir] > 0 || s_matrix.global_nnz[ir] > 0
-                                    || (nspin == 2 && h_up.global_nnz[ir] > 0);
-                if (output_blocks[ir])
-                {
-                    HS_Arrays.output_R_coor.insert(
-                        Abfs::Vector3_Order<int>(r_vectors[ir].x, r_vectors[ir].y, r_vectors[ir].z));
-                }
-            }
-            if (nspin == 2)
-            {
-                write_distributed_matrix(r_vectors, h_up, output_blocks, hr_up_path, "H", istep, binary, append);
-                write_distributed_matrix(r_vectors, h_down, output_blocks, hr_down_path, "H", istep, binary, append);
+                output_td_hsr(*p_ham_lcao, *td_hR, pv, HS_Arrays, options);
             }
             else
             {
-                write_distributed_matrix(r_vectors, h_down, output_blocks, hr_up_path, "H", istep, binary, append);
+                output_direct_hsr(*p_ham_lcao, pv, HS_Arrays, options);
             }
-            write_distributed_matrix(r_vectors, s_matrix, output_blocks, sr_path, "S", istep, binary, append);
-#else
-            const auto h_down = make_sparse_blocks(hR, pv, r_vectors, PARAM.globalv.nlocal, sparse_thr);
-            std::vector<SparseRBlock<double>> h_up;
-            if (nspin == 2)
-            {
-                if (PARAM.inp.vl_in_h)
-                {
-                    p_ham_lcao->updateHR(0);
-                    h_up = make_sparse_blocks(hR, pv, r_vectors, PARAM.globalv.nlocal, sparse_thr);
-                }
-                else
-                {
-                    h_up.resize(r_vectors.size());
-                    for (size_t ir = 0; ir < r_vectors.size(); ++ir)
-                    {
-                        h_up[ir].r = r_vectors[ir];
-                    }
-                }
-            }
-            const auto s_matrix = make_sparse_blocks(sR, pv, r_vectors, PARAM.globalv.nlocal, sparse_thr);
-            std::vector<bool> output_blocks(r_vectors.size(), false);
-            for (size_t ir = 0; ir < r_vectors.size(); ++ir)
-            {
-                output_blocks[ir] = !h_down[ir].values.empty() || !s_matrix[ir].values.empty()
-                                    || (nspin == 2 && !h_up[ir].values.empty());
-                if (output_blocks[ir])
-                {
-                    HS_Arrays.output_R_coor.insert(
-                        Abfs::Vector3_Order<int>(r_vectors[ir].x, r_vectors[ir].y, r_vectors[ir].z));
-                }
-            }
-            if (nspin == 2)
-            {
-                write_serial_matrix(h_up, output_blocks, hr_up_path, "H", istep, binary, append);
-                write_serial_matrix(h_down, output_blocks, hr_down_path, "H", istep, binary, append);
-            }
-            else
-            {
-                write_serial_matrix(h_down, output_blocks, hr_up_path, "H", istep, binary, append);
-            }
-            write_serial_matrix(s_matrix, output_blocks, sr_path, "S", istep, binary, append);
-#endif
-            ModuleBase::timer::tick("ModuleIO", "output_HSR");
-            return;
         }
         else if (nspin == 4)
         {
             auto* p_ham_lcao
                 = dynamic_cast<hamilt::HamiltLCAO<std::complex<double>, std::complex<double>>*>(p_ham);
-            auto& hR = *(p_ham_lcao->getHR());
-            auto& sR = *(p_ham_lcao->getSR());
-#ifdef __MPI
-            auto r_vectors = PARAM.inp.dft_plus_u == 2 ? collect_global_R(hR)
-                                                       : merge_R_vectors(collect_global_R(hR), collect_global_R(sR));
-#else
-            auto r_vectors = merge_R_vectors(collect_local_R(hR), collect_local_R(sR));
-#endif
-#ifdef __MPI
-            const auto h_matrix = PARAM.inp.dft_plus_u == 2
-                                      ? prepare_dftu_distributed_matrix(hR, sR, pv, r_vectors, 0, sparse_thr)
-                                      : prepare_distributed_matrix(hR, pv, r_vectors, sparse_thr);
-            const auto s_matrix = prepare_distributed_matrix(sR, pv, r_vectors, sparse_thr);
-            std::vector<bool> output_blocks(r_vectors.size(), false);
-            for (size_t ir = 0; ir < r_vectors.size(); ++ir)
-            {
-                output_blocks[ir] = h_matrix.global_nnz[ir] > 0 || s_matrix.global_nnz[ir] > 0;
-                if (output_blocks[ir])
-                {
-                    HS_Arrays.output_R_coor.insert(
-                        Abfs::Vector3_Order<int>(r_vectors[ir].x, r_vectors[ir].y, r_vectors[ir].z));
-                }
-            }
-            write_distributed_matrix(r_vectors, h_matrix, output_blocks, hr_up_path, "H", istep, binary, append);
-            write_distributed_matrix(r_vectors, s_matrix, output_blocks, sr_path, "S", istep, binary, append);
-#else
-            const auto h_matrix = make_sparse_blocks(hR, pv, r_vectors, PARAM.globalv.nlocal, sparse_thr);
-            const auto s_matrix = make_sparse_blocks(sR, pv, r_vectors, PARAM.globalv.nlocal, sparse_thr);
-            std::vector<bool> output_blocks(r_vectors.size(), false);
-            for (size_t ir = 0; ir < r_vectors.size(); ++ir)
-            {
-                output_blocks[ir] = !h_matrix[ir].values.empty() || !s_matrix[ir].values.empty();
-                if (output_blocks[ir])
-                {
-                    HS_Arrays.output_R_coor.insert(
-                        Abfs::Vector3_Order<int>(r_vectors[ir].x, r_vectors[ir].y, r_vectors[ir].z));
-                }
-            }
-            write_serial_matrix(h_matrix, output_blocks, hr_up_path, "H", istep, binary, append);
-            write_serial_matrix(s_matrix, output_blocks, sr_path, "S", istep, binary, append);
-#endif
-            ModuleBase::timer::tick("ModuleIO", "output_HSR");
-            return;
+            output_direct_hsr(*p_ham_lcao, pv, HS_Arrays, options);
         }
+        ModuleBase::timer::tick("ModuleIO", "output_HSR");
+        return;
     }
 
-    if (nspin == 1 || nspin == 4) {
-        const int spin_now = 0;
-        // jingan add 2021-6-4, modify 2021-12-2
-        sparse_format::cal_HSR(ucell,pv, HS_Arrays, grid, spin_now, sparse_thr, kv.nmp, p_ham
+    output_legacy_hsr(ucell,
+                      istep,
+                      pv,
+                      HS_Arrays,
+                      grid,
+                      kv,
+                      p_ham,
 #ifdef __EXX
-            , Hexxd, Hexxc
+                      Hexxd,
+                      Hexxc,
 #endif
-        );
-    }
-    else if (nspin == 2) {
-        int spin_now = 1;
-
-        // save HR of spin down first (the current spin always be down)
-        sparse_format::cal_HSR(ucell,pv, HS_Arrays, grid, spin_now, sparse_thr, kv.nmp, p_ham
-#ifdef __EXX
-            , Hexxd, Hexxc
-#endif
-        );
-
-        // cal HR of the spin up
-        if (PARAM.inp.vl_in_h) {
-            const int ik = 0;
-            p_ham->refresh();
-            p_ham->updateHk(ik);
-            spin_now = 0;
-        }
-
-        sparse_format::cal_HSR(ucell,pv, HS_Arrays, grid, spin_now, sparse_thr, kv.nmp, p_ham
-#ifdef __EXX
-            , Hexxd, Hexxc
-#endif
-        );
-    }
-
-    ModuleIO::save_HSR_sparse(istep,
-                              pv,
-                              HS_Arrays,
-                              sparse_thr,
-                              binary,
-                              SR_filename,
-                              HR_filename_up,
-                              HR_filename_down);
-
-    sparse_format::destroy_HS_R_sparse(HS_Arrays);
+                      SR_filename,
+                      HR_filename_up,
+                      HR_filename_down,
+                      binary,
+                      sparse_thr);
 
     ModuleBase::timer::tick("ModuleIO", "output_HSR");
     return;
@@ -1718,51 +1759,13 @@ void ModuleIO::output_SR(Parallel_Orbitals& pv,
     if (PARAM.inp.nspin != 4)
     {
         auto* p_ham_lcao = dynamic_cast<hamilt::HamiltLCAO<std::complex<double>, double>*>(p_ham);
-#ifdef __MPI
-        const auto r_vectors = collect_global_R(*(p_ham_lcao->getSR()));
-        const auto matrix = prepare_distributed_matrix(*(p_ham_lcao->getSR()), pv, r_vectors, sparse_thr);
-        std::vector<bool> output_blocks(r_vectors.size(), false);
-        for (size_t ir = 0; ir < r_vectors.size(); ++ir)
-        {
-            output_blocks[ir] = matrix.global_nnz[ir] > 0;
-        }
-        write_distributed_matrix(r_vectors, matrix, output_blocks, SR_filename, "S", 0, binary, false);
-#else
-        const auto r_vectors = collect_local_R(*(p_ham_lcao->getSR()));
-        const auto blocks
-            = make_sparse_blocks(*(p_ham_lcao->getSR()), pv, r_vectors, PARAM.globalv.nlocal, sparse_thr);
-        std::vector<bool> output_blocks(r_vectors.size(), false);
-        for (size_t ir = 0; ir < r_vectors.size(); ++ir)
-        {
-            output_blocks[ir] = !blocks[ir].values.empty();
-        }
-        write_serial_matrix(blocks, output_blocks, SR_filename, "S", 0, binary, false);
-#endif
+        output_overlap_matrix(*(p_ham_lcao->getSR()), pv, SR_filename, binary, sparse_thr);
     }
     else
     {
         auto* p_ham_lcao
             = dynamic_cast<hamilt::HamiltLCAO<std::complex<double>, std::complex<double>>*>(p_ham);
-#ifdef __MPI
-        const auto r_vectors = collect_global_R(*(p_ham_lcao->getSR()));
-        const auto matrix = prepare_distributed_matrix(*(p_ham_lcao->getSR()), pv, r_vectors, sparse_thr);
-        std::vector<bool> output_blocks(r_vectors.size(), false);
-        for (size_t ir = 0; ir < r_vectors.size(); ++ir)
-        {
-            output_blocks[ir] = matrix.global_nnz[ir] > 0;
-        }
-        write_distributed_matrix(r_vectors, matrix, output_blocks, SR_filename, "S", 0, binary, false);
-#else
-        const auto r_vectors = collect_local_R(*(p_ham_lcao->getSR()));
-        const auto blocks
-            = make_sparse_blocks(*(p_ham_lcao->getSR()), pv, r_vectors, PARAM.globalv.nlocal, sparse_thr);
-        std::vector<bool> output_blocks(r_vectors.size(), false);
-        for (size_t ir = 0; ir < r_vectors.size(); ++ir)
-        {
-            output_blocks[ir] = !blocks[ir].values.empty();
-        }
-        write_serial_matrix(blocks, output_blocks, SR_filename, "S", 0, binary, false);
-#endif
+        output_overlap_matrix(*(p_ham_lcao->getSR()), pv, SR_filename, binary, sparse_thr);
     }
 
     ModuleBase::timer::tick("ModuleIO", "output_SR");
@@ -1783,12 +1786,7 @@ void ModuleIO::output_TR(const int istep,
     ModuleBase::TITLE("ModuleIO", "output_TR");
     ModuleBase::timer::tick("ModuleIO", "output_TR");
 
-    std::stringstream sst;
-    if (PARAM.inp.calculation == "md" && !PARAM.inp.out_app_flag) {
-        sst << PARAM.globalv.global_matrix_dir << istep << "_" << TR_filename;
-    } else {
-        sst << PARAM.globalv.global_out_dir << TR_filename;
-    }
+    const std::string output_path = make_matrix_output_path(TR_filename, istep);
 
     sparse_format::cal_TR(ucell,
                           pv,
@@ -1802,7 +1800,7 @@ void ModuleIO::output_TR(const int istep,
                           HS_Arrays.all_R_coor,
                           sparse_thr,
                           binary,
-                          sst.str().c_str(),
+                          output_path.c_str(),
                           pv,
                           "T",
                           istep);
