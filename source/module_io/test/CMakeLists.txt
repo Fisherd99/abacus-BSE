@@ -19,6 +19,28 @@ add_test(NAME io_input_test_para_4
 )
 
 AddTest(
+  TARGET hsr_mpi_distribution_test
+  LIBS MPI::MPI_CXX
+  SOURCES hsr_mpi_distribution_test.cpp
+)
+
+add_test(NAME hsr_mpi_distribution_test_parallel
+      COMMAND mpirun -np 4 ./hsr_mpi_distribution_test
+      WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
+
+AddTest(
+  TARGET hsr_mpi_writer_test
+  LIBS MPI::MPI_CXX parameter
+  SOURCES hsr_mpi_writer_test.cpp
+)
+
+add_test(NAME hsr_mpi_writer_test_parallel
+      COMMAND mpirun -np 4 ./hsr_mpi_writer_test
+      WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
+
+AddTest(
   TARGET read_exit_file_test
   LIBS parameter  ${math_libs} base device 
   SOURCES read_exit_file_test.cpp ../read_exit_file.cpp
