@@ -122,6 +122,50 @@ void ESolver_KS_LCAO<TK, TR>::runner(UnitCell& ucell, const int istep)
 
     auto* p_ham_lcao = dynamic_cast<hamilt::HamiltLCAO<TK, TR>*>(this->p_hamilt);
     assert(p_ham_lcao != nullptr);
+
+#ifdef __EXX
+    if (GlobalC::exx_info.info_global.cal_exx)
+    {
+        // The atom-initialized density is retained for the local potential.
+        // Diagonalize that semilocal Hamiltonian once to obtain occupied
+        // orbitals and the corresponding DMK/DMR used by exact exchange.
+        hsolver::HSolverLCAO<TK> hsolver_lcao_obj(&this->pv, PARAM.inp.ks_solver);
+        hsolver_lcao_obj.solve(this->p_hamilt, this->psi[0], this->pelec, true);
+
+        auto* pelec_lcao = dynamic_cast<elecstate::ElecStateLCAO<TK>*>(this->pelec);
+        assert(pelec_lcao != nullptr);
+        // HSolverLCAO normally constructs DMK/DMR itself.  dm_to_rho skips
+        // that work, but this path still needs an orbital DM for Fock exchange.
+        if (PARAM.inp.dm_to_rho)
+        {
+            pelec_lcao->calEBand();
+            elecstate::cal_dm_psi(pelec_lcao->DM->get_paraV_pointer(),
+                                  pelec_lcao->wg,
+                                  this->psi[0],
+                                  *pelec_lcao->DM);
+            pelec_lcao->DM->cal_DMR();
+        }
+        const auto& dm = *pelec_lcao->get_DM();
+        if (GlobalC::exx_info.info_ri.real_number)
+        {
+            this->exd->exx_eachiterinit(istep, ucell, dm, this->kv, 1);
+            this->exd->two_level_step = 1;
+        }
+        else
+        {
+            this->exc->exx_eachiterinit(istep, ucell, dm, this->kv, 1);
+            this->exc->two_level_step = 1;
+        }
+
+        // exx_beforescf() deliberately uses the semilocal first-loop XC.
+        // Restore the requested hybrid functional and regenerate its local
+        // potential from the unchanged atomic charge before rebuilding H(R).
+        XC_Functional::set_xc_type(ucell.atoms[0].ncpp.xc_func);
+        this->pelec->pot->update_from_charge(this->pelec->charge, &ucell);
+        p_ham_lcao->refresh();
+    }
+#endif
+
     // output_HSR captures the current spin channel first, then rebuilds spin
     // 0 when nspin == 2. Prime it with spin 1 to preserve that contract.
     const int initial_spin = PARAM.inp.nspin == 2 ? 1 : 0;

@@ -189,15 +189,17 @@ void Exx_LRI_Interface<T, Tdata>::exx_eachiterinit(const int istep,
     ModuleBase::TITLE("Exx_LRI_Interface","exx_eachiterinit");
     if (GlobalC::exx_info.info_global.cal_exx)
     {
-        if (!GlobalC::exx_info.info_global.separate_loop
-            && (this->two_level_step
-                || istep > 0
-                || PARAM.inp.init_wfc == "file") // non separate loop case
+        const bool atomic_nscf = PARAM.inp.calculation == "nscf"
+                                 && PARAM.inp.init_chg == "atomic";
+        if ((!GlobalC::exx_info.info_global.separate_loop
+             && (this->two_level_step
+                 || istep > 0
+                 || PARAM.inp.init_wfc == "file")) // non separate loop case
             || (GlobalC::exx_info.info_global.separate_loop
                 && PARAM.inp.init_wfc == "file"
                 && this->two_level_step == 0
                 && iter == 1)
-           )  // the first iter in separate loop case
+            || atomic_nscf) // one-shot EXX after the atomic-NSCF diagonalization
         {
             const bool flag_restart = (iter == 1) ? true : false;
             auto cal = [this, &ucell,&kv, &flag_restart](const elecstate::DensityMatrix<T, double>& dm_in)
@@ -220,10 +222,15 @@ void Exx_LRI_Interface<T, Tdata>::exx_eachiterinit(const int istep,
                     { this->cal_exx_elec(Ds, ucell,*dm_in.get_paraV_pointer()); }
             };
 
-            if(istep > 0 && flag_restart)
-                { cal(*this->dm_last_step); }
+            if (istep > 0 && flag_restart && !atomic_nscf)
+            {
+                assert(this->dm_last_step != nullptr);
+                cal(*this->dm_last_step);
+            }
             else
-                { cal(dm); }
+            {
+                cal(dm);
+            }
         }
     }
 }

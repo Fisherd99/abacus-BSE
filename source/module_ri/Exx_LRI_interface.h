@@ -115,7 +115,7 @@ public:
 
     int two_level_step = 0;
     double etot_last_outer_loop = 0.0;
-    elecstate::DensityMatrix<T, double>* dm_last_step;
+    elecstate::DensityMatrix<T, double>* dm_last_step = nullptr;
 
     std::shared_ptr<Exx_LRI<Tdata>> exx_ptr;
 
