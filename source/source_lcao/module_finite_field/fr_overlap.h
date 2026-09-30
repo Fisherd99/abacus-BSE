@@ -10,6 +10,7 @@
 #include "source_cell/unitcell.h"
 #include "source_hamilt/module_hcontainer/hcontainer.h"
 #include "source_base/math_lebedev_laikov.h"
+#include "first_order_overlap_integrator.h"
 
 
 // Keep this type distinct from the legacy global FR_overlap used by Wannier90.
@@ -35,6 +36,14 @@ public:
                         bool analytic_center_gradients = false,
                         ModuleBase::Vector3<double> momentum_transfer
                             = ModuleBase::Vector3<double>());
+
+    void set_first_order_parameters(
+        const UnitCell* ucell_in,
+        const LCAO_Orbitals* ptr_orb,
+        const Grid_Driver* GridD_in,
+        const Parallel_Orbitals* paraV,
+        ModuleBase::Vector3<double> momentum_transfer,
+        bool calculate_center_gradients);
 
     FiniteFieldFROverlap(const FiniteFieldFROverlap<T>& FR_in);
 
@@ -68,6 +77,14 @@ protected:
                   const std::array<T*, 3>& bra_derivative,
                   const std::array<T*, 3>& ket_derivative);
 
+  void cal_FR_IJR_two_center(const int& iat1,
+                             const int& iat2,
+                             const Parallel_Orbitals* paraV,
+                             const ModuleBase::Vector3<double>& dtau,
+                             T* data_pointer,
+                             const std::array<T*, 3>& bra_derivative,
+                             const std::array<T*, 3>& ket_derivative);
+
   std::map<std::pair<int, int>, double> psi_inter(const int& T1,
                                                   const std::set<std::pair<int, int>>& LN_pair1,
                                                   const double& r_norm);
@@ -85,6 +102,7 @@ protected:
   bool calculate_center_gradients = false;
   bool analytic_center_gradients = false;
   ModuleBase::Vector3<double> momentum_transfer;
+  std::unique_ptr<FirstOrderOverlapIntegrator> first_order_integrator;
   ModuleBase::Lebedev_laikov_grid* Leb_grid = nullptr;
   hamilt::HContainer<T>* FR_container = nullptr;
   std::vector<std::unique_ptr<hamilt::HContainer<T>>> dFR_datom;

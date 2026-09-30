@@ -209,16 +209,18 @@ void ReadInput::item_model()
         item.type = "String";
         item.description = R"(Selects the LCAO generalized-overlap implementation.
 * numerical_quadrature: reference 3D quadrature with finite-difference orbital gradients.
-* analytic_gradient: the same quadrature for link values with analytic radial and solid-harmonic displacement gradients.)";
+* analytic_gradient: the same quadrature for link values with analytic radial and solid-harmonic displacement gradients.
+* taylor_first_order: first-order Taylor expansion evaluated with legacy-compatible Orb11/Orb21 tables as exp(-i*q*R_bra) [S - i*q*D], without Rayleigh radial tables.)";
         item.default_value = "numerical_quadrature";
         item.set_availability("basis_type in [pw, lcao] and finite_field==true and basis_type==lcao");
         read_sync_string(input.finite_field_lcao_overlap);
         item.check_value = [](const Input_Item&, const Parameter& para) {
             if (para.input.finite_field_lcao_overlap != "numerical_quadrature"
-                && para.input.finite_field_lcao_overlap != "analytic_gradient")
+                && para.input.finite_field_lcao_overlap != "analytic_gradient"
+                && para.input.finite_field_lcao_overlap != "taylor_first_order")
             {
                 ModuleBase::WARNING_QUIT("ReadInput",
-                    "finite_field_lcao_overlap must be numerical_quadrature or analytic_gradient");
+                    "finite_field_lcao_overlap must be numerical_quadrature, analytic_gradient, or taylor_first_order");
             }
         };
         this->add_item(item);

@@ -5422,6 +5422,7 @@
 - **Description**: Selects the LCAO generalized-overlap implementation.
   - numerical_quadrature: reference 3D quadrature with finite-difference orbital gradients.
   - analytic_gradient: the same quadrature for link values with analytic radial and solid-harmonic displacement gradients.
+  - taylor_first_order: first-order Taylor expansion evaluated with legacy-compatible Orb11/Orb21 tables as exp(-i*q*R_bra) [S - i*q*D], without Rayleigh radial tables.
 - **Default**: numerical_quadrature
 
 [back to top](#full-list-of-input-keywords)

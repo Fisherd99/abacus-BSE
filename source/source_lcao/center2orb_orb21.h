@@ -23,7 +23,8 @@ class Center2_Orb::Orb21
           const Numerical_Orbital_Lm& nA2_in,
           const Numerical_Orbital_Lm& nB_in,
           const ModuleBase::Sph_Bessel_Recursive::D2* psb,
-          const ORB_gaunt_table& MGT_in);
+          const ORB_gaunt_table& MGT_in,
+          bool cache_intermediate_transform = true);
 
     void init_radial_table();
     void init_radial_table(const std::set<size_t>& radials); // unit: Bohr/MOT.dr
@@ -47,6 +48,7 @@ class Center2_Orb::Orb21
 
     const ModuleBase::Sph_Bessel_Recursive::D2* psb_ = nullptr;
     const ORB_gaunt_table& MGT;
+    bool cache_intermediate_transform_ = true;
 
     std::map<int, Numerical_Orbital_Lm> nA;
     std::map<int, Center2_Orb::Orb11> orb11s;

@@ -1508,12 +1508,15 @@ TEST_F(InputTest, Item_test2)
         auto it = find_label("finite_field_lcao_overlap", readinput.input_lists);
         ASSERT_NE(it, readinput.input_lists.end());
         EXPECT_EQ(param.input.finite_field_lcao_overlap, "numerical_quadrature");
-        it->second.str_values = {"analytic_gradient"};
-        it->second.read_value(it->second, param);
-        EXPECT_EQ(param.input.finite_field_lcao_overlap, "analytic_gradient");
         it->second.str_values = {"numerical_quadrature"};
         it->second.read_value(it->second, param);
         EXPECT_EQ(param.input.finite_field_lcao_overlap, "numerical_quadrature");
+        it->second.str_values = {"analytic_gradient"};
+        it->second.read_value(it->second, param);
+        EXPECT_EQ(param.input.finite_field_lcao_overlap, "analytic_gradient");
+        it->second.str_values = {"taylor_first_order"};
+        it->second.read_value(it->second, param);
+        EXPECT_EQ(param.input.finite_field_lcao_overlap, "taylor_first_order");
         param.input.finite_field_lcao_overlap = "invalid";
         testing::internal::CaptureStdout();
         EXPECT_EXIT(it->second.check_value(it->second, param),

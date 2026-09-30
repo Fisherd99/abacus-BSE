@@ -285,14 +285,24 @@ void build_links_for_direction(
     const auto make_integral = [&](const ModuleBase::Vector3<double>& delta) {
         std::unique_ptr<FiniteFieldFROverlap<Complex>> integral(
             new FiniteFieldFROverlap<Complex>());
-        integral->set_parameters(
-            [delta](const ModuleBase::Vector3<double> r) {
-                return std::exp(-ModuleBase::IMAG_UNIT * (delta * r));
-            },
-            // The plane-wave phase has an infinite angular expansion.
-            // 770 angular points converges semicore-rich links such as Mg.
-            &ucell, &orbitals, &grid, &parallel_orbitals, 140, 770,
-            calculate_forces, overlap_backend == "analytic_gradient", delta);
+        if (overlap_backend == "taylor_first_order")
+        {
+            integral->set_first_order_parameters(
+                &ucell, &orbitals, &grid, &parallel_orbitals, delta,
+                calculate_forces);
+        }
+        else
+        {
+            integral->set_parameters(
+                [delta](const ModuleBase::Vector3<double> r) {
+                    return std::exp(-ModuleBase::IMAG_UNIT * (delta * r));
+                },
+                // The plane-wave phase has an infinite angular expansion.
+                // 770 angular points converges semicore-rich links such as Mg.
+                &ucell, &orbitals, &grid, &parallel_orbitals, 140, 770,
+                calculate_forces, overlap_backend == "analytic_gradient",
+                delta);
+        }
         integral->calculate_FR();
         return integral;
     };

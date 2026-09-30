@@ -73,6 +73,24 @@ void FiniteFieldFROverlap<T>::set_parameters(fr_ptr fr_in,
 }
 
 template <typename T>
+void FiniteFieldFROverlap<T>::set_first_order_parameters(
+    const UnitCell* ucell_in, const LCAO_Orbitals* ptr_orb,
+    const Grid_Driver* GridD_in, const Parallel_Orbitals* paraV,
+    const ModuleBase::Vector3<double> momentum_transfer,
+    const bool calculate_center_gradients)
+{
+    this->ucell = ucell_in;
+    this->ptr_orb_ = ptr_orb;
+    this->calculate_center_gradients = calculate_center_gradients;
+    this->analytic_center_gradients = true;
+    this->momentum_transfer = momentum_transfer;
+    this->first_order_integrator.reset(new FirstOrderOverlapIntegrator(
+        *ptr_orb, momentum_transfer, calculate_center_gradients));
+    this->FR_container = new hamilt::HContainer<T>(paraV);
+    this->initialize_FR(GridD_in, paraV);
+}
+
+template <typename T>
 FiniteFieldFROverlap<T>::FiniteFieldFROverlap(
     const FiniteFieldFROverlap<T>& FR_in)
 {
@@ -89,6 +107,11 @@ FiniteFieldFROverlap<T>::FiniteFieldFROverlap(
         this->Leb_grid
             = new ModuleBase::Lebedev_laikov_grid(FR_in.Leb_grid->degree);
         this->Leb_grid->generate_grid_points();
+    }
+    if (FR_in.first_order_integrator)
+    {
+        this->first_order_integrator.reset(new FirstOrderOverlapIntegrator(
+            *this->ptr_orb_, this->momentum_transfer, false));
     }
 }
 
@@ -107,6 +130,7 @@ FiniteFieldFROverlap<T>::FiniteFieldFROverlap(FiniteFieldFROverlap<T>&& FR_in)
     this->dFR_datom = std::move(FR_in.dFR_datom);
     this->active_gradient_atom = FR_in.active_gradient_atom;
     FR_in.active_gradient_atom = -1;
+    this->first_order_integrator = std::move(FR_in.first_order_integrator);
     this->Leb_grid = FR_in.Leb_grid;
     FR_in.Leb_grid = nullptr;
 }
@@ -234,8 +258,17 @@ void FiniteFieldFROverlap<T>::calculate_FR()
             T* data_pointer = tmp.get_pointer(iR);
             std::array<T*, 3> bra_derivative{{nullptr, nullptr, nullptr}};
             std::array<T*, 3> ket_derivative{{nullptr, nullptr, nullptr}};
-            this->cal_FR_IJR(iat1, iat2, paraV, dtau, data_pointer,
-                             bra_derivative, ket_derivative);
+            if (this->first_order_integrator)
+            {
+                this->cal_FR_IJR_two_center(iat1, iat2, paraV, dtau,
+                                            data_pointer, bra_derivative,
+                                            ket_derivative);
+            }
+            else
+            {
+                this->cal_FR_IJR(iat1, iat2, paraV, dtau, data_pointer,
+                                 bra_derivative, ket_derivative);
+            }
         }
     }
 
@@ -274,8 +307,90 @@ void FiniteFieldFROverlap<T>::calculate_center_gradient(const int atom)
                 if (iat1 == atom) bra[component] = pointer;
                 if (iat2 == atom) ket[component] = pointer;
             }
-            this->cal_FR_IJR(iat1, iat2, paraV, dtau, pair.get_pointer(iR),
-                             bra, ket);
+            if (this->first_order_integrator)
+            {
+                this->cal_FR_IJR_two_center(iat1, iat2, paraV, dtau,
+                                            pair.get_pointer(iR), bra, ket);
+            }
+            else
+            {
+                this->cal_FR_IJR(iat1, iat2, paraV, dtau, pair.get_pointer(iR),
+                                 bra, ket);
+            }
+        }
+    }
+}
+
+template <typename T>
+void FiniteFieldFROverlap<T>::cal_FR_IJR_two_center(
+    const int& iat1, const int& iat2, const Parallel_Orbitals* paraV,
+    const ModuleBase::Vector3<double>& dtau, T* data_pointer,
+    const std::array<T*, 3>& bra_derivative,
+    const std::array<T*, 3>& ket_derivative)
+{
+    int I1, T1, I2, T2;
+    this->ucell->iat2iait(iat1, &I1, &T1);
+    this->ucell->iat2iait(iat2, &I2, &T2);
+    const Atom& atom1 = this->ucell->atoms[T1];
+    const Atom& atom2 = this->ucell->atoms[T2];
+    const int npol = this->ucell->get_npol();
+    const std::vector<int> row_indexes = paraV->get_indexes_row(iat1);
+    const std::vector<int> col_indexes = paraV->get_indexes_col(iat2);
+    const ModuleBase::Vector3<double> center_bra
+        = this->ucell->get_tau(iat1) * this->ucell->lat0;
+    const ModuleBase::Vector3<double> center_ket = center_bra + dtau;
+
+    int irow = -1;
+    for (std::size_t iw1l = 0; iw1l < row_indexes.size(); iw1l += npol)
+    {
+        ++irow;
+        const int iw1 = row_indexes[iw1l] / npol;
+        const int l1 = atom1.iw2l[iw1];
+        const int n1 = atom1.iw2n[iw1];
+        const int encoded_m1 = atom1.iw2m[iw1];
+        const int m1 = encoded_m1 % 2 == 0 ? -encoded_m1 / 2
+                                            : (encoded_m1 + 1) / 2;
+        int icol = -1;
+        for (std::size_t iw2l = 0; iw2l < col_indexes.size(); iw2l += npol)
+        {
+            ++icol;
+            const int iw2 = col_indexes[iw2l] / npol;
+            const int l2 = atom2.iw2l[iw2];
+            const int n2 = atom2.iw2n[iw2];
+            const int encoded_m2 = atom2.iw2m[iw2];
+            const int m2 = encoded_m2 % 2 == 0 ? -encoded_m2 / 2
+                                                : (encoded_m2 + 1) / 2;
+            std::complex<double> value;
+            std::complex<double> grad_bra[3];
+            std::complex<double> grad_ket[3];
+            this->first_order_integrator->calculate(
+                T1, l1, n1, encoded_m1, T2, l2, n2, encoded_m2,
+                center_bra, center_ket, &value,
+                this->calculate_center_gradients ? grad_bra : nullptr,
+                this->calculate_center_gradients ? grad_ket : nullptr);
+            for (int ipol = 0; ipol < npol; ++ipol)
+            {
+                const int index = (npol * irow + ipol)
+                                      * static_cast<int>(col_indexes.size())
+                                  + npol * icol + ipol;
+                data_pointer[index] = generalized_overlap_cast<T>(value);
+                if (this->calculate_center_gradients)
+                {
+                    for (int alpha = 0; alpha < 3; ++alpha)
+                    {
+                        if (bra_derivative[alpha])
+                        {
+                            bra_derivative[alpha][index]
+                                += generalized_overlap_cast<T>(grad_bra[alpha]);
+                        }
+                        if (ket_derivative[alpha])
+                        {
+                            ket_derivative[alpha][index]
+                                += generalized_overlap_cast<T>(grad_ket[alpha]);
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -481,13 +596,16 @@ void FiniteFieldFROverlap<T>::cal_FR_IJR(const int& iat1, const int& iat2, const
                                 const int minus_slot = 2 * component;
                                 const int plus_slot = minus_slot + 1;
                                 const double orbital_minus
-                                    = shifted_psi2[minus_slot][std::make_pair(L2, N2)]
+                                    = shifted_psi2[minus_slot]
+                                          [std::make_pair(L2, N2)]
                                       * shifted_rly2[minus_slot][lm];
                                 const double orbital_plus
-                                    = shifted_psi2[plus_slot][std::make_pair(L2, N2)]
+                                    = shifted_psi2[plus_slot]
+                                          [std::make_pair(L2, N2)]
                                       * shifted_rly2[plus_slot][lm];
-                                orbital_gradient = (orbital_plus - orbital_minus)
-                                                   / (2.0 * derivative_step);
+                                orbital_gradient
+                                    = (orbital_plus - orbital_minus)
+                                      / (2.0 * derivative_step);
                             }
                             // d phi(r-R2) / d R2 = -grad_{r-R2} phi.
                             grid_2_derivative[component][count * col_num + icol2]
