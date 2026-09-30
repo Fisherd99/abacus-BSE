@@ -790,6 +790,14 @@ void ESolver_KS_LCAO<TK, TR>::after_scf(UnitCell& ucell, const int istep, const 
     //! 1) call after_scf() of ESolver_KS
     ESolver_KS::after_scf(ucell, istep, conv_esolver);
 
+    if (this->finite_field && conv_esolver)
+    {
+        this->finite_field->report_polarization(
+            *reinterpret_cast<hamilt::FiniteFieldLCAOController::Wavefunctions*>(
+                this->psi),
+            GlobalV::ofs_running);
+    }
+
     //! 2) output of lcao every few ionic steps
     ModuleIO::ctrl_scf_lcao<TK, TR>(ucell,
             *this->inp_, this->kv, this->pelec, this->dmat.dm, this->pv,

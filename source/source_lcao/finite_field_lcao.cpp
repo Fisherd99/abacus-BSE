@@ -449,7 +449,10 @@ struct FiniteFieldLCAOController::Impl
 {
     FiniteFieldLCAOConfig config;
     const UnitCell* ucell = nullptr;
+    const Grid_Driver* grid = nullptr;
     const K_Vectors* kpoints = nullptr;
+    const LCAO_Orbitals* orbitals = nullptr;
+    const RadialCollection* radial_orbitals = nullptr;
     const Parallel_Orbitals* parallel_orbitals = nullptr;
     HamiltLCAO<Complex, double>* hamiltonian = nullptr;
     int basis_size = 0;
@@ -463,6 +466,29 @@ struct FiniteFieldLCAOController::Impl
     std::vector<std::vector<Complex>> final_states;
     bool prepared = false;
     bool final_cache_valid = false;
+    double final_enthalpy = 0.0;
+
+    std::unique_ptr<DirectionData> build_direction(const int direction,
+                                                   const bool calculate_forces,
+                                                   std::ostream& log) const
+    {
+        std::unique_ptr<DirectionData> data(new DirectionData());
+        data->strings = ModuleCell::build_periodic_kpoint_strings(
+            this->config.mesh, direction + 1, 1);
+        build_links_for_direction(*data, direction, *this->ucell, *this->grid,
+                                  *this->kpoints, *this->orbitals,
+                                  *this->radial_orbitals,
+                                  *this->parallel_orbitals, calculate_forces,
+                                  this->config.overlap_backend,
+                                  this->config.rayleigh_lmax);
+        log << " Finite-field LCAO AO-link adjoint_error["
+            << "xyz"[direction] << "]=" << std::setprecision(15)
+            << data->max_adjoint_error << " interior="
+            << data->max_interior_adjoint_error << " closure="
+            << data->max_closure_adjoint_error << std::setprecision(6)
+            << std::endl;
+        return data;
+    }
 
     std::array<double, 3> polarization_quanta() const
     {
@@ -632,7 +658,10 @@ void FiniteFieldLCAOController::configure(
     this->impl.reset(new Impl());
     this->impl->config = config;
     this->impl->ucell = &ucell;
+    this->impl->grid = &grid;
     this->impl->kpoints = &kpoints;
+    this->impl->orbitals = &orbitals;
+    this->impl->radial_orbitals = &radial_orbitals;
     this->impl->parallel_orbitals = &parallel_orbitals;
     this->impl->hamiltonian = &hamiltonian;
     this->impl->basis_size = parallel_orbitals.get_global_row_size();
@@ -656,24 +685,11 @@ void FiniteFieldLCAOController::configure(
             = finite_field_lcao_direction_role(
                 this->impl->projections[direction], config.calculate_forces);
         this->impl->active[direction] = role.couple_field;
-        if (!role.report_polarization) continue;
-        this->impl->directions[direction].reset(new DirectionData());
-        this->impl->directions[direction]->strings
-            = ModuleCell::build_periodic_kpoint_strings(config.mesh, direction + 1, 1);
-        build_links_for_direction(*this->impl->directions[direction], direction,
-                                  ucell, grid, kpoints, orbitals, radial_orbitals,
-                                  parallel_orbitals,
-                                  role.calculate_force_derivatives,
-                                  config.overlap_backend,
-                                  config.rayleigh_lmax);
-        log << " Finite-field LCAO AO-link adjoint_error["
-            << "xyz"[direction] << "]=" << std::setprecision(15)
-            << this->impl->directions[direction]->max_adjoint_error
-            << " interior="
-            << this->impl->directions[direction]->max_interior_adjoint_error
-            << " closure="
-            << this->impl->directions[direction]->max_closure_adjoint_error
-            << std::setprecision(6) << std::endl;
+        if (!role.couple_field) continue;
+        this->impl->directions[direction]
+            = this->impl->build_direction(direction,
+                                          role.calculate_force_derivatives,
+                                          log);
     }
     for (int it = 0; it < ucell.ntype; ++it)
     {
@@ -736,7 +752,6 @@ double FiniteFieldLCAOController::evaluate(
     this->impl->final_states = all_occupied_states(
         wavefunctions, this->impl->kpoints->get_nks(),
         *this->impl->parallel_orbitals, this->impl->config.occupied_bands);
-    std::array<FiniteFieldPolarization, 3> lattice{};
     double electronic_enthalpy = 0.0;
     for (int direction = 0; direction < 3; ++direction)
     {
@@ -744,46 +759,68 @@ double FiniteFieldLCAOController::evaluate(
         DirectionData& data = *this->impl->directions[direction];
         this->impl->prepare_direction(data, this->impl->final_states,
                                       Complex(0.0, 0.0), nullptr);
-        lattice[direction] = calculate_finite_field_polarization(
+        const FiniteFieldPolarization lattice
+            = calculate_finite_field_polarization(
             data.strings, data.forward_determinants, this->impl->periods[direction],
             2, this->impl->ions);
-        if (this->impl->active[direction])
-        {
-            const FiniteFieldElectricEnthalpy component
-                = data.branch.update(lattice[direction],
-                                     this->impl->amplitudes[direction]);
-            electronic_enthalpy -= this->impl->amplitudes[direction]
-                                   * component.continuous_electronic_dipole;
-        }
+        const FiniteFieldElectricEnthalpy component
+            = data.branch.update(lattice, this->impl->amplitudes[direction]);
+        electronic_enthalpy -= this->impl->amplitudes[direction]
+                               * component.continuous_electronic_dipole;
     }
     const double ionic_dipole = finite_field_cartesian_ionic_dipole(
         this->impl->ions, this->impl->config.cartesian_axis);
     const double enthalpy = electronic_enthalpy
                            - this->impl->config.amplitude * ionic_dipole;
+    this->impl->final_enthalpy = enthalpy;
+    if (this->impl->config.branch_io == "write")
+    {
+        this->impl->write_branch_state();
+    }
+    this->impl->final_cache_valid = true;
+    return enthalpy;
+}
+
+void FiniteFieldLCAOController::report_polarization(
+    const Wavefunctions& wavefunctions, std::ostream& log)
+{
+    if (!this->impl->final_cache_valid)
+    {
+        this->impl->final_states = all_occupied_states(
+            wavefunctions, this->impl->kpoints->get_nks(),
+            *this->impl->parallel_orbitals, this->impl->config.occupied_bands);
+    }
     std::array<FiniteFieldPolarization, 3> reported_lattice{};
     for (int direction = 0; direction < 3; ++direction)
     {
-        if (!this->impl->directions[direction]) continue;
+        std::unique_ptr<DirectionData> temporary;
+        DirectionData* data = this->impl->directions[direction].get();
+        if (data == nullptr)
+        {
+            temporary = this->impl->build_direction(direction, false, log);
+            data = temporary.get();
+        }
+        this->impl->prepare_direction(*data, this->impl->final_states,
+                                      Complex(0.0, 0.0),
+                                      nullptr);
+        const FiniteFieldPolarization lattice
+            = calculate_finite_field_polarization(
+                data->strings, data->forward_determinants,
+                this->impl->periods[direction], 2, this->impl->ions);
         reported_lattice[direction] = finite_field_legacy_principal_branch(
-            lattice[direction], direction + 1, this->impl->ions);
+            lattice, direction + 1, this->impl->ions);
     }
     const FiniteFieldCartesianPolarization physical
         = finite_field_physical_polarization(finite_field_cartesian_polarization(
             reported_lattice, this->impl->lattice_unit_vectors, this->impl->ions,
             this->impl->config.cell_volume_bohr3));
-    if (this->impl->config.branch_io == "write")
-    {
-        this->impl->write_branch_state();
-    }
     log << std::setprecision(15)
         << " Finite-field LCAO polarization_e_per_bohr2 electronic="
         << physical.electronic[0] << " " << physical.electronic[1] << " "
         << physical.electronic[2] << " total=" << physical.total[0] << " "
         << physical.total[1] << " " << physical.total[2]
-        << " E_finite_field=" << enthalpy << " Ry"
+        << " E_finite_field=" << this->impl->final_enthalpy << " Ry"
         << std::setprecision(6) << std::endl;
-    this->impl->final_cache_valid = true;
-    return enthalpy;
 }
 
 int FiniteFieldLCAOController::berry_cycles() const

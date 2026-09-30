@@ -84,6 +84,8 @@ class FiniteFieldLCAOController
                    std::ostream& log);
     void prepare_cycle(const Wavefunctions& wavefunctions);
     double evaluate(const Wavefunctions& wavefunctions, std::ostream& log);
+    void report_polarization(const Wavefunctions& wavefunctions,
+                             std::ostream& log);
     void add_force(const Wavefunctions& wavefunctions,
                    ModuleBase::matrix& force,
                    std::ostream& log);
