@@ -10,7 +10,7 @@ namespace elecstate
 /// @brief calculate etot
 double fenergy::calculate_etot()
 {
-    etot = eband + deband + (etxc - etxcc) + ewald_energy + hartree_energy + demet + descf + exx + efield
+    etot = eband + deband + (etxc - etxcc) + ewald_energy + hartree_energy + demet + descf + exx + efield + finite_field
             + gatefield + evdw + correction_el + esol_el + esol_cav + edftu + edeepks_scf + escon + ml_exx;
     return etot;
 }
@@ -19,7 +19,7 @@ double fenergy::calculate_etot()
 double fenergy::calculate_harris()
 {
     etot_harris = eband + deband_harris + (etxc - etxcc) + ewald_energy + hartree_energy + demet + descf + exx
-                    + efield + gatefield + evdw + correction_el + esol_el + esol_cav + edftu + edeepks_scf + escon + ml_exx;
+                    + efield + finite_field + gatefield + evdw + correction_el + esol_el + esol_cav + edftu + edeepks_scf + escon + ml_exx;
     return etot_harris;
 }
 
@@ -27,7 +27,7 @@ double fenergy::calculate_harris()
 void fenergy::clear_all()
 {
     etot = etot_old = eband = deband = etxc = etxcc = vtxc = ewald_energy = hartree_energy = demet = descf = exx
-        = efield = gatefield = evdw = correction_el = etot_harris = deband_harris = esol_el = esol_cav = edftu = edeepks_scf = escon
+        = efield = finite_field = gatefield = evdw = correction_el = etot_harris = deband_harris = esol_el = esol_cav = edftu = edeepks_scf = escon
         = ml_exx = 0.0;
 }
 
@@ -46,6 +46,7 @@ void fenergy::print_all() const
     std::cout << " exx=" << exx << std::endl;
     std::cout << " ml_exx=" << ml_exx << std::endl;
     std::cout << " efiled=" << efield << std::endl;
+    std::cout << " finite_field=" << finite_field << std::endl;
     std::cout << " gatefiled=" << gatefield << std::endl;
     std::cout << " evdw=" << evdw << std::endl;
     std::cout << " correction_el=" << correction_el << std::endl;

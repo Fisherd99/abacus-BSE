@@ -15,6 +15,11 @@
 #include <memory>
 #include <complex>
 
+namespace hamilt
+{
+class FiniteFieldLCAOController;
+}
+
 //-----------------------------------
 // ESolver for LCAO
 //-----------------------------------
@@ -48,6 +53,8 @@ class ESolver_KS_LCAO : public ESolver_KS
 
     virtual void hamilt2rho_single(UnitCell& ucell, const int istep, const int iter, const double ethr) override;
 
+    void setup_finite_field(const UnitCell& ucell);
+
     virtual void iter_finish(UnitCell& ucell, const int istep, int& iter, bool& conv_esolver) override;
 
     virtual void after_scf(UnitCell& ucell, const int istep, const bool conv_esolver) override;
@@ -56,6 +63,8 @@ class ESolver_KS_LCAO : public ESolver_KS
 
     //! Electronic wave functions (moved from base class)
     psi::Psi<TK>* psi = nullptr;
+
+    std::unique_ptr<hamilt::FiniteFieldLCAOController> finite_field;
 
     //! Store information about Adjacent Atoms 
     Record_adj RA;

@@ -1454,6 +1454,71 @@ TEST_F(InputTest, Item_test2)
         output = testing::internal::GetCapturedStdout();
         EXPECT_THAT(output, testing::HasSubstr("NOTICE"));
     }
+    { // finite_field
+        auto it = find_label("finite_field", readinput.input_lists);
+        ASSERT_NE(it, readinput.input_lists.end());
+        it->second.str_values = {"1"};
+        it->second.read_value(it->second, param);
+        EXPECT_TRUE(param.input.finite_field);
+    }
+    { // finite_field_dir
+        auto it = find_label("finite_field_dir", readinput.input_lists);
+        ASSERT_NE(it, readinput.input_lists.end());
+        param.input.finite_field = true;
+        param.input.finite_field_dir = 0;
+        testing::internal::CaptureStdout();
+        EXPECT_EXIT(it->second.check_value(it->second, param), ::testing::ExitedWithCode(1), "");
+        output = testing::internal::GetCapturedStdout();
+        EXPECT_THAT(output, testing::HasSubstr("finite_field_dir"));
+        param.input.finite_field_dir = 3;
+    }
+    { // finite_field_amp
+        auto it = find_label("finite_field_amp", readinput.input_lists);
+        ASSERT_NE(it, readinput.input_lists.end());
+        it->second.str_values = {"0.001"};
+        it->second.read_value(it->second, param);
+        EXPECT_DOUBLE_EQ(param.input.finite_field_amp, 0.001);
+    }
+    { // finite_field_nberrycyc
+        auto it = find_label("finite_field_nberrycyc", readinput.input_lists);
+        ASSERT_NE(it, readinput.input_lists.end());
+        param.input.finite_field = true;
+        param.input.finite_field_nberrycyc = 0;
+        testing::internal::CaptureStdout();
+        EXPECT_EXIT(it->second.check_value(it->second, param), ::testing::ExitedWithCode(1), "");
+        output = testing::internal::GetCapturedStdout();
+        EXPECT_THAT(output, testing::HasSubstr("finite_field_nberrycyc"));
+        param.input.finite_field_nberrycyc = 2;
+    }
+    { // finite_field_branch_io
+        auto it = find_label("finite_field_branch_io", readinput.input_lists);
+        ASSERT_NE(it, readinput.input_lists.end());
+        EXPECT_EQ(param.input.finite_field_branch_io, "none");
+        it->second.str_values = {"read"};
+        it->second.read_value(it->second, param);
+        EXPECT_EQ(param.input.finite_field_branch_io, "read");
+        param.input.finite_field_branch_io = "invalid";
+        testing::internal::CaptureStdout();
+        EXPECT_EXIT(it->second.check_value(it->second, param), ::testing::ExitedWithCode(1), "");
+        output = testing::internal::GetCapturedStdout();
+        EXPECT_THAT(output, testing::HasSubstr("finite_field_branch_io"));
+        param.input.finite_field_branch_io = "none";
+    }
+    { // finite_field_lcao_overlap
+        auto it = find_label("finite_field_lcao_overlap", readinput.input_lists);
+        ASSERT_NE(it, readinput.input_lists.end());
+        EXPECT_EQ(param.input.finite_field_lcao_overlap, "numerical_quadrature");
+        it->second.str_values = {"numerical_quadrature"};
+        it->second.read_value(it->second, param);
+        EXPECT_EQ(param.input.finite_field_lcao_overlap, "numerical_quadrature");
+        param.input.finite_field_lcao_overlap = "invalid";
+        testing::internal::CaptureStdout();
+        EXPECT_EXIT(it->second.check_value(it->second, param),
+                    ::testing::ExitedWithCode(1), "");
+        output = testing::internal::GetCapturedStdout();
+        EXPECT_THAT(output, testing::HasSubstr("finite_field_lcao_overlap"));
+        param.input.finite_field_lcao_overlap = "numerical_quadrature";
+    }
     { // vdw_s6
         auto it = find_label("vdw_s6", readinput.input_lists);
         param.input.vdw_s6 = "default";

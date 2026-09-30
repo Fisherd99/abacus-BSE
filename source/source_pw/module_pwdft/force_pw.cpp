@@ -18,6 +18,7 @@
 #include "source_estate/module_pot/efield.h"
 #include "source_estate/module_pot/gatefield.h"
 #include "source_hamilt/module_ewald/h_ewald_pw.h"
+#include "source_hamilt/module_finite_field/finite_field_polarization.h"
 #include "source_hamilt/module_surchem/surchem.h"
 #include "source_hamilt/module_vdw/vdw.h"
 
@@ -42,6 +43,9 @@ void Forces<FPTYPE, Device>::cal_force(const int nspin,
                                        surchem& solvent,
                                        const Plus_U_Base* p_dftu,
                                        const pseudopot_cell_vl* locpp,
+                                       const bool finite_field,
+                                       const int finite_field_dir,
+                                       const double finite_field_amp,
                                        const pseudopot_cell_vnl* p_nlpp,
                                        K_Vectors* pkv,
                                        ModulePW::PW_Basis_K* wfc_basis,
@@ -185,6 +189,13 @@ void Forces<FPTYPE, Device>::cal_force(const int nspin,
                     force(iat, ipol) += forceonsite(iat, ipol);
                 }
 
+                if (finite_field && ipol == finite_field_dir - 1)
+                {
+                    force(iat, ipol)
+                        += hamilt::finite_field_ionic_force(
+                            finite_field_amp,
+                            ucell.atoms[it].ncpp.zv);
+                }
                 iat++;
             }
         }

@@ -129,7 +129,8 @@ class Force_Stress_LCAO
                         const Exx_Info& exx_info,
                         const FSCalcConfig& cfg,
                         const int td_stype = 0,
-                        hamilt::Hamilt<T>* p_hamilt = nullptr);
+                        hamilt::Hamilt<T>* p_hamilt = nullptr,
+                        bool print_total = true);
 
   private:
     int nat;

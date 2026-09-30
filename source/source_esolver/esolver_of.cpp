@@ -571,7 +571,10 @@ void ESolver_OF::cal_force(BaseCell& basecell, ModuleBase::matrix& force)
     ff.cal_force(this->inp_->nspin, PARAM.globalv.domag, PARAM.globalv.domag_z, this->inp_->gga_grad,
                  this->inp_->dft_plus_u || this->inp_->sc_mag_switch,
                  ucell, force, this->get_vdw_result(), *pelec, this->pw_rho, &ucell.symm, &sf,
-                 this->solvent, nullptr, &this->locpp);
+                 this->solvent, nullptr, &this->locpp,
+                 false,
+                 0,
+                 0.0);
 }
 
 /**

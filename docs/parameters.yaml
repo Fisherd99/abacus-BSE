@@ -4251,6 +4251,64 @@ parameters:
     default_value: "0.0"
     unit: "a.u., 1 a.u. = 51.4220632*10^10 V/m."
     availability: efield_flag==true
+  - name: finite_field
+    category: Periodic finite electric field
+    type: Boolean
+    description: |
+      Enables a homogeneous electric field in a periodic insulating solid using the Berry-phase finite-field Hamiltonian.
+
+      [NOTE] This is distinct from efield_flag, which adds a saw-like slab potential.
+    default_value: "False"
+    unit: ""
+    availability: "basis_type in [pw, lcao]"
+  - name: finite_field_dir
+    category: Periodic finite electric field
+    type: Integer
+    description: |
+      Cartesian direction of the periodic homogeneous field: 1=x, 2=y, or 3=z.
+
+      [NOTE] For a non-orthogonal cell, the Cartesian field is projected onto all lattice-string directions with nonzero components. The complete Monkhorst-Pack mesh must contain at least one k point along each such direction. A one-point direction is the Gamma-only k -> k+G Wilson-loop discretization; it is supported but normally requires convergence checks against denser meshes.
+    default_value: "3"
+    unit: ""
+    availability: "basis_type in [pw, lcao] and finite_field==true"
+  - name: finite_field_amp
+    category: Periodic finite electric field
+    type: Real
+    description: |
+      Amplitude of the periodic homogeneous electric field, using the same Rydberg atomic units as Quantum ESPRESSO lelfield.
+    default_value: "0.0"
+    unit: Ry atomic unit
+    availability: "basis_type in [pw, lcao] and finite_field==true"
+  - name: finite_field_nberrycyc
+    category: Periodic finite electric field
+    type: Integer
+    description: |
+      Number of frozen finite-field Hamiltonian wavefunction cycles per outer charge-density iteration, corresponding to Quantum ESPRESSO nberrycyc.
+    default_value: "1"
+    unit: ""
+    availability: "basis_type in [pw, lcao] and finite_field==true"
+  - name: finite_field_branch_io
+    category: Periodic finite electric field
+    type: String
+    description: |
+      Controls persistence of the electronic-polarization branch state.
+      * none: do not read or write a branch state.
+      * read: initialize all three lattice-direction branches from finite_field_branch_state.dat in read_file_dir.
+      * write: update all three lattice-direction branches in finite_field_branch_state.dat in OUT.${suffix} after each polarization evaluation.
+
+      [NOTE] The saved Cartesian field axis, active lattice directions, lattice periods, and polarization quanta must match the current calculation.
+    default_value: none
+    unit: ""
+    availability: "basis_type in [pw, lcao] and finite_field==true"
+  - name: finite_field_lcao_overlap
+    category: Periodic finite electric field
+    type: String
+    description: |
+      Selects the LCAO generalized-overlap implementation.
+      * numerical_quadrature: reference 3D quadrature with finite-difference orbital gradients.
+    default_value: numerical_quadrature
+    unit: ""
+    availability: "basis_type in [pw, lcao] and finite_field==true and basis_type==lcao"
   - name: gate_flag
     category: Gate field (compensating charge)
     type: Boolean

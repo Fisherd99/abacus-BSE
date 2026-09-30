@@ -23,6 +23,7 @@ add_library(
     read_orb.cpp
     klist.cpp
     klist_io.cpp
+    kpoint_strings.cpp
     reciprocal_grid.cpp
     parallel_kpoints.cpp
     cell_index.cpp

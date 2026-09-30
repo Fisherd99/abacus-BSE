@@ -238,7 +238,8 @@ void assemble_print_force(const UnitCell& ucell,
                           const std::string& dpks_out_type,
                           const LCAOForceParts& parts,
                           const double force_threshold,
-                          ModuleBase::matrix& fcs)
+                          ModuleBase::matrix& fcs,
+                          const bool print_total)
 {
     const int nat = ucell.nat;
     //---------------------------------
@@ -295,7 +296,10 @@ void assemble_print_force(const UnitCell& ucell,
     GlobalV::ofs_running << std::setiosflags(std::ios::left);
 
     // this->printforce_total(ry, istestf, fcs);
-    ModuleIO::print_force(GlobalV::ofs_running, ucell, "TOTAL-FORCE (eV/Angstrom)", fcs, false);
+    if (print_total)
+    {
+        ModuleIO::print_force(GlobalV::ofs_running, ucell, "TOTAL-FORCE (eV/Angstrom)", fcs, false);
+    }
     net_force*= ModuleBase::Ry_to_eV / ModuleBase::BOHR_TO_A;
     ModuleBase::GlobalFunc::OUT(GlobalV::ofs_running, "Net force vector (eV/Ang)", net_force.x, net_force.y, net_force.z);
     ModuleBase::GlobalFunc::OUT(GlobalV::ofs_running, "Total drift (ev/Ang)", net_force.norm());

@@ -80,7 +80,9 @@ void ESolver_GetS::before_all_runners(BaseCell& basecell, const Input_para& inp)
     }
 
     // 1.3) Setup k-points according to symmetry.
-    const bool use_ibz = !inp.berry_phase && ModuleSymmetry::Symmetry::symm_flag != -1;
+    const bool use_ibz = !inp.berry_phase
+                         && !inp.finite_field
+                         && ModuleSymmetry::Symmetry::symm_flag != -1;
     const bool gamma_only_local = PARAM.globalv.gamma_only_local;
     const double kspacing[3] = {this->inp_->kspacing[0], this->inp_->kspacing[1], this->inp_->kspacing[2]};
     const double koffset[3] = {this->inp_->koffset[0], this->inp_->koffset[1], this->inp_->koffset[2]};

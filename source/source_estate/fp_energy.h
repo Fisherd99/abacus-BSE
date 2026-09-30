@@ -32,6 +32,7 @@ struct fenergy
     double ml_exx = 0.0;         ///< the ML-EXX energy.
 
     double efield = 0.0;    ///< dipole potential in surface calculations
+    double finite_field = 0.0; ///< periodic finite-field electric enthalpy term
     double gatefield = 0.0; ///< correction energy for gatefield
     double evdw = 0.0;      ///< the vdw energy
     double correction_el = 0.0; ///< electrostatic isolated-cell correction

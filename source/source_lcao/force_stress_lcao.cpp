@@ -96,7 +96,8 @@ void Force_Stress_LCAO<T>::getForceStress(UnitCell& ucell,
                                           const Exx_Info& exx_info,
                                           const FSCalcConfig& cfg,
                                           const int td_stype,
-                                          hamilt::Hamilt<T>* p_hamilt)
+                                          hamilt::Hamilt<T>* p_hamilt,
+                                          const bool print_total)
 {
     ModuleBase::TITLE("Force_Stress_LCAO", "getForceStress");
     ModuleBase::timer::start("Force_Stress_LCAO", "getForceStress");
@@ -205,7 +206,7 @@ void Force_Stress_LCAO<T>::getForceStress(UnitCell& ucell,
     if (isforce)
     {
         LCAO_domain::assemble_print_force(ucell, istestf, vdw_result, exx_info, symm, deepks.dpks_out_type, parts,
-                                          force_invalid_threshold_ev, fcs);
+                                          force_invalid_threshold_ev, fcs, print_total);
     } // end of force calculation
     //---------------------------------
     // begin calculate and output stress

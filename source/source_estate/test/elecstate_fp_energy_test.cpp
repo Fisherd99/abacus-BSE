@@ -28,25 +28,29 @@ TEST_F(fenergy, calculate_etot)
 {
     f_en.eband = 1.0;
     f_en.deband = 2.0;
+    f_en.finite_field = -0.25;
     f_en.calculate_etot();
-    EXPECT_EQ(f_en.etot, 3.0);
+    EXPECT_EQ(f_en.etot, 2.75);
 }
 
 TEST_F(fenergy, calculate_harris)
 {
     f_en.eband = 1.0;
     f_en.deband_harris = 2.0;
+    f_en.finite_field = -0.25;
     f_en.calculate_harris();
-    EXPECT_EQ(f_en.etot_harris, 3.0);
+    EXPECT_EQ(f_en.etot_harris, 2.75);
 }
 
 TEST_F(fenergy, clear_all)
 {
     f_en.eband = 1.0;
     f_en.etot = 2.0;
+    f_en.finite_field = 3.0;
     f_en.clear_all();
     EXPECT_EQ(f_en.eband, 0.0);
     EXPECT_EQ(f_en.etot, 0.0);
+    EXPECT_EQ(f_en.finite_field, 0.0);
 }
 
 TEST_F(fenergy, print_all)

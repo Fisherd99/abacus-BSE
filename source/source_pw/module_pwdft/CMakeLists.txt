@@ -41,6 +41,9 @@ list(APPEND objects
     update_cell_pw.cpp
     setup_dftu_pw.cpp
     deltaspin_pw.cpp
+    finite_field_control.cpp
+    finite_field_pw.cpp
+    op_pw_finite_field.cpp
     force_pw_nl.cpp
     force_pw_cc.cpp
     force_pw_scc.cpp

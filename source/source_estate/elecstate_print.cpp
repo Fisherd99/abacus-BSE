@@ -207,15 +207,25 @@ void print_etot(const Magnetism& magnet,
 
         //! Kohn-Sham functional energy
         titles.push_back("E_KohnSham");
-        energies_Ry.push_back(elec.f_en.etot);
+        energies_Ry.push_back(elec.f_en.etot - elec.f_en.finite_field);
+
+        if (PARAM.inp.finite_field)
+        {
+            titles.push_back("E_finite_field");
+            energies_Ry.push_back(elec.f_en.finite_field);
+            titles.push_back("E_electric_enthalpy");
+            energies_Ry.push_back(elec.f_en.etot);
+        }
 
         //! Kohn-Sham energy with sigma->0
         titles.push_back("E_KS(sigma->0)");
-        energies_Ry.push_back(elec.f_en.etot - elec.f_en.demet / (2 + n_order));
+        energies_Ry.push_back(elec.f_en.etot - elec.f_en.finite_field
+                              - elec.f_en.demet / (2 + n_order));
 
         //! Harris functional energy
         titles.push_back("E_Harris");
-        energies_Ry.push_back(elec.f_en.etot_harris);
+        energies_Ry.push_back(elec.f_en.etot_harris
+                              - elec.f_en.finite_field);
 
         //! band energy
         titles.push_back("E_band");
@@ -318,9 +328,17 @@ void print_etot(const Magnetism& magnet,
     else
     {
         titles.push_back("E_KohnSham");
-        energies_Ry.push_back(elec.f_en.etot);
+        energies_Ry.push_back(elec.f_en.etot - elec.f_en.finite_field);
+        if (PARAM.inp.finite_field)
+        {
+            titles.push_back("E_finite_field");
+            energies_Ry.push_back(elec.f_en.finite_field);
+            titles.push_back("E_electric_enthalpy");
+            energies_Ry.push_back(elec.f_en.etot);
+        }
         titles.push_back("E_Harris");
-        energies_Ry.push_back(elec.f_en.etot_harris);
+        energies_Ry.push_back(elec.f_en.etot_harris
+                              - elec.f_en.finite_field);
     }
 
     // print out the Fermi energy if needed

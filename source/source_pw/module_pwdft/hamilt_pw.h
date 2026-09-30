@@ -16,6 +16,8 @@ struct General_Exx_Info;
 namespace hamilt
 {
 
+class FiniteFieldOperatorPW;
+
 template <typename T, typename Device = base_device::DEVICE_CPU>
 class HamiltPW : public Hamilt<T, Device>
 {
@@ -54,6 +56,12 @@ class HamiltPW : public Hamilt<T, Device>
 
     void set_exx_helper(Exx_Helper<T, Device>& exx_helper_in);
 
+    FiniteFieldOperatorPW* enable_finite_field(int kpoint_count,
+                                               int occupied_bands,
+                                               int state_stride);
+
+    FiniteFieldOperatorPW* finite_field_operator();
+
   protected:
     // used in sPhi, which are calculated in hPsi or sPhi
     const pseudopot_cell_vnl* ppcell = nullptr;
@@ -61,6 +69,7 @@ class HamiltPW : public Hamilt<T, Device>
     mutable T* vkb = nullptr;
     Real* qq_nt = nullptr;
     T* qq_so = nullptr;
+    FiniteFieldOperatorPW* finite_field = nullptr;
 
     Device* ctx = {};
     using gemv_op = ModuleBase::gemv_op<T, Device>;

@@ -108,6 +108,11 @@ AddTest(
 )
 
 AddTest(
+  TARGET MODULE_CELL_kpoint_strings_test
+  SOURCES kpoint_strings_test.cpp ../kpoint_strings.cpp
+)
+
+AddTest(
   TARGET MODULE_CELL_klist_test_para1
   LIBS base device symmetry
   SOURCES klist_test_para.cpp ../klist.cpp ../klist_io.cpp ../parallel_kpoints.cpp ../reciprocal_grid.cpp

@@ -606,6 +606,13 @@
     - [dfpt\_conv\_thr](#dfpt_conv_thr)
     - [dfpt\_max\_iter](#dfpt_max_iter)
     - [dfpt\_mix\_beta](#dfpt_mix_beta)
+  - [Periodic finite electric field](#periodic-finite-electric-field)
+    - [finite\_field](#finite_field)
+    - [finite\_field\_dir](#finite_field_dir)
+    - [finite\_field\_amp](#finite_field_amp)
+    - [finite\_field\_nberrycyc](#finite_field_nberrycyc)
+    - [finite\_field\_branch\_io](#finite_field_branch_io)
+    - [finite\_field\_lcao\_overlap](#finite_field_lcao_overlap)
 
 ## System variables
 
@@ -5358,5 +5365,62 @@
 - **Type**: Real
 - **Description**: Set the plain-mixing coefficient of the first-order density in the self-consistent DFPT cycle. The response Jacobian has strongly negative eigenvalues on the smallest-G shells (Coulomb stiffness), so beta must stay below 2 / (1 + |lambda_min|); the default 0.4 keeps margin up to |lambda_min| ~ 3. A larger value accelerates convergence for weakly screened systems but may diverge.
 - **Default**: 0.4
+
+[back to top](#full-list-of-input-keywords)
+
+## Periodic finite electric field
+
+### finite_field
+
+- **Type**: Boolean
+- **Availability**: *[`basis_type`](#basis_type) in [pw, lcao]*
+- **Description**: Enables a homogeneous electric field in a periodic insulating solid using the Berry-phase finite-field Hamiltonian.
+
+  > Note: This is distinct from efield_flag, which adds a saw-like slab potential.
+- **Default**: False
+
+### finite_field_dir
+
+- **Type**: Integer
+- **Availability**: *[`basis_type`](#basis_type) in [pw, lcao] and [`finite_field`](#finite_field)==true*
+- **Description**: Cartesian direction of the periodic homogeneous field: 1=x, 2=y, or 3=z.
+
+  > Note: For a non-orthogonal cell, the Cartesian field is projected onto all lattice-string directions with nonzero components. The complete Monkhorst-Pack mesh must contain at least one k point along each such direction. A one-point direction is the Gamma-only k -&gt; k+G Wilson-loop discretization; it is supported but normally requires convergence checks against denser meshes.
+- **Default**: 3
+
+### finite_field_amp
+
+- **Type**: Real
+- **Availability**: *[`basis_type`](#basis_type) in [pw, lcao] and [`finite_field`](#finite_field)==true*
+- **Description**: Amplitude of the periodic homogeneous electric field, using the same Rydberg atomic units as Quantum ESPRESSO lelfield.
+- **Default**: 0.0
+- **Unit**: Ry atomic unit
+
+### finite_field_nberrycyc
+
+- **Type**: Integer
+- **Availability**: *[`basis_type`](#basis_type) in [pw, lcao] and [`finite_field`](#finite_field)==true*
+- **Description**: Number of frozen finite-field Hamiltonian wavefunction cycles per outer charge-density iteration, corresponding to Quantum ESPRESSO nberrycyc.
+- **Default**: 1
+
+### finite_field_branch_io
+
+- **Type**: String
+- **Availability**: *[`basis_type`](#basis_type) in [pw, lcao] and [`finite_field`](#finite_field)==true*
+- **Description**: Controls persistence of the electronic-polarization branch state.
+  - none: do not read or write a branch state.
+  - read: initialize all three lattice-direction branches from finite_field_branch_state.dat in read_file_dir.
+  - write: update all three lattice-direction branches in finite_field_branch_state.dat in OUT.${suffix} after each polarization evaluation.
+
+  > Note: The saved Cartesian field axis, active lattice directions, lattice periods, and polarization quanta must match the current calculation.
+- **Default**: none
+
+### finite_field_lcao_overlap
+
+- **Type**: String
+- **Availability**: *[`basis_type`](#basis_type) in [pw, lcao] and [`finite_field`](#finite_field)==true and [`basis_type`](#basis_type)==lcao*
+- **Description**: Selects the LCAO generalized-overlap implementation.
+  - numerical_quadrature: reference 3D quadrature with finite-difference orbital gradients.
+- **Default**: numerical_quadrature
 
 [back to top](#full-list-of-input-keywords)

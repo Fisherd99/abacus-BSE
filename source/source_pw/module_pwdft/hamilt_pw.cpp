@@ -6,6 +6,7 @@
 #include "op_pw_meta.h"
 #include "op_pw_nl.h"
 #include "op_pw_nl_td.h"
+#include "op_pw_finite_field.h"
 #include "op_pw_proj.h"
 #include "op_pw_veff.h"
 #include "source_base/global_function.h"
@@ -399,6 +400,46 @@ void HamiltPW<T, Device>::set_exx_helper(Exx_Helper<T, Device>& exx_helper)
         }
         op = op->next_op;
     }
+}
+
+template <typename T, typename Device>
+FiniteFieldOperatorPW* HamiltPW<T, Device>::enable_finite_field(
+    const int kpoint_count,
+    const int occupied_bands,
+    const int state_stride)
+{
+    return nullptr;
+}
+
+template <>
+FiniteFieldOperatorPW*
+HamiltPW<std::complex<double>, base_device::DEVICE_CPU>::enable_finite_field(
+    const int kpoint_count,
+    const int occupied_bands,
+    const int state_stride)
+{
+    if (this->finite_field != nullptr)
+    {
+        return this->finite_field;
+    }
+
+    this->finite_field
+        = new FiniteFieldOperatorPW(kpoint_count, occupied_bands, state_stride);
+    if (this->ops == nullptr)
+    {
+        this->ops = this->finite_field;
+    }
+    else
+    {
+        this->ops->add(this->finite_field);
+    }
+    return this->finite_field;
+}
+
+template <typename T, typename Device>
+FiniteFieldOperatorPW* HamiltPW<T, Device>::finite_field_operator()
+{
+    return this->finite_field;
 }
 
 template class HamiltPW<std::complex<float>, base_device::DEVICE_CPU>;

@@ -12,6 +12,8 @@ if(ENABLE_LCAO)
     list(APPEND objects
         hamilt_lcao.cpp
         hamilt_lcao_factory.cpp
+        finite_field_lcao.cpp
+        module_finite_field/fr_overlap.cpp
         module_operator_lcao/operator_lcao.cpp
         module_operator_lcao/veff_lcao.cpp
         module_operator_lcao/veff_dh.cpp

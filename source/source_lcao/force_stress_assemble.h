@@ -35,7 +35,8 @@ void assemble_print_force(const UnitCell& ucell,
                           const std::string& dpks_out_type,
                           const LCAOForceParts& parts,
                           const double force_threshold,
-                          ModuleBase::matrix& fcs);
+                          ModuleBase::matrix& fcs,
+                          bool print_total = true);
 
 // Sum the computed stress parts into scs, symmetrize, subtract the external
 // pressure and print the per-term and total stresses.

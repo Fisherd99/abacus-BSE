@@ -26,6 +26,7 @@ enum class calculation_type
     lcao_dftu,
     lcao_sc_lambda,
     lcao_tddft_periodic,
+    pw_finite_field,
 };
 
 // Basic class for operator module,

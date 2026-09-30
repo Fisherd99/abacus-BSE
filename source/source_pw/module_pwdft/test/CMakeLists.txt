@@ -4,6 +4,34 @@ abacus_disable_feature_definitions(__ROCM)
 abacus_disable_feature_definitions(__EXX)
 
 AddTest(
+  TARGET MODULE_PW_finite_field_pw_test
+  LIBS parameter psi planewave device base
+  SOURCES finite_field_pw_test.cpp ../finite_field_pw.cpp
+)
+
+AddTest(
+  TARGET MODULE_PW_finite_field_pw_mpi_test
+  LIBS parameter psi planewave device base MPI::MPI_CXX
+  SOURCES finite_field_pw_mpi_test.cpp ../finite_field_pw.cpp
+)
+
+add_test(
+  NAME MODULE_PW_finite_field_pw_test_parallel
+  COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+    $<TARGET_FILE:MODULE_PW_finite_field_pw_mpi_test>
+  WORKING_DIRECTORY $<TARGET_FILE_DIR:MODULE_PW_finite_field_pw_mpi_test>
+)
+
+AddTest(
+  TARGET MODULE_PW_op_finite_field_test
+  LIBS parameter psi device base
+  SOURCES op_pw_finite_field_test.cpp
+    ../op_pw_finite_field.cpp
+    ../op_pw.cpp
+    ../../../source_hamilt/operator.cpp
+)
+
+AddTest(
   TARGET MODULE_PW_pwdft_soc
   LIBS parameter
   SOURCES soc_test.cpp ../soc.cpp

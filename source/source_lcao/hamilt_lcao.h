@@ -149,6 +149,12 @@ class HamiltLCAO : public Hamilt<TK>
      */
     void updateSk(const int ik, const int hk_type);
 
+    /** Replace the frozen finite-field contribution added after H(R) folding.
+     * Each entry uses the same local matrix layout as HS_Matrix_K::hk. */
+    void set_finite_field_hk(const std::vector<std::vector<TK>>& matrices);
+    void set_finite_field_hk(std::vector<std::vector<TK>>&& matrices);
+    void clear_finite_field_hk();
+
     // core function: return H(k) and S(k) matrixs for direct solving eigenvalues.
     // not used in PW base
     void matrix(MatrixBlock<TK>& hk_in, MatrixBlock<TK>& sk_in) override;
@@ -180,6 +186,8 @@ class HamiltLCAO : public Hamilt<TK>
     std::unique_ptr<HContainer<TR>> hr_spin_dn_;
 
     int refresh_times = 1;
+
+    std::vector<std::vector<TK>> finite_field_hk_;
 
     //! current_spin for NSPIN=2 case 
     //! 0: Hamiltonian for spin up, 

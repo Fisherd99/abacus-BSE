@@ -10,6 +10,8 @@ endif()
 list(APPEND objects
     operator.cpp
     hs_matrix_k.cpp
+    module_finite_field/finite_field_matrix.cpp
+    module_finite_field/finite_field_polarization.cpp
     module_ewald/h_ewald_pw.cpp
     module_ewald/dnrm2.cpp
 )

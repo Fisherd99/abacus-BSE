@@ -8,6 +8,11 @@
 #include <memory>
 #include <source_base/macros.h>
 
+namespace hamilt
+{
+class FiniteFieldPWController;
+}
+
 namespace ModuleESolver
 {
 
@@ -49,8 +54,14 @@ class ESolver_KS_PW : public ESolver_KS
 
     virtual void allocate_hamilt(const UnitCell& ucell);
 
+    void setup_finite_field(const UnitCell& ucell);
+
+    void prepare_finite_field_cycle();
+
     // Electronic wave function psi
     Setup_Psi_pw stp;
+
+    std::unique_ptr<hamilt::FiniteFieldPWController> finite_field;
 
     // DFT-1/2 method
     VSep* vsep_cell = nullptr;

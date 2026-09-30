@@ -4,6 +4,15 @@
 
 #include "source_io/module_parameter/parameter.h"
 #include "source_cell/klist.h"
+#include "source_cell/kpoint_strings.h"
+
+namespace
+{
+constexpr double ELEMENTARY_CHARGE_SI = 1.602176634e-19;
+constexpr double BOHR_RADIUS_SI = 5.29177210903e-11;
+constexpr double POLARIZATION_AU_TO_SI
+    = ELEMENTARY_CHARGE_SI / (BOHR_RADIUS_SI * BOHR_RADIUS_SI);
+}
 
 bool berryphase::berry_phase_flag = false;
 
@@ -58,161 +67,14 @@ void berryphase::set_kpoints(const K_Vectors& kv, const int direction)
 {
     ModuleBase::TITLE("berryphase", "set_kpoints");
 
-    const int mp_x = kv.nmp[0]; // no. of kpoints along x
-    const int mp_y = kv.nmp[1]; // no. of kpoints along y
-    const int mp_z = kv.nmp[2]; // no. of kpoints along z
-    const int num_k = int(kv.get_nkstot() / 2);
-
-    if (direction == 1) // x direction calculation
-    {
-        const int num_string = mp_y * mp_z;
-
-        if (PARAM.inp.nspin == 1 || PARAM.inp.nspin == 4)
-        {
-            total_string = num_string;
-            k_index.resize(total_string);
-        }
-        else if (PARAM.inp.nspin == 2)
-        {
-            total_string = 2 * num_string;
-            k_index.resize(total_string);
-        }
-
-        for (int istring = 0; istring < total_string; istring++)
-        {
-            k_index[istring].resize(mp_x + 1); // adding 1 means every string from k=0 to k=G
-        }
-
-        int string_index = -1;
-        for (int iz = 0; iz < mp_z; iz++)
-        {
-            for (int iy = 0; iy < mp_y; iy++)
-            {
-                string_index++;
-                for (int ix = 0; ix < mp_x; ix++)
-                {
-                    k_index[string_index][ix] = ix + iy * mp_x + iz * mp_x * mp_y;
-                    if (ix == (mp_x - 1)) {
-                        k_index[string_index][ix + 1]
-                            = k_index[string_index][0];
-                    }
-                }
-            }
-        }
-
-        if (PARAM.inp.nspin == 2)
-        {
-            for (int istring = num_string; istring < total_string; istring++)
-            {
-                for (int count = 0; count < mp_x + 1; count++)
-                {
-                    k_index[istring][count] = k_index[istring - num_string][count] + num_k;
-                }
-            }
-        }
-
-        nppstr = mp_x + 1;
-    }
-    else if (direction == 2) /// compute the y direction
-    {
-        const int num_string = mp_x * mp_z;
-
-        if (PARAM.inp.nspin == 1 || PARAM.inp.nspin == 4)
-        {
-            total_string = num_string;
-            k_index.resize(total_string);
-        }
-        else if (PARAM.inp.nspin == 2)
-        {
-            total_string = 2 * num_string;
-            k_index.resize(total_string);
-        }
-
-        for (int istring = 0; istring < total_string; istring++)
-        {
-            k_index[istring].resize(mp_y + 1); // adding 1 means every string from k=0 to k=G
-        }
-
-        int string_index = -1;
-        for (int iz = 0; iz < mp_z; iz++)
-        {
-            for (int ix = 0; ix < mp_x; ix++)
-            {
-                string_index++;
-                for (int iy = 0; iy < mp_y; iy++)
-                {
-                    k_index[string_index][iy] = ix + iy * mp_x + iz * mp_x * mp_y;
-                    if (iy == (mp_y - 1)) {
-                        k_index[string_index][iy + 1]
-                            = k_index[string_index][0];
-                    }
-                }
-            }
-        }
-
-        if (PARAM.inp.nspin == 2)
-        {
-            for (int istring = num_string; istring < total_string; istring++)
-            {
-                for (int count = 0; count < mp_y + 1; count++)
-                {
-                    k_index[istring][count] = k_index[istring - num_string][count] + num_k;
-                }
-            }
-        }
-
-        nppstr = mp_y + 1;
-    }
-    else if (direction == 3) /// compute the z direction
-    {
-        const int num_string = mp_x * mp_y;
-
-        if (PARAM.inp.nspin == 1 || PARAM.inp.nspin == 4)
-        {
-            total_string = num_string;
-            k_index.resize(total_string);
-        }
-        else if (PARAM.inp.nspin == 2)
-        {
-            total_string = 2 * num_string;
-            k_index.resize(total_string);
-        }
-
-        for (int istring = 0; istring < total_string; istring++)
-        {
-            k_index[istring].resize(mp_z + 1); // adding 1 means every string from k=0 to k=G
-        }
-
-        int string_index = -1;
-        for (int iy = 0; iy < mp_y; iy++)
-        {
-            for (int ix = 0; ix < mp_x; ix++)
-            {
-                string_index++;
-                for (int iz = 0; iz < mp_z; iz++)
-                {
-                    k_index[string_index][iz] = ix + iy * mp_x + iz * mp_x * mp_y;
-                    if (iz == (mp_z - 1)) {
-                        k_index[string_index][iz + 1]
-                            = k_index[string_index][0];
-                    }
-                }
-            }
-        }
-
-        if (PARAM.inp.nspin == 2)
-        {
-            for (int istring = num_string; istring < total_string; istring++)
-            {
-                for (int count = 0; count < mp_z + 1; count++)
-                {
-                    k_index[istring][count] = k_index[istring - num_string][count] + num_k;
-                }
-            }
-        }
-
-        nppstr = mp_z + 1;
-    }
+    const std::array<int, 3> mesh = {{kv.nmp[0], kv.nmp[1], kv.nmp[2]}};
+    const int spin_channels = PARAM.inp.nspin == 2 ? 2 : 1;
+    const ModuleCell::KPointStrings strings
+        = ModuleCell::build_periodic_kpoint_strings(mesh, direction, spin_channels);
+    this->direction = strings.direction;
+    this->nppstr = strings.points_per_string;
+    this->k_index = strings.indices;
+    this->total_string = static_cast<int>(this->k_index.size());
 }
 
 #include "../../source_base/complexmatrix.h"
@@ -543,7 +405,7 @@ void berryphase::Macroscopic_polarization(const UnitCell& ucell,
         const double rmod = ucell.a1.norm() * ucell.lat0;
         const double unit1 = rmod;
         const double unit2 = rmod / ucell.omega;
-        const double unit3 = (rmod / ucell.omega) * (1.60097e-19 / pow(5.29177e-11, 2));
+        const double unit3 = (rmod / ucell.omega) * POLARIZATION_AU_TO_SI;
 
         GlobalV::ofs_running << " VALUES OF POLARIZATION" << std::endl;
         GlobalV::ofs_running << std::endl;
@@ -589,7 +451,7 @@ void berryphase::Macroscopic_polarization(const UnitCell& ucell,
         const double rmod = ucell.a2.norm() * ucell.lat0;
         const double unit1 = rmod;
         const double unit2 = rmod / ucell.omega;
-        const double unit3 = (rmod / ucell.omega) * (1.60097e-19 / pow(5.29177e-11, 2));
+        const double unit3 = (rmod / ucell.omega) * POLARIZATION_AU_TO_SI;
 
         GlobalV::ofs_running << " VALUES OF POLARIZATION" << std::endl;
         GlobalV::ofs_running << std::endl;
@@ -635,7 +497,7 @@ void berryphase::Macroscopic_polarization(const UnitCell& ucell,
         const double rmod = ucell.a3.norm() * ucell.lat0;
         const double unit1 = rmod;
         const double unit2 = rmod / ucell.omega;
-        const double unit3 = (rmod / ucell.omega) * (1.60097e-19 / pow(5.29177e-11, 2));
+        const double unit3 = (rmod / ucell.omega) * POLARIZATION_AU_TO_SI;
 
         GlobalV::ofs_running << " VALUES OF POLARIZATION" << std::endl;
         GlobalV::ofs_running << std::endl;

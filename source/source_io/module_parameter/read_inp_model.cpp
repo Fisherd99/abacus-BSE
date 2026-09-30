@@ -108,6 +108,119 @@ void ReadInput::item_model()
         this->add_item(item);
     }
 
+    {
+        Input_Item item("finite_field");
+        item.annotation = "periodic homogeneous finite electric field";
+        item.category = "Periodic finite electric field";
+        item.type = "Boolean";
+        item.description = R"(Enables a homogeneous electric field in a periodic insulating solid using the Berry-phase finite-field Hamiltonian.
+
+[NOTE] This is distinct from efield_flag, which adds a saw-like slab potential.)";
+        item.default_value = "False";
+        item.unit = "";
+        item.set_availability("basis_type in [pw, lcao]");
+        read_sync_bool(input.finite_field);
+        this->add_item(item);
+    }
+    {
+        Input_Item item("finite_field_dir");
+        item.annotation = "periodic finite-field Cartesian direction";
+        item.category = "Periodic finite electric field";
+        item.type = "Integer";
+        item.description = R"(Cartesian direction of the periodic homogeneous field: 1=x, 2=y, or 3=z.
+
+[NOTE] For a non-orthogonal cell, the Cartesian field is projected onto all lattice-string directions with nonzero components. The complete Monkhorst-Pack mesh must contain at least one k point along each such direction. A one-point direction is the Gamma-only k -> k+G Wilson-loop discretization; it is supported but normally requires convergence checks against denser meshes.)";
+        item.default_value = "3";
+        item.unit = "";
+        item.set_availability("basis_type in [pw, lcao] and finite_field==true");
+        read_sync_int(input.finite_field_dir);
+        item.check_value = [](const Input_Item& item, const Parameter& para) {
+            if (para.input.finite_field
+                && (para.input.finite_field_dir < 1
+                    || para.input.finite_field_dir > 3))
+            {
+                ModuleBase::WARNING_QUIT("ReadInput", "finite_field_dir must be 1, 2, or 3");
+            }
+        };
+        this->add_item(item);
+    }
+    {
+        Input_Item item("finite_field_amp");
+        item.annotation = "periodic finite-field amplitude";
+        item.category = "Periodic finite electric field";
+        item.type = "Real";
+        item.description = "Amplitude of the periodic homogeneous electric field, using the same Rydberg atomic units as Quantum ESPRESSO lelfield.";
+        item.default_value = "0.0";
+        item.unit = "Ry atomic unit";
+        item.set_availability("basis_type in [pw, lcao] and finite_field==true");
+        read_sync_double(input.finite_field_amp);
+        this->add_item(item);
+    }
+    {
+        Input_Item item("finite_field_nberrycyc");
+        item.annotation = "periodic finite-field wavefunction cycles";
+        item.category = "Periodic finite electric field";
+        item.type = "Integer";
+        item.description = "Number of frozen finite-field Hamiltonian wavefunction cycles per outer charge-density iteration, corresponding to Quantum ESPRESSO nberrycyc.";
+        item.default_value = "1";
+        item.unit = "";
+        item.set_availability("basis_type in [pw, lcao] and finite_field==true");
+        read_sync_int(input.finite_field_nberrycyc);
+        item.check_value = [](const Input_Item& item, const Parameter& para) {
+            if (para.input.finite_field
+                && para.input.finite_field_nberrycyc < 1)
+            {
+                ModuleBase::WARNING_QUIT("ReadInput", "finite_field_nberrycyc must be positive");
+            }
+        };
+        this->add_item(item);
+    }
+    {
+        Input_Item item("finite_field_branch_io");
+        item.annotation = "periodic finite-field polarization branch-state I/O";
+        item.category = "Periodic finite electric field";
+        item.type = "String";
+        item.description = R"(Controls persistence of the electronic-polarization branch state.
+* none: do not read or write a branch state.
+* read: initialize all three lattice-direction branches from finite_field_branch_state.dat in read_file_dir.
+* write: update all three lattice-direction branches in finite_field_branch_state.dat in OUT.${suffix} after each polarization evaluation.
+
+[NOTE] The saved Cartesian field axis, active lattice directions, lattice periods, and polarization quanta must match the current calculation.)";
+        item.default_value = "none";
+        item.unit = "";
+        item.set_availability("basis_type in [pw, lcao] and finite_field==true");
+        read_sync_string(input.finite_field_branch_io);
+        item.check_value = [](const Input_Item& item, const Parameter& para) {
+            if (para.input.finite_field_branch_io != "none"
+                && para.input.finite_field_branch_io != "read"
+                && para.input.finite_field_branch_io != "write")
+            {
+                ModuleBase::WARNING_QUIT(
+                    "ReadInput",
+                    "finite_field_branch_io must be none, read, or write");
+            }
+        };
+        this->add_item(item);
+    }
+    {
+        Input_Item item("finite_field_lcao_overlap");
+        item.annotation = "LCAO finite-field overlap backend";
+        item.category = "Periodic finite electric field";
+        item.type = "String";
+        item.description = R"(Selects the LCAO generalized-overlap implementation.
+* numerical_quadrature: reference 3D quadrature with finite-difference orbital gradients.)";
+        item.default_value = "numerical_quadrature";
+        item.set_availability("basis_type in [pw, lcao] and finite_field==true and basis_type==lcao");
+        read_sync_string(input.finite_field_lcao_overlap);
+        item.check_value = [](const Input_Item&, const Parameter& para) {
+            if (para.input.finite_field_lcao_overlap != "numerical_quadrature")
+            {
+                ModuleBase::WARNING_QUIT("ReadInput",
+                    "finite_field_lcao_overlap must be numerical_quadrature");
+            }
+        };
+        this->add_item(item);
+    }
     // Gate field
     {
         Input_Item item("gate_flag");

@@ -203,7 +203,42 @@ void HamiltLCAO<TK, TR>::updateHk(const int ik)
         this->getOperatorLCAO()->set_current_spin(this->kv->isk[ik]);
     }
     this->getOperator()->init(ik);
+    if (!this->finite_field_hk_.empty())
+    {
+        if (ik < 0 || ik >= static_cast<int>(this->finite_field_hk_.size())
+            || this->finite_field_hk_[ik].size()
+                   != static_cast<std::size_t>(this->hsk->get_size()))
+        {
+            ModuleBase::WARNING_QUIT("HamiltLCAO::updateHk",
+                                     "invalid frozen finite-field matrix");
+        }
+        TK* hk = this->hsk->get_hk();
+        for (int index = 0; index < this->hsk->get_size(); ++index)
+        {
+            hk[index] += this->finite_field_hk_[ik][index];
+        }
+    }
     ModuleBase::timer::end("HamiltLCAO", "updateHk");
+}
+
+template <typename TK, typename TR>
+void HamiltLCAO<TK, TR>::set_finite_field_hk(
+    const std::vector<std::vector<TK>>& matrices)
+{
+    this->finite_field_hk_ = matrices;
+}
+
+template <typename TK, typename TR>
+void HamiltLCAO<TK, TR>::set_finite_field_hk(
+    std::vector<std::vector<TK>>&& matrices)
+{
+    this->finite_field_hk_ = std::move(matrices);
+}
+
+template <typename TK, typename TR>
+void HamiltLCAO<TK, TR>::clear_finite_field_hk()
+{
+    this->finite_field_hk_.clear();
 }
 
 template <typename TK, typename TR>

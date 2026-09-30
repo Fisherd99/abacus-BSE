@@ -4,6 +4,16 @@ abacus_disable_feature_definitions(__ROCM)
 
 if(ENABLE_LCAO)
 AddTest(
+  TARGET MODULE_LCAO_finite_field_lcao_test
+  SOURCES test_finite_field_lcao.cpp
+)
+
+AddTest(
+  TARGET MODULE_LCAO_finite_field_fr_overlap_type_test
+  SOURCES test_finite_field_fr_overlap_type.cpp
+)
+
+AddTest(
   TARGET MODULE_LCAO_init_dm_from_file_test
   LIBS parameter base device symmetry
   SOURCES test_init_dm_from_file.cpp tmp_mocks.cpp

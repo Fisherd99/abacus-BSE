@@ -8,6 +8,7 @@
 #include "source_hsolver/hsolver_pw.h"
 #include "source_io/module_parameter/parameter.h"
 #include "source_pw/module_pwdft/force_pw.h"
+#include "source_pw/module_pwdft/finite_field_control.h"
 #include "source_pw/module_pwdft/hamilt_pw.h"
 #include "source_pw/module_pwdft/stress_pw.h"
 
@@ -24,6 +25,10 @@
 #include "source_pw/module_pwdft/setup_pot.h"      // mohan add 20250929
 #include "source_pw/module_pwdft/update_cell_pw.h" // mohan add 20250309
 #include "source_pw/module_pwdft/setup_dftu_pw.h"  // mohan add 20250309
+
+#include <cmath>
+#include <exception>
+#include <type_traits>
 
 namespace ModuleESolver
 {
@@ -189,7 +194,126 @@ void ESolver_KS_PW<T, Device>::before_scf(UnitCell& ucell, const int istep)
     //! Setup EXX helper for Hamiltonian and psi
     exx_helper->before_scf(this->p_hamilt, this->stp.template get_psi_t<T, Device>(), *this->inp_, this->general_exx_info_);
 
+    this->setup_finite_field(ucell);
+
     ModuleBase::timer::end("ESolver_KS_PW", "before_scf");
+}
+
+template <typename T, typename Device>
+void ESolver_KS_PW<T, Device>::setup_finite_field(const UnitCell& ucell)
+{
+    this->finite_field.reset();
+    this->pelec->f_en.finite_field = 0.0;
+    if (!this->inp_->finite_field)
+    {
+        return;
+    }
+    if (this->inp_->cal_stress)
+    {
+        ModuleBase::WARNING_QUIT("ESolver_KS_PW::setup_finite_field",
+                                 "finite_field PW supports fixed-cell SCF and atomic forces, but not stress");
+    }
+    if (!std::is_same<T, std::complex<double>>::value
+        || !std::is_same<Device, base_device::DEVICE_CPU>::value)
+    {
+        ModuleBase::WARNING_QUIT("ESolver_KS_PW::setup_finite_field",
+                                 "finite_field supports only CPU double-complex precision");
+    }
+    if (this->inp_->basis_type != "pw" || this->inp_->esolver_type != "ksdft")
+    {
+        ModuleBase::WARNING_QUIT("ESolver_KS_PW::setup_finite_field",
+                                 "finite_field supports only PW Kohn-Sham DFT");
+    }
+    if (PARAM.globalv.use_uspp)
+    {
+        ModuleBase::WARNING_QUIT("ESolver_KS_PW::setup_finite_field",
+                                 "finite_field supports only norm-conserving pseudopotentials");
+    }
+    if (this->inp_->nspin != 1 || this->inp_->noncolin || this->inp_->lspinorb)
+    {
+        ModuleBase::WARNING_QUIT("ESolver_KS_PW::setup_finite_field",
+                                 "finite_field currently supports only nonmagnetic scalar wavefunctions");
+    }
+    if (this->inp_->smearing_method != "fixed")
+    {
+        ModuleBase::WARNING_QUIT("ESolver_KS_PW::setup_finite_field",
+                                 "finite_field requires smearing_method fixed");
+    }
+    if (this->inp_->kpar != 1 || GlobalV::KPAR != 1)
+    {
+        ModuleBase::WARNING_QUIT("ESolver_KS_PW::setup_finite_field",
+                                 "finite_field requires KPAR=1");
+    }
+    if (this->inp_->efield_flag || this->inp_->gate_flag)
+    {
+        ModuleBase::WARNING_QUIT("ESolver_KS_PW::setup_finite_field",
+                                 "finite_field cannot be combined with slab or gate fields");
+    }
+    if (this->inp_->finite_field_dir < 1 || this->inp_->finite_field_dir > 3
+        || this->inp_->finite_field_nberrycyc < 1)
+    {
+        ModuleBase::WARNING_QUIT("ESolver_KS_PW::setup_finite_field",
+                                 "finite-field direction or cycle count is invalid");
+    }
+    if (this->kv.nmp[0] <= 0 || this->kv.nmp[1] <= 0 || this->kv.nmp[2] <= 0
+        || this->kv.get_nks() != this->kv.nmp[0] * this->kv.nmp[1] * this->kv.nmp[2])
+    {
+        ModuleBase::WARNING_QUIT("ESolver_KS_PW::setup_finite_field",
+                                 "finite_field requires a complete Monkhorst-Pack mesh in one pool");
+    }
+    const double occupied_real = this->inp_->nelec / 2.0;
+    const int occupied_bands = static_cast<int>(std::llround(occupied_real));
+    if (std::abs(occupied_real - occupied_bands) > 1.0e-10
+        || occupied_bands <= 0 || occupied_bands > this->inp_->nbands)
+    {
+        ModuleBase::WARNING_QUIT("ESolver_KS_PW::setup_finite_field",
+                                 "finite_field requires an integer number of occupied bands");
+    }
+    auto* hamiltonian = dynamic_cast<
+        hamilt::HamiltPW<std::complex<double>, base_device::DEVICE_CPU>*>(this->p_hamilt);
+    if (hamiltonian == nullptr)
+    {
+        ModuleBase::WARNING_QUIT("ESolver_KS_PW::setup_finite_field",
+                                 "finite_field could not access the CPU PW Hamiltonian");
+    }
+    hamilt::FiniteFieldPWConfig config;
+    config.cartesian_axis = this->inp_->finite_field_dir;
+    config.amplitude = this->inp_->finite_field_amp;
+    config.berry_cycles = this->inp_->finite_field_nberrycyc;
+    config.mesh = {{this->kv.nmp[0], this->kv.nmp[1], this->kv.nmp[2]}};
+    config.occupied_bands = occupied_bands;
+    config.cell_volume_bohr3 = std::abs(ucell.omega);
+    config.branch_io = this->inp_->finite_field_branch_io;
+    config.read_directory = PARAM.globalv.global_readin_dir;
+    config.output_directory = PARAM.globalv.global_out_dir;
+    config.root_rank = GlobalV::MY_RANK == 0;
+    this->finite_field.reset(new hamilt::FiniteFieldPWController());
+    try
+    {
+        this->finite_field->configure(ucell,
+                                      *this->pw_wfc,
+                                      *hamiltonian->enable_finite_field(this->pw_wfc->nks,
+                                                                        occupied_bands,
+                                                                        this->pw_wfc->npwk_max),
+                                      config,
+                                      GlobalV::ofs_running);
+    }
+    catch (const std::exception& error)
+    {
+        ModuleBase::WARNING_QUIT("ESolver_KS_PW::setup_finite_field", error.what());
+    }
+}
+
+template <typename T, typename Device>
+void ESolver_KS_PW<T, Device>::prepare_finite_field_cycle()
+{
+    if (this->finite_field)
+    {
+        auto* wavefunctions = reinterpret_cast<
+            psi::Psi<std::complex<double>, base_device::DEVICE_CPU>*>(
+                this->stp.template get_psi_t<T, Device>());
+        this->finite_field->prepare_cycle(*wavefunctions);
+    }
 }
 
 template <typename T, typename Device>
@@ -274,16 +398,29 @@ void ESolver_KS_PW<T, Device>::hamilt2rho_single(UnitCell& ucell, const int iste
                                                      this->inp_->nb2d,
                                                      this->inp_->use_k_continuity);
 
-        // the iterative eigensolvers see the Hamiltonian only through this operator
-        hamilt::HamiltHSOperator<T, Device> op(static_cast<hamilt::Hamilt<T, Device>*>(this->p_hamilt), this->pw_wfc);
-        hsolver_pw_obj.solve(op,
-                             *this->stp.template get_psi_t<T, Device>(),
-                             this->pelec,
-                             this->pelec->ekb.c,
-                             GlobalV::RANK_IN_POOL,
-                             GlobalV::NPROC_IN_POOL,
-                             GlobalV::ofs_running,
-                             skip_charge);
+        const int berry_cycles = this->finite_field ? this->finite_field->berry_cycles() : 1;
+        for (int berry_cycle = 0; berry_cycle < berry_cycles; ++berry_cycle)
+        {
+            if (this->finite_field)
+            {
+                GlobalV::ofs_running << " Finite-field Berry cycle "
+                                     << berry_cycle + 1 << "/" << berry_cycles << std::endl;
+                this->prepare_finite_field_cycle();
+            }
+            const bool skip_cycle_charge = skip_charge || berry_cycle + 1 < berry_cycles;
+            // The finite-field operator is part of the Hamiltonian chain and is
+            // therefore visible through the current solver adapter.
+            hamilt::HamiltHSOperator<T, Device> op(
+                static_cast<hamilt::Hamilt<T, Device>*>(this->p_hamilt), this->pw_wfc);
+            hsolver_pw_obj.solve(op,
+                                 *this->stp.template get_psi_t<T, Device>(),
+                                 this->pelec,
+                                 this->pelec->ekb.c,
+                                 GlobalV::RANK_IN_POOL,
+                                 GlobalV::NPROC_IN_POOL,
+                                 GlobalV::ofs_running,
+                                 skip_cycle_charge);
+        }
     }
 
     // symmetrize the charge density
@@ -307,6 +444,15 @@ void ESolver_KS_PW<T, Device>::iter_finish(UnitCell& ucell, const int istep, int
 
     // deband is calculated from "output" charge density
     this->pelec->f_en.deband = this->pelec->cal_delta_eband(ucell);
+
+    if (this->finite_field)
+    {
+        auto* wavefunctions = reinterpret_cast<
+            psi::Psi<std::complex<double>, base_device::DEVICE_CPU>*>(
+                this->stp.template get_psi_t<T, Device>());
+        this->pelec->f_en.finite_field
+            = this->finite_field->evaluate(*wavefunctions, GlobalV::ofs_running);
+    }
 
     // Call iter_finish() of ESolver_KS
     ESolver_KS::iter_finish(ucell, istep, iter, conv_esolver);
@@ -400,6 +546,9 @@ void ESolver_KS_PW<T, Device>::cal_force(BaseCell& basecell, ModuleBase::matrix&
                  this->solvent,
                  this->dftu_.get(),
                  &this->locpp,
+                 this->inp_->finite_field,
+                 this->inp_->finite_field_dir,
+                 this->inp_->finite_field_amp,
                  &this->ppcell,
                  &this->kv,
                  this->pw_wfc,

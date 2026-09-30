@@ -558,6 +558,17 @@ struct Input_para
     double efield_amp = 0;      ///< amplitude of the electric field
 
     // ==========================================================
+    //  finite electric field for periodic system (modern polarization theory)
+    //  Ziqing Guan add 2026-09-29
+    // ==========================================================
+    bool finite_field = false;          ///< periodic homogeneous finite electric field
+    int finite_field_dir = 3;           ///< Cartesian x, y, or z direction
+    double finite_field_amp = 0.0;      ///< field amplitude in Ry atomic units
+    int finite_field_nberrycyc = 1;     ///< frozen-field wavefunction cycles per density iteration
+    std::string finite_field_branch_io = "none"; ///< polarization branch-state I/O mode
+    std::string finite_field_lcao_overlap = "numerical_quadrature"; ///< LCAO link derivative backend
+
+    // ==========================================================
     //  gatefield (compensating charge)
     //  Yu Liu add 2022-09-13
     // ==========================================================

@@ -27,10 +27,33 @@
 #include "source_io/module_ctrl/ctrl_iter_lcao.h" // use ctrl_iter_lcao()
 #include "source_io/module_ctrl/ctrl_scf_lcao.h" // use ctrl_scf_lcao()
 #include "source_io/module_output/print_info.h"
+#include "source_io/module_output/output_log.h"
+#include "source_lcao/finite_field_lcao.h"
 #include "source_lcao/rho_tau_lcao.h" // mohan add 20251024
 #include "source_lcao/module_rt/td_info.h" // TD_info for init_dm config
 #include "source_lcao/lcao_set.h" // mohan add 20251111
 #include "source_psi/setup_psi.h" // use Setup_Psi for deallocate_psi
+
+#include <cmath>
+#include <exception>
+#include <type_traits>
+
+namespace
+{
+template <typename TK>
+void add_lcao_finite_field_force(hamilt::FiniteFieldLCAOController*,
+                                 const psi::Psi<TK>*, ModuleBase::matrix&, std::ostream&)
+{
+}
+
+void add_lcao_finite_field_force(
+    hamilt::FiniteFieldLCAOController* controller,
+    const hamilt::FiniteFieldLCAOController::Wavefunctions* wavefunctions,
+    ModuleBase::matrix& force, std::ostream& log)
+{
+    controller->add_force(*wavefunctions, force, log);
+}
+}
 
 namespace ModuleESolver
 {
@@ -193,6 +216,8 @@ void ESolver_KS_LCAO<TK, TR>::before_scf(UnitCell& ucell, const int istep)
     // 11) set xc type before the first cal of xc in pelec->init_scf, Peize Lin add 2016-12-03
     this->exx_nao.before_scf(ucell, this->kv, orb_, this->p_chgmix, istep, *this->inp_, this->exx_info_);
 
+    this->setup_finite_field(ucell);
+
     // 12) initalize DM(R), which has the same size with Hamiltonian(R)
     auto* hamilt_lcao = dynamic_cast<hamilt::HamiltLCAO<TK, TR>*>(this->p_hamilt);
 
@@ -249,6 +274,96 @@ void ESolver_KS_LCAO<TK, TR>::before_scf(UnitCell& ucell, const int istep)
     return;
 }
 
+template <typename TK, typename TR>
+void ESolver_KS_LCAO<TK, TR>::setup_finite_field(const UnitCell& ucell)
+{
+    this->finite_field.reset();
+    this->pelec->f_en.finite_field = 0.0;
+    const auto& input = *this->inp_;
+    if (!input.finite_field) return;
+
+    if (!std::is_same<TK, std::complex<double>>::value
+        || !std::is_same<TR, double>::value
+        || PARAM.globalv.gamma_only_local)
+    {
+        ModuleBase::WARNING_QUIT("ESolver_KS_LCAO::setup_finite_field",
+                                 "finite_field LCAO requires the complex multi-k CPU path");
+    }
+    if (input.calculation != "scf" || input.cal_stress)
+    {
+        ModuleBase::WARNING_QUIT("ESolver_KS_LCAO::setup_finite_field",
+                                 "finite_field LCAO supports fixed-cell SCF and atomic forces, but not stress");
+    }
+    if (input.esolver_type != "ksdft" || input.nspin != 1
+        || input.noncolin || input.lspinorb || input.smearing_method != "fixed")
+    {
+        ModuleBase::WARNING_QUIT("ESolver_KS_LCAO::setup_finite_field",
+                                 "finite_field LCAO stage 1 supports only nonmagnetic insulating Kohn-Sham DFT");
+    }
+    if (input.kpar != 1 || PARAM.globalv.kpar_lcao != 1)
+    {
+        ModuleBase::WARNING_QUIT("ESolver_KS_LCAO::setup_finite_field",
+                                 "finite_field LCAO requires KPAR=1");
+    }
+    if (!ModuleBase::GlobalFunc::IS_COLUMN_MAJOR_KS_SOLVER(input.ks_solver))
+    {
+        ModuleBase::WARNING_QUIT("ESolver_KS_LCAO::setup_finite_field",
+                                 "finite_field LCAO requires a column-major eigensolver");
+    }
+    if (input.efield_flag || input.gate_flag)
+    {
+        ModuleBase::WARNING_QUIT("ESolver_KS_LCAO::setup_finite_field",
+                                 "finite_field cannot be combined with slab or gate fields");
+    }
+    if (this->kv.nmp[0] <= 0 || this->kv.nmp[1] <= 0 || this->kv.nmp[2] <= 0
+        || this->kv.get_nks() != this->kv.nmp[0] * this->kv.nmp[1] * this->kv.nmp[2])
+    {
+        ModuleBase::WARNING_QUIT("ESolver_KS_LCAO::setup_finite_field",
+                                 "finite_field LCAO requires a complete Monkhorst-Pack mesh");
+    }
+    const double occupied_real = input.nelec / 2.0;
+    const int occupied_bands = static_cast<int>(std::llround(occupied_real));
+    if (std::abs(occupied_real - occupied_bands) > 1.0e-10
+        || occupied_bands <= 0 || occupied_bands > input.nbands)
+    {
+        ModuleBase::WARNING_QUIT("ESolver_KS_LCAO::setup_finite_field",
+                                 "finite_field LCAO requires an integer number of occupied bands");
+    }
+    auto* hamiltonian
+        = dynamic_cast<hamilt::HamiltLCAO<std::complex<double>, double>*>(this->p_hamilt);
+    if (hamiltonian == nullptr)
+    {
+        ModuleBase::WARNING_QUIT("ESolver_KS_LCAO::setup_finite_field",
+                                 "finite_field could not access the complex LCAO Hamiltonian");
+    }
+
+    hamilt::FiniteFieldLCAOConfig config;
+    config.cartesian_axis = input.finite_field_dir;
+    config.amplitude = input.finite_field_amp;
+    config.berry_cycles = input.finite_field_nberrycyc;
+    config.mesh = {{this->kv.nmp[0], this->kv.nmp[1], this->kv.nmp[2]}};
+    config.occupied_bands = occupied_bands;
+    config.cell_volume_bohr3 = std::abs(ucell.omega);
+    config.branch_io = input.finite_field_branch_io;
+    config.read_directory = PARAM.globalv.global_readin_dir;
+    config.output_directory = PARAM.globalv.global_out_dir;
+    config.root_rank = GlobalV::MY_RANK == 0;
+    config.calculate_forces = input.cal_force && input.finite_field_amp != 0.0;
+    config.overlap_backend = input.finite_field_lcao_overlap;
+
+    try
+    {
+        this->finite_field.reset(new hamilt::FiniteFieldLCAOController());
+        this->finite_field->configure(ucell, this->gd, this->kv, this->orb_,
+                                      *this->two_center_bundle_.orb_, this->pv,
+                                      *hamiltonian, config, GlobalV::ofs_running);
+    }
+    catch (const std::exception& error)
+    {
+        ModuleBase::WARNING_QUIT("ESolver_KS_LCAO::setup_finite_field", error.what());
+    }
+}
+
 
 template <typename TK, typename TR>
 double ESolver_KS_LCAO<TK, TR>::cal_energy()
@@ -283,7 +398,16 @@ void ESolver_KS_LCAO<TK, TR>::cal_force(BaseCell& basecell, ModuleBase::matrix& 
                        this->exx_nao, &ucell.symm, this->exx_info_,
                        fs_cfg,
                        this->inp_->td_stype,
-                       static_cast<hamilt::Hamilt<TK>*>(this->p_hamilt));
+                       static_cast<hamilt::Hamilt<TK>*>(this->p_hamilt),
+                       this->finite_field == nullptr);
+
+    if (this->finite_field)
+    {
+        add_lcao_finite_field_force(this->finite_field.get(), this->psi,
+                                    force, GlobalV::ofs_running);
+        ModuleIO::print_force(GlobalV::ofs_running, ucell,
+                              "TOTAL-FORCE (eV/Angstrom)", force, false);
+    }
 
     // delete RA after cal_force
     this->RA.delete_grid();
@@ -489,10 +613,43 @@ void ESolver_KS_LCAO<TK, TR>::hamilt2rho_single(UnitCell& ucell, int istep, int 
                                                   this->inp_->device == "gpu",
                                                   GlobalV::NPROC,
                                                   GlobalV::MY_RANK);
-        // the eigensolvers only ever ask the Hamiltonian for H(k) and S(k)
         hamilt::HamiltHSMatrix<TK> hs(static_cast<hamilt::Hamilt<TK>*>(this->p_hamilt));
-        hsolver_lcao_obj.solve(hs, this->psi[0], this->pelec, *this->dmat.dm, 
-          this->chr, this->inp_->nspin, ucell.omega, skip_charge);
+        if (this->finite_field && this->finite_field->needs_bootstrap())
+        {
+            GlobalV::ofs_running
+                << " Finite-field LCAO bootstrap: solving the zero-field Hamiltonian"
+                << std::endl;
+            hsolver_lcao_obj.solve(hs,
+                                   this->psi[0],
+                                   this->pelec,
+                                   *this->dmat.dm,
+                                   this->chr,
+                                   this->inp_->nspin,
+                                   ucell.omega,
+                                   true);
+        }
+        const int berry_cycles = this->finite_field ? this->finite_field->berry_cycles() : 1;
+        for (int berry_cycle = 0; berry_cycle < berry_cycles; ++berry_cycle)
+        {
+            if (this->finite_field)
+            {
+                GlobalV::ofs_running << " Finite-field LCAO Berry cycle "
+                                     << berry_cycle + 1 << "/" << berry_cycles
+                                     << std::endl;
+                this->finite_field->prepare_cycle(
+                    *reinterpret_cast<hamilt::FiniteFieldLCAOController::Wavefunctions*>(
+                        this->psi));
+            }
+            const bool skip_cycle_charge = skip_charge || berry_cycle + 1 < berry_cycles;
+            hsolver_lcao_obj.solve(hs,
+                                   this->psi[0],
+                                   this->pelec,
+                                   *this->dmat.dm,
+                                   this->chr,
+                                   this->inp_->nspin,
+                                   ucell.omega,
+                                   skip_cycle_charge);
+        }
     }
     else
     {
@@ -554,6 +711,14 @@ void ESolver_KS_LCAO<TK, TR>::iter_finish(UnitCell& ucell, const int istep, int&
 
     // 3) for delta spin
     cal_mi_lcao_wrapper<TK>(iter, *this->inp_);
+
+    if (this->finite_field)
+    {
+        this->pelec->f_en.finite_field = this->finite_field->evaluate(
+            *reinterpret_cast<hamilt::FiniteFieldLCAOController::Wavefunctions*>(
+                this->psi),
+            GlobalV::ofs_running);
+    }
 
     // call iter_finish() of ESolver_KS, where band gap is printed,
     // eig and occ are printed, magnetization is calculated,
