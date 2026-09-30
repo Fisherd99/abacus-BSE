@@ -113,6 +113,36 @@ TEST_F(RealGauntTableTest, SanityCheck)
     EXPECT_NEAR(RealGauntTable::instance()(4, 5, 7, 3, -2, -5), ModuleBase::SQRT_INVERSE_FOUR_PI * std::sqrt(210.0) / 221.0, tol);
 }
 
+TEST_F(RealGauntTableTest, SparseEvaluateMatchesDenseTable)
+{
+    RealGauntTable::instance().build(4);
+    for (int l1 = 0; l1 <= 4; ++l1)
+    {
+        for (int m1 = -l1; m1 <= l1; ++m1)
+        {
+            for (int l2 = 0; l2 <= 4; ++l2)
+            {
+                for (int m2 = -l2; m2 <= l2; ++m2)
+                {
+                    for (int l3 = std::abs(l1 - l2);
+                         l3 <= l1 + l2; l3 += 2)
+                    {
+                        for (int m3 = -l3; m3 <= l3; ++m3)
+                        {
+                            EXPECT_NEAR(
+                                RealGauntTable::instance().evaluate(
+                                    l1, l2, l3, m1, m2, m3),
+                                RealGauntTable::instance()(
+                                    l1, l2, l3, m1, m2, m3),
+                                tol);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 /**
 * @brief real gaunt function test:
 *           Using sympy realgaunt function test points set.

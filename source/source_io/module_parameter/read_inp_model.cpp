@@ -210,21 +210,43 @@ void ReadInput::item_model()
         item.description = R"(Selects the LCAO generalized-overlap implementation.
 * numerical_quadrature: reference 3D quadrature with finite-difference orbital gradients.
 * analytic_gradient: the same quadrature for link values with analytic radial and solid-harmonic displacement gradients.
+* rayleigh_expansion: Rayleigh/Gaunt two-center reduction with one-dimensional radial tables and analytic center gradients.
 * taylor_first_order: first-order Taylor expansion evaluated with legacy-compatible Orb11/Orb21 tables as exp(-i*q*R_bra) [S - i*q*D], without Rayleigh radial tables.)";
-        item.default_value = "numerical_quadrature";
+        item.default_value = "rayleigh_expansion";
         item.set_availability("basis_type in [pw, lcao] and finite_field==true and basis_type==lcao");
         read_sync_string(input.finite_field_lcao_overlap);
         item.check_value = [](const Input_Item&, const Parameter& para) {
             if (para.input.finite_field_lcao_overlap != "numerical_quadrature"
                 && para.input.finite_field_lcao_overlap != "analytic_gradient"
+                && para.input.finite_field_lcao_overlap != "rayleigh_expansion"
                 && para.input.finite_field_lcao_overlap != "taylor_first_order")
             {
                 ModuleBase::WARNING_QUIT("ReadInput",
-                    "finite_field_lcao_overlap must be numerical_quadrature, analytic_gradient, or taylor_first_order");
+                    "finite_field_lcao_overlap must be numerical_quadrature, analytic_gradient, rayleigh_expansion, or taylor_first_order");
             }
         };
         this->add_item(item);
     }
+    {
+        Input_Item item("finite_field_lcao_lmax");
+        item.annotation = "Rayleigh cutoff for LCAO generalized overlap";
+        item.category = "Periodic finite electric field";
+        item.type = "Integer";
+        item.description = R"(Maximum plane-wave angular momentum L retained by the rayleigh_expansion backend. Converge this parameter for the chosen k-point string spacing and orbital cutoff.)";
+        item.default_value = "6";
+        item.set_availability("basis_type in [pw, lcao] and finite_field==true and basis_type==lcao and finite_field_lcao_overlap==rayleigh_expansion");
+        read_sync_int(input.finite_field_lcao_lmax);
+        item.check_value = [](const Input_Item&, const Parameter& para) {
+            if (para.input.finite_field_lcao_lmax < 0)
+            {
+                ModuleBase::WARNING_QUIT(
+                    "ReadInput",
+                    "finite_field_lcao_lmax must be non-negative");
+            }
+        };
+        this->add_item(item);
+    }
+
     // Gate field
     {
         Input_Item item("gate_flag");

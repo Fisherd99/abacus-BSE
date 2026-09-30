@@ -73,6 +73,76 @@ void FiniteFieldFROverlap<T>::set_parameters(fr_ptr fr_in,
 }
 
 template <typename T>
+void FiniteFieldFROverlap<T>::set_two_center_parameters(
+    const UnitCell* ucell_in, const LCAO_Orbitals* ptr_orb,
+    const RadialCollection* radial_orbitals_in, const Grid_Driver* GridD_in,
+    const Parallel_Orbitals* paraV,
+    const ModuleBase::Vector3<double> momentum_transfer,
+    const int plane_wave_lmax, int radial_table_num,
+    double radial_table_cutoff, const bool calculate_center_gradients)
+{
+    ModuleBase::timer::start("FR_overlap", "set_two_center_parameters");
+    this->ucell = ucell_in;
+    this->ptr_orb_ = ptr_orb;
+    this->radial_orbitals = radial_orbitals_in;
+    this->calculate_center_gradients = calculate_center_gradients;
+    this->analytic_center_gradients = true;
+    this->momentum_transfer = momentum_transfer;
+    if (radial_table_cutoff <= 0.0)
+    {
+        radial_table_cutoff = 2.0 * radial_orbitals_in->rcut_max();
+    }
+    if (radial_table_num <= 0)
+    {
+        radial_table_num = static_cast<int>(radial_table_cutoff / 0.01) + 1;
+    }
+    this->two_center_integrator.reset(new GeneralizedOverlapIntegrator(
+        momentum_transfer, plane_wave_lmax, radial_table_num,
+        radial_table_cutoff));
+    this->two_center_integrator->prepare_angular_momenta(
+        radial_orbitals_in->lmax());
+    this->FR_container = new hamilt::HContainer<T>(paraV);
+    this->initialize_FR(GridD_in, paraV);
+    std::set<std::pair<const NumericalRadial*, const NumericalRadial*> >
+        unique_orbital_pairs;
+    const int npol = this->ucell->get_npol();
+    for (int iap = 0; iap < this->FR_container->size_atom_pairs(); ++iap)
+    {
+        const hamilt::AtomPair<T>& atom_pair
+            = this->FR_container->get_atom_pair(iap);
+        int atom_index = 0;
+        int type_bra = 0;
+        int type_ket = 0;
+        this->ucell->iat2iait(atom_pair.get_atom_i(), &atom_index, &type_bra);
+        this->ucell->iat2iait(atom_pair.get_atom_j(), &atom_index, &type_ket);
+        const Atom& atom_bra = this->ucell->atoms[type_bra];
+        const Atom& atom_ket = this->ucell->atoms[type_ket];
+        const Parallel_Orbitals* pair_distribution = atom_pair.get_paraV();
+        const std::vector<int> row_indexes
+            = pair_distribution->get_indexes_row(atom_pair.get_atom_i());
+        const std::vector<int> col_indexes
+            = pair_distribution->get_indexes_col(atom_pair.get_atom_j());
+        for (std::size_t irow = 0; irow < row_indexes.size(); irow += npol)
+        {
+            const int iw_bra = row_indexes[irow] / npol;
+            const NumericalRadial* bra = &(*radial_orbitals_in)(
+                type_bra, atom_bra.iw2l[iw_bra], atom_bra.iw2n[iw_bra]);
+            for (std::size_t icol = 0; icol < col_indexes.size(); icol += npol)
+            {
+                const int iw_ket = col_indexes[icol] / npol;
+                const NumericalRadial* ket = &(*radial_orbitals_in)(
+                    type_ket, atom_ket.iw2l[iw_ket], atom_ket.iw2n[iw_ket]);
+                unique_orbital_pairs.insert(std::make_pair(bra, ket));
+            }
+        }
+    }
+    const std::vector<std::pair<const NumericalRadial*, const NumericalRadial*> >
+        orbital_pairs(unique_orbital_pairs.begin(), unique_orbital_pairs.end());
+    this->two_center_integrator->prepare_radial_tables(orbital_pairs);
+    ModuleBase::timer::end("FR_overlap", "set_two_center_parameters");
+}
+
+template <typename T>
 void FiniteFieldFROverlap<T>::set_first_order_parameters(
     const UnitCell* ucell_in, const LCAO_Orbitals* ptr_orb,
     const Grid_Driver* GridD_in, const Parallel_Orbitals* paraV,
@@ -97,6 +167,7 @@ FiniteFieldFROverlap<T>::FiniteFieldFROverlap(
     this->fr = FR_in.fr;
     this->ucell = FR_in.ucell;
     this->ptr_orb_ = FR_in.ptr_orb_;
+    this->radial_orbitals = FR_in.radial_orbitals;
     this->FR_container = new hamilt::HContainer<T>(*(FR_in.FR_container));
     this->radial_grid_num = FR_in.radial_grid_num;
     this->calculate_center_gradients = false;
@@ -107,6 +178,13 @@ FiniteFieldFROverlap<T>::FiniteFieldFROverlap(
         this->Leb_grid
             = new ModuleBase::Lebedev_laikov_grid(FR_in.Leb_grid->degree);
         this->Leb_grid->generate_grid_points();
+    }
+    if (FR_in.two_center_integrator)
+    {
+        const GeneralizedOverlapIntegrator& source
+            = *FR_in.two_center_integrator;
+        this->two_center_integrator.reset(
+            new GeneralizedOverlapIntegrator(source));
     }
     if (FR_in.first_order_integrator)
     {
@@ -121,6 +199,7 @@ FiniteFieldFROverlap<T>::FiniteFieldFROverlap(FiniteFieldFROverlap<T>&& FR_in)
     this->fr = std::move(FR_in.fr);
     this->ucell = FR_in.ucell;
     this->ptr_orb_ = FR_in.ptr_orb_;
+    this->radial_orbitals = FR_in.radial_orbitals;
     this->FR_container = FR_in.FR_container;
     FR_in.FR_container = nullptr;
     this->radial_grid_num = FR_in.radial_grid_num;
@@ -130,6 +209,7 @@ FiniteFieldFROverlap<T>::FiniteFieldFROverlap(FiniteFieldFROverlap<T>&& FR_in)
     this->dFR_datom = std::move(FR_in.dFR_datom);
     this->active_gradient_atom = FR_in.active_gradient_atom;
     FR_in.active_gradient_atom = -1;
+    this->two_center_integrator = std::move(FR_in.two_center_integrator);
     this->first_order_integrator = std::move(FR_in.first_order_integrator);
     this->Leb_grid = FR_in.Leb_grid;
     FR_in.Leb_grid = nullptr;
@@ -258,7 +338,7 @@ void FiniteFieldFROverlap<T>::calculate_FR()
             T* data_pointer = tmp.get_pointer(iR);
             std::array<T*, 3> bra_derivative{{nullptr, nullptr, nullptr}};
             std::array<T*, 3> ket_derivative{{nullptr, nullptr, nullptr}};
-            if (this->first_order_integrator)
+            if (this->two_center_integrator || this->first_order_integrator)
             {
                 this->cal_FR_IJR_two_center(iat1, iat2, paraV, dtau,
                                             data_pointer, bra_derivative,
@@ -307,7 +387,7 @@ void FiniteFieldFROverlap<T>::calculate_center_gradient(const int atom)
                 if (iat1 == atom) bra[component] = pointer;
                 if (iat2 == atom) ket[component] = pointer;
             }
-            if (this->first_order_integrator)
+            if (this->two_center_integrator || this->first_order_integrator)
             {
                 this->cal_FR_IJR_two_center(iat1, iat2, paraV, dtau,
                                             pair.get_pointer(iR), bra, ket);
@@ -339,6 +419,14 @@ void FiniteFieldFROverlap<T>::cal_FR_IJR_two_center(
     const ModuleBase::Vector3<double> center_bra
         = this->ucell->get_tau(iat1) * this->ucell->lat0;
     const ModuleBase::Vector3<double> center_ket = center_bra + dtau;
+    GeneralizedOverlapIntegrator::GeometryWorkspace geometry;
+    if (this->two_center_integrator)
+    {
+        this->two_center_integrator->prepare_geometry(
+            center_bra, center_ket,
+            std::max(atom1.nwl, atom2.nwl),
+            this->calculate_center_gradients, geometry);
+    }
 
     int irow = -1;
     for (std::size_t iw1l = 0; iw1l < row_indexes.size(); iw1l += npol)
@@ -363,11 +451,22 @@ void FiniteFieldFROverlap<T>::cal_FR_IJR_two_center(
             std::complex<double> value;
             std::complex<double> grad_bra[3];
             std::complex<double> grad_ket[3];
-            this->first_order_integrator->calculate(
-                T1, l1, n1, encoded_m1, T2, l2, n2, encoded_m2,
-                center_bra, center_ket, &value,
-                this->calculate_center_gradients ? grad_bra : nullptr,
-                this->calculate_center_gradients ? grad_ket : nullptr);
+            if (this->first_order_integrator)
+            {
+                this->first_order_integrator->calculate(
+                    T1, l1, n1, encoded_m1, T2, l2, n2, encoded_m2,
+                    center_bra, center_ket, &value,
+                    this->calculate_center_gradients ? grad_bra : nullptr,
+                    this->calculate_center_gradients ? grad_ket : nullptr);
+            }
+            else
+            {
+                this->two_center_integrator->calculate(
+                    (*this->radial_orbitals)(T1, l1, n1), m1,
+                    (*this->radial_orbitals)(T2, l2, n2), m2, geometry, &value,
+                    this->calculate_center_gradients ? grad_bra : nullptr,
+                    this->calculate_center_gradients ? grad_ket : nullptr);
+            }
             for (int ipol = 0; ipol < npol; ++ipol)
             {
                 const int index = (npol * irow + ipol)

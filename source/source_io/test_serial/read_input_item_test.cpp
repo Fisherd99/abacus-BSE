@@ -1507,13 +1507,16 @@ TEST_F(InputTest, Item_test2)
     { // finite_field_lcao_overlap
         auto it = find_label("finite_field_lcao_overlap", readinput.input_lists);
         ASSERT_NE(it, readinput.input_lists.end());
-        EXPECT_EQ(param.input.finite_field_lcao_overlap, "numerical_quadrature");
+        EXPECT_EQ(param.input.finite_field_lcao_overlap, "rayleigh_expansion");
         it->second.str_values = {"numerical_quadrature"};
         it->second.read_value(it->second, param);
         EXPECT_EQ(param.input.finite_field_lcao_overlap, "numerical_quadrature");
         it->second.str_values = {"analytic_gradient"};
         it->second.read_value(it->second, param);
         EXPECT_EQ(param.input.finite_field_lcao_overlap, "analytic_gradient");
+        it->second.str_values = {"rayleigh_expansion"};
+        it->second.read_value(it->second, param);
+        EXPECT_EQ(param.input.finite_field_lcao_overlap, "rayleigh_expansion");
         it->second.str_values = {"taylor_first_order"};
         it->second.read_value(it->second, param);
         EXPECT_EQ(param.input.finite_field_lcao_overlap, "taylor_first_order");
@@ -1523,7 +1526,21 @@ TEST_F(InputTest, Item_test2)
                     ::testing::ExitedWithCode(1), "");
         output = testing::internal::GetCapturedStdout();
         EXPECT_THAT(output, testing::HasSubstr("finite_field_lcao_overlap"));
-        param.input.finite_field_lcao_overlap = "numerical_quadrature";
+        param.input.finite_field_lcao_overlap = "rayleigh_expansion";
+    }
+    { // finite_field_lcao_lmax
+        auto it = find_label("finite_field_lcao_lmax", readinput.input_lists);
+        ASSERT_NE(it, readinput.input_lists.end());
+        it->second.str_values = {"8"};
+        it->second.read_value(it->second, param);
+        EXPECT_EQ(param.input.finite_field_lcao_lmax, 8);
+        param.input.finite_field_lcao_lmax = -1;
+        testing::internal::CaptureStdout();
+        EXPECT_EXIT(it->second.check_value(it->second, param),
+                    ::testing::ExitedWithCode(1), "");
+        output = testing::internal::GetCapturedStdout();
+        EXPECT_THAT(output, testing::HasSubstr("finite_field_lcao_lmax"));
+        param.input.finite_field_lcao_lmax = 6;
     }
     { // vdw_s6
         auto it = find_label("vdw_s6", readinput.input_lists);

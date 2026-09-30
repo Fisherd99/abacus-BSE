@@ -613,6 +613,7 @@
     - [finite\_field\_nberrycyc](#finite_field_nberrycyc)
     - [finite\_field\_branch\_io](#finite_field_branch_io)
     - [finite\_field\_lcao\_overlap](#finite_field_lcao_overlap)
+    - [finite\_field\_lcao\_lmax](#finite_field_lcao_lmax)
 
 ## System variables
 
@@ -5422,7 +5423,15 @@
 - **Description**: Selects the LCAO generalized-overlap implementation.
   - numerical_quadrature: reference 3D quadrature with finite-difference orbital gradients.
   - analytic_gradient: the same quadrature for link values with analytic radial and solid-harmonic displacement gradients.
+  - rayleigh_expansion: Rayleigh/Gaunt two-center reduction with one-dimensional radial tables and analytic center gradients.
   - taylor_first_order: first-order Taylor expansion evaluated with legacy-compatible Orb11/Orb21 tables as exp(-i*q*R_bra) [S - i*q*D], without Rayleigh radial tables.
-- **Default**: numerical_quadrature
+- **Default**: rayleigh_expansion
+
+### finite_field_lcao_lmax
+
+- **Type**: Integer
+- **Availability**: *[`basis_type`](#basis_type) in [pw, lcao] and [`finite_field`](#finite_field)==true and [`basis_type`](#basis_type)==lcao and [`finite_field_lcao_overlap`](#finite_field_lcao_overlap)==rayleigh_expansion*
+- **Description**: Maximum plane-wave angular momentum L retained by the rayleigh_expansion backend. Converge this parameter for the chosen k-point string spacing and orbital cutoff.
+- **Default**: 6
 
 [back to top](#full-list-of-input-keywords)

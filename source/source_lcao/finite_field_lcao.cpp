@@ -261,7 +261,8 @@ void build_links_for_direction(
     const RadialCollection& radial_orbitals,
     const Parallel_Orbitals& parallel_orbitals,
     const bool calculate_forces,
-    const std::string& overlap_backend)
+    const std::string& overlap_backend,
+    const int rayleigh_lmax)
 {
     ModuleBase::timer::start("FiniteFieldLCAO", "ao_links");
     const int basis_size = parallel_orbitals.get_global_row_size();
@@ -289,6 +290,13 @@ void build_links_for_direction(
         {
             integral->set_first_order_parameters(
                 &ucell, &orbitals, &grid, &parallel_orbitals, delta,
+                calculate_forces);
+        }
+        else if (overlap_backend == "rayleigh_expansion")
+        {
+            integral->set_two_center_parameters(
+                &ucell, &orbitals, &radial_orbitals, &grid,
+                &parallel_orbitals, delta, rayleigh_lmax, 0, 0.0,
                 calculate_forces);
         }
         else
@@ -617,7 +625,7 @@ void FiniteFieldLCAOController::configure(
 {
     if (config.cartesian_axis < 1 || config.cartesian_axis > 3
         || config.occupied_bands <= 0 || config.berry_cycles <= 0
-        )
+        || config.rayleigh_lmax < 0)
     {
         throw std::invalid_argument("finite-field LCAO configuration is invalid");
     }
@@ -656,7 +664,8 @@ void FiniteFieldLCAOController::configure(
                                   ucell, grid, kpoints, orbitals, radial_orbitals,
                                   parallel_orbitals,
                                   role.calculate_force_derivatives,
-                                  config.overlap_backend);
+                                  config.overlap_backend,
+                                  config.rayleigh_lmax);
         log << " Finite-field LCAO AO-link adjoint_error["
             << "xyz"[direction] << "]=" << std::setprecision(15)
             << this->impl->directions[direction]->max_adjoint_error
@@ -692,6 +701,7 @@ void FiniteFieldLCAOController::configure(
         << config.occupied_bands << " replicated_dense_Berry=exact_exp(-i*dk*r)"
         << " overlap_backend="
         << config.overlap_backend
+        << " rayleigh_lmax=" << config.rayleigh_lmax
         << " branch_io=" << config.branch_io
         << std::endl;
 }

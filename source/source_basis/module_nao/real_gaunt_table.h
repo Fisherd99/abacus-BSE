@@ -100,6 +100,10 @@ class RealGauntTable
      *                                                                                  */
     double gaunt(const int l1, const int l2, const int l3, const int m1, const int m2, const int m3) const;
 
+    /// Evaluate a real-harmonic Gaunt coefficient without building the dense table.
+    double evaluate(const int l1, const int l2, const int l3,
+                    const int m1, const int m2, const int m3) const;
+
 
   private:
     RealGauntTable() {}

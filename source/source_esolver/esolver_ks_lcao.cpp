@@ -350,6 +350,7 @@ void ESolver_KS_LCAO<TK, TR>::setup_finite_field(const UnitCell& ucell)
     config.root_rank = GlobalV::MY_RANK == 0;
     config.calculate_forces = input.cal_force && input.finite_field_amp != 0.0;
     config.overlap_backend = input.finite_field_lcao_overlap;
+    config.rayleigh_lmax = input.finite_field_lcao_lmax;
 
     try
     {

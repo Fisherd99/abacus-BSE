@@ -38,7 +38,8 @@ struct FiniteFieldLCAOConfig
     std::string output_directory;
     bool root_rank = false;
     bool calculate_forces = false;
-    std::string overlap_backend = "numerical_quadrature";
+    std::string overlap_backend = "rayleigh_expansion";
+    int rayleigh_lmax = 6;
 };
 
 struct FiniteFieldLCAODirectionRole

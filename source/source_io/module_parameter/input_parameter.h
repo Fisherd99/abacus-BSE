@@ -566,7 +566,8 @@ struct Input_para
     double finite_field_amp = 0.0;      ///< field amplitude in Ry atomic units
     int finite_field_nberrycyc = 1;     ///< frozen-field wavefunction cycles per density iteration
     std::string finite_field_branch_io = "none"; ///< polarization branch-state I/O mode
-    std::string finite_field_lcao_overlap = "numerical_quadrature"; ///< LCAO link derivative backend
+    std::string finite_field_lcao_overlap = "rayleigh_expansion"; ///< LCAO link derivative backend
+    int finite_field_lcao_lmax = 6; ///< Rayleigh cutoff for rayleigh_expansion
 
     // ==========================================================
     //  gatefield (compensating charge)

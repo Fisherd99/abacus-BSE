@@ -4307,10 +4307,19 @@ parameters:
       Selects the LCAO generalized-overlap implementation.
       * numerical_quadrature: reference 3D quadrature with finite-difference orbital gradients.
       * analytic_gradient: the same quadrature for link values with analytic radial and solid-harmonic displacement gradients.
+      * rayleigh_expansion: Rayleigh/Gaunt two-center reduction with one-dimensional radial tables and analytic center gradients.
       * taylor_first_order: first-order Taylor expansion evaluated with legacy-compatible Orb11/Orb21 tables as exp(-i*q*R_bra) [S - i*q*D], without Rayleigh radial tables.
-    default_value: numerical_quadrature
+    default_value: rayleigh_expansion
     unit: ""
     availability: "basis_type in [pw, lcao] and finite_field==true and basis_type==lcao"
+  - name: finite_field_lcao_lmax
+    category: Periodic finite electric field
+    type: Integer
+    description: |
+      Maximum plane-wave angular momentum L retained by the rayleigh_expansion backend. Converge this parameter for the chosen k-point string spacing and orbital cutoff.
+    default_value: "6"
+    unit: ""
+    availability: "basis_type in [pw, lcao] and finite_field==true and basis_type==lcao and finite_field_lcao_overlap==rayleigh_expansion"
   - name: gate_flag
     category: Gate field (compensating charge)
     type: Boolean

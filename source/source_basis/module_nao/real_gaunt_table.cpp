@@ -118,6 +118,33 @@ double RealGauntTable::real_gaunt_lookup(const int l1, const int l2, const int l
     }
 }
 
+double RealGauntTable::evaluate(const int l1, const int l2, const int l3,
+                                const int m1, const int m2, const int m3) const
+{
+    if (!is_valid_lm(l1, l2, l3, m1, m2, m3)
+        || !gaunt_select_l(l1, l2, l3) || !real_gaunt_select_m(m1, m2, m3))
+    {
+        return 0.0;
+    }
+    std::array<int, 3> m = {{std::abs(m1), std::abs(m2), std::abs(m3)}};
+    std::array<int, 3>::iterator m_absmax
+        = std::max_element(m.begin(), m.end());
+    if (m1 == 0 || m2 == 0 || m3 == 0)
+    {
+        *m_absmax = -*m_absmax;
+        return minus_1_pow(*m_absmax)
+               * gaunt(l1, l2, l3, m[0], m[1], m[2]);
+    }
+    if (m1 + m2 + m3 == 0)
+    {
+        return ModuleBase::SQRT2 / 2.0 * minus_1_pow(*m_absmax + 1)
+               * gaunt(l1, l2, l3, m1, m2, m3);
+    }
+    *m_absmax = -*m_absmax;
+    return ModuleBase::SQRT2 / 2.0 * minus_1_pow(*m_absmax)
+           * gaunt(l1, l2, l3, m[0], m[1], m[2]);
+}
+
 double RealGauntTable::gaunt(const int l1, const int l2, const int l3, const int m1, const int m2, const int m3) const
 {
     // This function computes the Gaunt coefficients from the Wigner-3j expression

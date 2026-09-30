@@ -10,6 +10,8 @@
 #include "source_cell/unitcell.h"
 #include "source_hamilt/module_hcontainer/hcontainer.h"
 #include "source_base/math_lebedev_laikov.h"
+#include "source_basis/module_nao/generalized_overlap_integrator.h"
+#include "source_basis/module_nao/radial_collection.h"
 #include "first_order_overlap_integrator.h"
 
 
@@ -36,6 +38,18 @@ public:
                         bool analytic_center_gradients = false,
                         ModuleBase::Vector3<double> momentum_transfer
                             = ModuleBase::Vector3<double>());
+
+    void set_two_center_parameters(
+        const UnitCell* ucell_in,
+        const LCAO_Orbitals* ptr_orb,
+        const RadialCollection* radial_orbitals,
+        const Grid_Driver* GridD_in,
+        const Parallel_Orbitals* paraV,
+        ModuleBase::Vector3<double> momentum_transfer,
+        int plane_wave_lmax = 12,
+        int radial_table_num = 0,
+        double radial_table_cutoff = 0.0,
+        bool calculate_center_gradients = false);
 
     void set_first_order_parameters(
         const UnitCell* ucell_in,
@@ -102,6 +116,8 @@ protected:
   bool calculate_center_gradients = false;
   bool analytic_center_gradients = false;
   ModuleBase::Vector3<double> momentum_transfer;
+  const RadialCollection* radial_orbitals = nullptr;
+  std::unique_ptr<GeneralizedOverlapIntegrator> two_center_integrator;
   std::unique_ptr<FirstOrderOverlapIntegrator> first_order_integrator;
   ModuleBase::Lebedev_laikov_grid* Leb_grid = nullptr;
   hamilt::HContainer<T>* FR_container = nullptr;

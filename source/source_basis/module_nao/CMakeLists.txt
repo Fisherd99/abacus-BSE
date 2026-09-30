@@ -13,6 +13,7 @@ if(ENABLE_LCAO)
     real_gaunt_table.cpp
     two_center_table.cpp
     two_center_integrator.cpp
+    generalized_overlap_integrator.cpp
     two_center_bundle.cpp
   )
 
