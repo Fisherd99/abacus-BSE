@@ -56,6 +56,7 @@ void FiniteFieldFROverlap<T>::set_parameters(fr_ptr fr_in,
                                    int radial_grid_num,
                                    int degree,
                                    bool calculate_center_gradients,
+                                   bool analytic_center_gradients,
                                    ModuleBase::Vector3<double> momentum_transfer)
 {
     this->fr = fr_in;
@@ -64,6 +65,7 @@ void FiniteFieldFROverlap<T>::set_parameters(fr_ptr fr_in,
     this->FR_container = new hamilt::HContainer<T>(paraV);
     this->radial_grid_num = radial_grid_num;
     this->calculate_center_gradients = calculate_center_gradients;
+    this->analytic_center_gradients = analytic_center_gradients;
     this->momentum_transfer = momentum_transfer;
     this->Leb_grid = new ModuleBase::Lebedev_laikov_grid(degree);
     this->Leb_grid->generate_grid_points();
@@ -80,6 +82,7 @@ FiniteFieldFROverlap<T>::FiniteFieldFROverlap(
     this->FR_container = new hamilt::HContainer<T>(*(FR_in.FR_container));
     this->radial_grid_num = FR_in.radial_grid_num;
     this->calculate_center_gradients = false;
+    this->analytic_center_gradients = FR_in.analytic_center_gradients;
     this->momentum_transfer = FR_in.momentum_transfer;
     if (FR_in.Leb_grid)
     {
@@ -99,6 +102,7 @@ FiniteFieldFROverlap<T>::FiniteFieldFROverlap(FiniteFieldFROverlap<T>&& FR_in)
     FR_in.FR_container = nullptr;
     this->radial_grid_num = FR_in.radial_grid_num;
     this->calculate_center_gradients = FR_in.calculate_center_gradients;
+    this->analytic_center_gradients = FR_in.analytic_center_gradients;
     this->momentum_transfer = FR_in.momentum_transfer;
     this->dFR_datom = std::move(FR_in.dFR_datom);
     this->active_gradient_atom = FR_in.active_gradient_atom;
@@ -389,10 +393,18 @@ void FiniteFieldFROverlap<T>::cal_FR_IJR(const int& iat1, const int& iat2, const
 
             std::vector<double> rly2;
             ModuleBase::Ylm::rl_sph_harm (maxL2, tmp_r_unit.x, tmp_r_unit.y, tmp_r_unit.z, rly2);
+            std::vector<double> grad_rly2;
             std::array<std::map<std::pair<int, int>, double>, 6> shifted_psi2;
             std::array<std::vector<double>, 6> shifted_rly2;
             constexpr double derivative_step = 1.0e-4;
-            if (this->calculate_center_gradients)
+            if (this->calculate_center_gradients && this->analytic_center_gradients)
+            {
+                grad_rly2.resize(rly2.size() * 3);
+                ModuleBase::Ylm::grad_rl_sph_harm(
+                    maxL2, tmp_r_unit.x, tmp_r_unit.y, tmp_r_unit.z,
+                    rly2.data(), grad_rly2.data());
+            }
+            else if (this->calculate_center_gradients)
             {
                 for (int component = 0; component < 3; ++component)
                 {
@@ -444,16 +456,39 @@ void FiniteFieldFROverlap<T>::cal_FR_IJR(const int& iat1, const int& iat2, const
                         {
                             const int lm = L2 * L2 + m2;
                             double orbital_gradient = 0.0;
-                            const int minus_slot = 2 * component;
-                            const int plus_slot = minus_slot + 1;
-                            const double orbital_minus
-                                = shifted_psi2[minus_slot][std::make_pair(L2, N2)]
-                                  * shifted_rly2[minus_slot][lm];
-                            const double orbital_plus
-                                = shifted_psi2[plus_slot][std::make_pair(L2, N2)]
-                                  * shifted_rly2[plus_slot][lm];
-                            orbital_gradient = (orbital_plus - orbital_minus)
-                                               / (2.0 * derivative_step);
+                            if (this->analytic_center_gradients)
+                            {
+                                const double radial_derivative
+                                    = Polynomial_Interpolation_Derivative(
+                                        orbital.getPsi(), orbital.getNr(),
+                                        orbital.getRab(0), tmp_r_coor_norm);
+                                double angular_derivative = 0.0;
+                                if (tmp_r_coor_norm > 1.0e-10)
+                                {
+                                    angular_derivative
+                                        = (grad_rly2[3 * lm + component]
+                                           - L2 * rly2[lm] * tmp_r_unit[component])
+                                          / tmp_r_coor_norm;
+                                }
+                                orbital_gradient
+                                    = radial_derivative * rly2[lm]
+                                          * tmp_r_unit[component]
+                                      + psi_value2[std::make_pair(L2, N2)]
+                                          * angular_derivative;
+                            }
+                            else
+                            {
+                                const int minus_slot = 2 * component;
+                                const int plus_slot = minus_slot + 1;
+                                const double orbital_minus
+                                    = shifted_psi2[minus_slot][std::make_pair(L2, N2)]
+                                      * shifted_rly2[minus_slot][lm];
+                                const double orbital_plus
+                                    = shifted_psi2[plus_slot][std::make_pair(L2, N2)]
+                                      * shifted_rly2[plus_slot][lm];
+                                orbital_gradient = (orbital_plus - orbital_minus)
+                                                   / (2.0 * derivative_step);
+                            }
                             // d phi(r-R2) / d R2 = -grad_{r-R2} phi.
                             grid_2_derivative[component][count * col_num + icol2]
                                 = -orbital_gradient

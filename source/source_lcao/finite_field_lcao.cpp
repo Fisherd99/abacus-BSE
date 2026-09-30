@@ -292,7 +292,7 @@ void build_links_for_direction(
             // The plane-wave phase has an infinite angular expansion.
             // 770 angular points converges semicore-rich links such as Mg.
             &ucell, &orbitals, &grid, &parallel_orbitals, 140, 770,
-            calculate_forces, delta);
+            calculate_forces, overlap_backend == "analytic_gradient", delta);
         integral->calculate_FR();
         return integral;
     };

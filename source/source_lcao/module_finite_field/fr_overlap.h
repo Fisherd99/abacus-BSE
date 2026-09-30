@@ -32,6 +32,7 @@ public:
                         int radial_grid_num = 140,
                         int degree = 110,
                         bool calculate_center_gradients = false,
+                        bool analytic_center_gradients = false,
                         ModuleBase::Vector3<double> momentum_transfer
                             = ModuleBase::Vector3<double>());
 
@@ -82,6 +83,7 @@ protected:
   const LCAO_Orbitals* ptr_orb_ = nullptr;
   int radial_grid_num = 140;
   bool calculate_center_gradients = false;
+  bool analytic_center_gradients = false;
   ModuleBase::Vector3<double> momentum_transfer;
   ModuleBase::Lebedev_laikov_grid* Leb_grid = nullptr;
   hamilt::HContainer<T>* FR_container = nullptr;

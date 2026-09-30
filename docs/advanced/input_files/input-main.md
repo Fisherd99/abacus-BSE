@@ -5421,6 +5421,7 @@
 - **Availability**: *[`basis_type`](#basis_type) in [pw, lcao] and [`finite_field`](#finite_field)==true and [`basis_type`](#basis_type)==lcao*
 - **Description**: Selects the LCAO generalized-overlap implementation.
   - numerical_quadrature: reference 3D quadrature with finite-difference orbital gradients.
+  - analytic_gradient: the same quadrature for link values with analytic radial and solid-harmonic displacement gradients.
 - **Default**: numerical_quadrature
 
 [back to top](#full-list-of-input-keywords)

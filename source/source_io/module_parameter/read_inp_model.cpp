@@ -208,15 +208,17 @@ void ReadInput::item_model()
         item.category = "Periodic finite electric field";
         item.type = "String";
         item.description = R"(Selects the LCAO generalized-overlap implementation.
-* numerical_quadrature: reference 3D quadrature with finite-difference orbital gradients.)";
+* numerical_quadrature: reference 3D quadrature with finite-difference orbital gradients.
+* analytic_gradient: the same quadrature for link values with analytic radial and solid-harmonic displacement gradients.)";
         item.default_value = "numerical_quadrature";
         item.set_availability("basis_type in [pw, lcao] and finite_field==true and basis_type==lcao");
         read_sync_string(input.finite_field_lcao_overlap);
         item.check_value = [](const Input_Item&, const Parameter& para) {
-            if (para.input.finite_field_lcao_overlap != "numerical_quadrature")
+            if (para.input.finite_field_lcao_overlap != "numerical_quadrature"
+                && para.input.finite_field_lcao_overlap != "analytic_gradient")
             {
                 ModuleBase::WARNING_QUIT("ReadInput",
-                    "finite_field_lcao_overlap must be numerical_quadrature");
+                    "finite_field_lcao_overlap must be numerical_quadrature or analytic_gradient");
             }
         };
         this->add_item(item);
