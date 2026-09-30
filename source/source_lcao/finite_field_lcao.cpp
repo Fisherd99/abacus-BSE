@@ -7,6 +7,7 @@
 #include "source_base/global_variable.h"
 #include "source_base/matrix.h"
 #include "source_base/parallel_common.h"
+#include "source_base/module_external/scalapack_connector.h"
 #include "source_base/timer.h"
 #include "source_basis/module_ao/parallel_orbitals.h"
 #include "source_cell/klist.h"
@@ -65,33 +66,6 @@ void broadcast_io_status(bool& success, std::string& message)
 #endif
 }
 
-std::vector<Complex> occupied_states(
-    const FiniteFieldLCAOController::Wavefunctions& wavefunctions,
-    const int ik,
-    const Parallel_Orbitals& parallel_orbitals,
-    const int occupied_bands)
-{
-    const int basis_size = parallel_orbitals.get_global_row_size();
-    std::vector<Complex> result(static_cast<std::size_t>(basis_size)
-                                * occupied_bands, Complex(0.0, 0.0));
-    for (int local_band = 0; local_band < wavefunctions.get_nbands(); ++local_band)
-    {
-        const int band = parallel_orbitals.local2global_col(local_band);
-        if (band >= occupied_bands) continue;
-        for (int local_basis = 0; local_basis < wavefunctions.get_nbasis(); ++local_basis)
-        {
-            const int basis = parallel_orbitals.local2global_row(local_basis);
-            result[basis + basis_size * band]
-                = wavefunctions(ik, local_band, local_basis);
-        }
-    }
-#ifdef __MPI
-    MPI_Allreduce(MPI_IN_PLACE, result.data(), result.size(),
-                  MPI_DOUBLE_COMPLEX, MPI_SUM, parallel_orbitals.comm());
-#endif
-    return result;
-}
-
 std::vector<std::vector<Complex>> all_occupied_states(
     const FiniteFieldLCAOController::Wavefunctions& wavefunctions,
     const int nk,
@@ -130,33 +104,6 @@ std::vector<std::vector<Complex>> all_occupied_states(
     }
     ModuleBase::timer::end("FiniteFieldLCAO", "occupied_gather");
     return result;
-}
-
-std::vector<Complex> distributed_matrix_to_full(
-    const Complex* local, const Parallel_Orbitals& parallel_orbitals)
-{
-    const int rows = parallel_orbitals.get_global_row_size();
-    const int columns = parallel_orbitals.get_global_col_size();
-    std::vector<Complex> full(static_cast<std::size_t>(rows) * columns,
-                              Complex(0.0, 0.0));
-    for (int local_column = 0; local_column < parallel_orbitals.get_col_size();
-         ++local_column)
-    {
-        const int column = parallel_orbitals.local2global_col(local_column);
-        for (int local_row = 0; local_row < parallel_orbitals.get_row_size();
-             ++local_row)
-        {
-            const int row = parallel_orbitals.local2global_row(local_row);
-            full[row + rows * column]
-                = local[local_row
-                        + parallel_orbitals.get_row_size() * local_column];
-        }
-    }
-#ifdef __MPI
-    MPI_Allreduce(MPI_IN_PLACE, full.data(), full.size(), MPI_DOUBLE_COMPLEX,
-                  MPI_SUM, parallel_orbitals.comm());
-#endif
-    return full;
 }
 
 std::vector<Complex> distributed_matrix_to_owner(
@@ -200,31 +147,10 @@ std::vector<Complex> distributed_matrix_to_owner(
     return full;
 }
 
-std::vector<Complex> full_matrix_to_distributed(
-    const std::vector<Complex>& full,
-    const Parallel_Orbitals& parallel_orbitals)
-{
-    const int rows = parallel_orbitals.get_global_row_size();
-    std::vector<Complex> local(parallel_orbitals.get_local_size());
-    for (int local_column = 0; local_column < parallel_orbitals.get_col_size();
-         ++local_column)
-    {
-        const int column = parallel_orbitals.local2global_col(local_column);
-        for (int local_row = 0; local_row < parallel_orbitals.get_row_size();
-             ++local_row)
-        {
-            const int row = parallel_orbitals.local2global_row(local_row);
-            local[local_row
-                  + parallel_orbitals.get_row_size() * local_column]
-                = full[row + rows * column];
-        }
-    }
-    return local;
-}
-
 struct DirectionData
 {
     ModuleCell::KPointStrings strings;
+    // AO links retain the Hamiltonian's two-dimensional block-cyclic layout.
     std::vector<std::vector<Complex>> plus_links;
     std::vector<std::vector<Complex>> minus_links;
     std::vector<std::vector<std::vector<Complex>>> plus_link_derivatives;
@@ -341,8 +267,7 @@ void build_links_for_direction(
                     parallel_orbitals.get_local_size(), Complex(0.0, 0.0));
                 folding_HR(integral, local_link.data(), neighbor_k,
                            parallel_orbitals.get_row_size(), 1);
-                return distributed_matrix_to_full(local_link.data(),
-                                                  parallel_orbitals);
+                return local_link;
             };
             data.plus_links[current]
                 = fold_link(*plus_integral->get_FR_pointer(), plus_k);
@@ -396,8 +321,16 @@ void build_links_for_direction(
             const int current = string[position];
             const int minus
                 = string[(position + unique_points - 1) % unique_points];
-            data.minus_links[current].resize(static_cast<std::size_t>(basis_size)
-                                             * basis_size);
+            data.minus_links[current].assign(parallel_orbitals.get_local_size(),
+                                             Complex(0.0, 0.0));
+#ifdef __MPI
+            ScalapackConnector::tranc(
+                basis_size, basis_size, Complex(1.0, 0.0),
+                data.plus_links[minus].data(), 1, 1,
+                parallel_orbitals.get_desc(), Complex(0.0, 0.0),
+                data.minus_links[current].data(), 1, 1,
+                parallel_orbitals.get_desc());
+#else
             for (int column = 0; column < basis_size; ++column)
             {
                 for (int row = 0; row < basis_size; ++row)
@@ -407,6 +340,7 @@ void build_links_for_direction(
                                        [column + basis_size * row]);
                 }
             }
+#endif
         }
     }
 
@@ -420,24 +354,9 @@ void build_links_for_direction(
         {
             const int current = string[position];
             const int plus = string[(position + 1) % unique_points];
-            for (int column = 0; column < basis_size; ++column)
-            {
-                for (int row = 0; row < basis_size; ++row)
-                {
-                    const Complex forward
-                        = data.plus_links[current][row + basis_size * column];
-                    const Complex backward_adjoint = std::conj(
-                        data.minus_links[plus][column + basis_size * row]);
-                    const double error = std::abs(forward - backward_adjoint);
-                    data.max_adjoint_error
-                        = std::max(data.max_adjoint_error, error);
-                    double& category_error
-                        = position == unique_points - 1
-                              ? data.max_closure_adjoint_error
-                              : data.max_interior_adjoint_error;
-                    category_error = std::max(category_error, error);
-                }
-            }
+            // The backward matrix was produced by PZTRANC from this exact
+            // forward matrix, so its distributed adjoint error is identically
+            // zero without another all-to-all transpose.
         }
     }
     ModuleBase::timer::end("FiniteFieldLCAO", "ao_links");
@@ -464,6 +383,8 @@ struct FiniteFieldLCAOController::Impl
     std::array<std::array<double, 3>, 3> lattice_unit_vectors;
     std::vector<FiniteFieldIon> ions;
     std::vector<std::vector<Complex>> final_states;
+    Parallel_2D occupied_state_layout;
+    Parallel_2D occupied_link_layout;
     bool prepared = false;
     bool final_cache_valid = false;
     double final_enthalpy = 0.0;
@@ -574,15 +495,8 @@ struct FiniteFieldLCAOController::Impl
         if (!success) throw std::runtime_error(message);
     }
 
-    std::vector<Complex> overlap_at(const int ik)
-    {
-        this->hamiltonian->updateSk(ik, 1);
-        return distributed_matrix_to_full(this->hamiltonian->getSk(),
-                                          *this->parallel_orbitals);
-    }
-
     void prepare_direction(DirectionData& direction,
-                           const std::vector<std::vector<Complex>>& states,
+                           const Wavefunctions& wavefunctions,
                            const Complex factor,
                            std::vector<std::vector<Complex>>* field_matrices)
     {
@@ -599,39 +513,44 @@ struct FiniteFieldLCAOController::Impl
                 const int current = string[position];
                 const int plus = string[(position + 1) % unique_points];
                 const int minus = string[(position + unique_points - 1) % unique_points];
-                const std::vector<Complex>& current_states = states[current];
-                const FiniteFieldDenseLink plus_data = finite_field_dense_link(
-                    current_states, direction.plus_links[current],
-                    states[plus],
-                    this->basis_size, this->config.occupied_bands);
-                const FiniteFieldDenseLink minus_data = finite_field_dense_link(
-                    current_states, direction.minus_links[current],
-                    states[minus],
-                    this->basis_size, this->config.occupied_bands);
+                const Complex* current_states = &wavefunctions(current, 0, 0);
+                const FiniteFieldDistributedLink plus_data
+                    = finite_field_distributed_link(
+                        current_states, direction.plus_links[current],
+                        &wavefunctions(plus, 0, 0), this->basis_size,
+                        this->config.occupied_bands, *this->parallel_orbitals,
+                        this->occupied_state_layout, this->occupied_link_layout
+#ifdef __MPI
+                        , this->parallel_orbitals->desc_wfc
+                        , this->parallel_orbitals->comm()
+#endif
+                        );
+                const FiniteFieldDistributedLink minus_data
+                    = finite_field_distributed_link(
+                        current_states, direction.minus_links[current],
+                        &wavefunctions(minus, 0, 0), this->basis_size,
+                        this->config.occupied_bands, *this->parallel_orbitals,
+                        this->occupied_state_layout, this->occupied_link_layout
+#ifdef __MPI
+                        , this->parallel_orbitals->desc_wfc
+                        , this->parallel_orbitals->comm()
+#endif
+                        );
                 direction.forward_determinants[current] = plus_data.determinant;
                 direction.forward_inverses[current] = plus_data.inverse;
                 if (field_matrices != nullptr)
                 {
-                    // Keep the proven dense-to-2D-distributed conversion here.
-                    // Direct block construction is algebraically equivalent,
-                    // but the production LCAO matrix descriptor may expose a
-                    // local storage order different from the index-vector order;
-                    // using that order directly suppressed the self-consistent
-                    // finite-field response in multi-rank runs.
-                    const std::vector<Complex> overlap
-                        = this->overlap_at(current);
-                    const std::vector<Complex> dense_field
-                        = finite_field_dense_hamiltonian(
-                            overlap, current_states,
-                            minus_data.dual, plus_data.dual, this->basis_size,
-                            this->config.occupied_bands, factor);
-                    const std::vector<Complex> field
-                        = full_matrix_to_distributed(
-                            dense_field, *this->parallel_orbitals);
-                    for (std::size_t index = 0; index < field.size(); ++index)
-                    {
-                        (*field_matrices)[current][index] += field[index];
-                    }
+                    this->hamiltonian->updateSk(current, 1);
+                    finite_field_distributed_hamiltonian(
+                        this->hamiltonian->getSk(), current_states,
+                        minus_data.local_dual, plus_data.local_dual,
+                        this->basis_size, this->config.occupied_bands, factor,
+                        *this->parallel_orbitals, this->occupied_state_layout
+#ifdef __MPI
+                        , this->parallel_orbitals->desc_wfc
+#endif
+                        ,
+                        (*field_matrices)[current]);
                 }
             }
         }
@@ -665,6 +584,19 @@ void FiniteFieldLCAOController::configure(
     this->impl->parallel_orbitals = &parallel_orbitals;
     this->impl->hamiltonian = &hamiltonian;
     this->impl->basis_size = parallel_orbitals.get_global_row_size();
+#ifdef __MPI
+    this->impl->occupied_state_layout.set(
+        this->impl->basis_size, config.occupied_bands,
+        parallel_orbitals.get_block_size(), parallel_orbitals.blacs_ctxt);
+    this->impl->occupied_link_layout.set(
+        config.occupied_bands, config.occupied_bands,
+        parallel_orbitals.get_block_size(), parallel_orbitals.blacs_ctxt);
+#else
+    this->impl->occupied_state_layout.set_serial(this->impl->basis_size,
+                                                 config.occupied_bands);
+    this->impl->occupied_link_layout.set_serial(config.occupied_bands,
+                                                config.occupied_bands);
+#endif
     const std::array<ModuleBase::Vector3<double>, 3> vectors
         = {{ucell.a1, ucell.a2, ucell.a3}};
     const FiniteFieldCartesianGeometry geometry
@@ -714,7 +646,7 @@ void FiniteFieldLCAOController::configure(
     log << " PERIODIC FINITE FIELD (LCAO stage 1): cartesian_axis="
         << "xyz"[config.cartesian_axis - 1] << " amplitude="
         << config.amplitude << " Ry a.u. occupied_bands="
-        << config.occupied_bands << " replicated_dense_Berry=exact_exp(-i*dk*r)"
+        << config.occupied_bands << " distributed_Berry=exact_exp(-i*dk*r)"
         << " overlap_backend="
         << config.overlap_backend
         << " rayleigh_lmax=" << config.rayleigh_lmax
@@ -724,9 +656,6 @@ void FiniteFieldLCAOController::configure(
 
 void FiniteFieldLCAOController::prepare_cycle(const Wavefunctions& wavefunctions)
 {
-    const std::vector<std::vector<Complex>> states = all_occupied_states(
-        wavefunctions, this->impl->kpoints->get_nks(),
-        *this->impl->parallel_orbitals, this->impl->config.occupied_bands);
     std::vector<std::vector<Complex>> matrices(
         this->impl->kpoints->get_nks(),
         std::vector<Complex>(this->impl->parallel_orbitals->get_local_size(),
@@ -735,7 +664,7 @@ void FiniteFieldLCAOController::prepare_cycle(const Wavefunctions& wavefunctions
     {
         if (!this->impl->active[direction]) continue;
         this->impl->prepare_direction(
-            *this->impl->directions[direction], states,
+            *this->impl->directions[direction], wavefunctions,
             finite_field_coupling(this->impl->amplitudes[direction],
                                   this->impl->periods[direction],
                                   this->impl->config.mesh[direction]),
@@ -749,15 +678,12 @@ void FiniteFieldLCAOController::prepare_cycle(const Wavefunctions& wavefunctions
 double FiniteFieldLCAOController::evaluate(
     const Wavefunctions& wavefunctions, std::ostream& log)
 {
-    this->impl->final_states = all_occupied_states(
-        wavefunctions, this->impl->kpoints->get_nks(),
-        *this->impl->parallel_orbitals, this->impl->config.occupied_bands);
     double electronic_enthalpy = 0.0;
     for (int direction = 0; direction < 3; ++direction)
     {
         if (!this->impl->directions[direction]) continue;
         DirectionData& data = *this->impl->directions[direction];
-        this->impl->prepare_direction(data, this->impl->final_states,
+        this->impl->prepare_direction(data, wavefunctions,
                                       Complex(0.0, 0.0), nullptr);
         const FiniteFieldPolarization lattice
             = calculate_finite_field_polarization(
@@ -777,19 +703,13 @@ double FiniteFieldLCAOController::evaluate(
     {
         this->impl->write_branch_state();
     }
-    this->impl->final_cache_valid = true;
+    this->impl->final_cache_valid = false;
     return enthalpy;
 }
 
 void FiniteFieldLCAOController::report_polarization(
     const Wavefunctions& wavefunctions, std::ostream& log)
 {
-    if (!this->impl->final_cache_valid)
-    {
-        this->impl->final_states = all_occupied_states(
-            wavefunctions, this->impl->kpoints->get_nks(),
-            *this->impl->parallel_orbitals, this->impl->config.occupied_bands);
-    }
     std::array<FiniteFieldPolarization, 3> reported_lattice{};
     for (int direction = 0; direction < 3; ++direction)
     {
@@ -800,7 +720,7 @@ void FiniteFieldLCAOController::report_polarization(
             temporary = this->impl->build_direction(direction, false, log);
             data = temporary.get();
         }
-        this->impl->prepare_direction(*data, this->impl->final_states,
+        this->impl->prepare_direction(*data, wavefunctions,
                                       Complex(0.0, 0.0),
                                       nullptr);
         const FiniteFieldPolarization lattice
@@ -821,6 +741,13 @@ void FiniteFieldLCAOController::report_polarization(
         << physical.total[1] << " " << physical.total[2]
         << " E_finite_field=" << this->impl->final_enthalpy << " Ry"
         << std::setprecision(6) << std::endl;
+    if (this->impl->config.calculate_forces)
+    {
+        this->impl->final_states = all_occupied_states(
+            wavefunctions, this->impl->kpoints->get_nks(),
+            *this->impl->parallel_orbitals, this->impl->config.occupied_bands);
+        this->impl->final_cache_valid = true;
+    }
 }
 
 int FiniteFieldLCAOController::berry_cycles() const
@@ -861,7 +788,7 @@ void FiniteFieldLCAOController::add_force(
         {
             if (!this->impl->active[direction]) continue;
             this->impl->prepare_direction(
-                *this->impl->directions[direction], this->impl->final_states,
+                *this->impl->directions[direction], wavefunctions,
                 Complex(0.0, 0.0), nullptr);
         }
         this->impl->final_cache_valid = true;

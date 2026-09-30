@@ -59,9 +59,9 @@ inline FiniteFieldLCAODirectionRole finite_field_lcao_direction_role(
 }
 
 /** Finite-field controller for insulating complex LCAO runs.
- * Dense Berry matrices are replicated across the diagonalization communicator,
- * while wavefunctions, overlap matrices, and the injected Hamiltonian retain
- * the normal two-dimensional block-cyclic distribution. */
+ * Berry AO links, wavefunctions, dual states, and injected Hamiltonians retain
+ * the normal two-dimensional block-cyclic distribution.  Only occupied-space
+ * link matrices are replicated for their small dense inversion. */
 class FiniteFieldLCAOController
 {
   public:

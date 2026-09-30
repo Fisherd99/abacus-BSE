@@ -2,6 +2,8 @@
 
 #include "source_base/module_external/blas_connector.h"
 #include "source_base/module_external/lapack_connector.h"
+#include "source_base/module_external/scalapack_connector.h"
+#include "source_base/parallel_2d.h"
 
 #include <stdexcept>
 
@@ -140,6 +142,162 @@ FiniteFieldDenseLink finite_field_dense_link(
            mapped.data(), &basis_size, occupied_link.data(), &occupied_bands,
            &zero, result.dual.data(), &basis_size);
     return result;
+}
+
+FiniteFieldDistributedLink finite_field_distributed_link(
+    const std::complex<double>* current,
+    const std::vector<std::complex<double>>& local_link,
+    const std::complex<double>* neighbor,
+    const int basis_size,
+    const int occupied_bands,
+    const Parallel_2D& matrix_layout,
+    const Parallel_2D& occupied_state_layout,
+    const Parallel_2D& occupied_link_layout
+#ifdef __MPI
+    , const int* wavefunction_descriptor
+    , MPI_Comm communicator
+#endif
+    )
+{
+    if (current == nullptr || neighbor == nullptr
+        || local_link.size() != static_cast<std::size_t>(matrix_layout.get_local_size()))
+    {
+        throw std::invalid_argument("finite-field distributed link input is inconsistent");
+    }
+#ifdef __MPI
+    const std::complex<double> one(1.0, 0.0);
+    const std::complex<double> zero(0.0, 0.0);
+    std::vector<std::complex<double>> mapped(
+        occupied_state_layout.get_local_size(), zero);
+    ScalapackConnector::gemm(
+        'N', 'N', basis_size, occupied_bands, basis_size, one,
+        local_link.data(), 1, 1, matrix_layout.get_desc(), neighbor, 1, 1,
+        wavefunction_descriptor, zero, mapped.data(), 1, 1,
+        occupied_state_layout.get_desc());
+
+    std::vector<std::complex<double>> occupied_local(
+        occupied_link_layout.get_local_size(), zero);
+    ScalapackConnector::gemm(
+        'C', 'N', occupied_bands, occupied_bands, basis_size, one, current,
+        1, 1, wavefunction_descriptor, mapped.data(), 1, 1,
+        occupied_state_layout.get_desc(), zero, occupied_local.data(), 1, 1,
+        occupied_link_layout.get_desc());
+
+    std::vector<std::complex<double>> occupied_full(
+        matrix_size(occupied_bands, occupied_bands), zero);
+    for (int local_column = 0; local_column < occupied_link_layout.get_col_size();
+         ++local_column)
+    {
+        const int column = occupied_link_layout.local2global_col(local_column);
+        for (int local_row = 0; local_row < occupied_link_layout.get_row_size();
+             ++local_row)
+        {
+            const int row = occupied_link_layout.local2global_row(local_row);
+            occupied_full[row + occupied_bands * column]
+                = occupied_local[local_row
+                                 + occupied_link_layout.get_row_size()
+                                       * local_column];
+        }
+    }
+    MPI_Allreduce(MPI_IN_PLACE, occupied_full.data(), occupied_full.size(),
+                  MPI_DOUBLE_COMPLEX, MPI_SUM, communicator);
+
+    FiniteFieldDistributedLink result;
+    result.determinant
+        = invert_and_determinant(occupied_full, occupied_bands);
+    result.inverse = occupied_full;
+    std::vector<std::complex<double>> inverse_local(
+        occupied_link_layout.get_local_size(), zero);
+    for (int local_column = 0; local_column < occupied_link_layout.get_col_size();
+         ++local_column)
+    {
+        const int column = occupied_link_layout.local2global_col(local_column);
+        for (int local_row = 0; local_row < occupied_link_layout.get_row_size();
+             ++local_row)
+        {
+            const int row = occupied_link_layout.local2global_row(local_row);
+            inverse_local[local_row
+                          + occupied_link_layout.get_row_size() * local_column]
+                = result.inverse[row + occupied_bands * column];
+        }
+    }
+    result.local_dual.assign(occupied_state_layout.get_local_size(), zero);
+    ScalapackConnector::gemm(
+        'N', 'N', basis_size, occupied_bands, occupied_bands, one,
+        mapped.data(), 1, 1, occupied_state_layout.get_desc(),
+        inverse_local.data(), 1, 1, occupied_link_layout.get_desc(), zero,
+        result.local_dual.data(), 1, 1, occupied_state_layout.get_desc());
+    return result;
+#else
+    const std::vector<std::complex<double>> current_full(
+        current, current + matrix_size(basis_size, occupied_bands));
+    const std::vector<std::complex<double>> neighbor_full(
+        neighbor, neighbor + matrix_size(basis_size, occupied_bands));
+    const FiniteFieldDenseLink dense = finite_field_dense_link(
+        current_full, local_link, neighbor_full, basis_size, occupied_bands);
+    return {dense.dual, dense.inverse, dense.determinant};
+#endif
+}
+
+void finite_field_distributed_hamiltonian(
+    const std::complex<double>* local_overlap,
+    const std::complex<double>* occupied,
+    const std::vector<std::complex<double>>& dual_minus,
+    const std::vector<std::complex<double>>& dual_plus,
+    const int basis_size,
+    const int occupied_bands,
+    const std::complex<double>& gamma,
+    const Parallel_2D& matrix_layout,
+    const Parallel_2D& occupied_state_layout
+#ifdef __MPI
+    , const int* wavefunction_descriptor
+#endif
+    ,
+    std::vector<std::complex<double>>& local_hamiltonian)
+{
+#ifdef __MPI
+    const std::complex<double> one(1.0, 0.0);
+    const std::complex<double> zero(0.0, 0.0);
+    std::vector<std::complex<double>> sc(
+        occupied_state_layout.get_local_size(), zero);
+    ScalapackConnector::gemm(
+        'N', 'N', basis_size, occupied_bands, basis_size, one, local_overlap,
+        1, 1, matrix_layout.get_desc(), occupied, 1, 1,
+        wavefunction_descriptor, zero, sc.data(), 1, 1,
+        occupied_state_layout.get_desc());
+    std::vector<std::complex<double>> difference(dual_minus.size());
+    for (std::size_t index = 0; index < difference.size(); ++index)
+    {
+        difference[index] = dual_minus[index] - dual_plus[index];
+    }
+    if (local_hamiltonian.size()
+        != static_cast<std::size_t>(matrix_layout.get_local_size()))
+    {
+        local_hamiltonian.assign(matrix_layout.get_local_size(), zero);
+    }
+    ScalapackConnector::gemm(
+        'N', 'C', basis_size, basis_size, occupied_bands, gamma,
+        difference.data(), 1, 1, occupied_state_layout.get_desc(), sc.data(),
+        1, 1, occupied_state_layout.get_desc(), one, local_hamiltonian.data(),
+        1, 1, matrix_layout.get_desc());
+    ScalapackConnector::gemm(
+        'N', 'C', basis_size, basis_size, occupied_bands, std::conj(gamma),
+        sc.data(), 1, 1, occupied_state_layout.get_desc(), difference.data(),
+        1, 1, occupied_state_layout.get_desc(), one, local_hamiltonian.data(),
+        1, 1, matrix_layout.get_desc());
+#else
+    const std::vector<std::complex<double>> overlap(
+        local_overlap, local_overlap + matrix_size(basis_size, basis_size));
+    const std::vector<std::complex<double>> states(
+        occupied, occupied + matrix_size(basis_size, occupied_bands));
+    const std::vector<std::complex<double>> dense = finite_field_dense_hamiltonian(
+        overlap, states, dual_minus, dual_plus, basis_size, occupied_bands, gamma);
+    if (local_hamiltonian.empty()) local_hamiltonian.resize(dense.size(), zero);
+    for (std::size_t index = 0; index < dense.size(); ++index)
+    {
+        local_hamiltonian[index] += dense[index];
+    }
+#endif
 }
 
 std::vector<std::complex<double>> finite_field_dense_hamiltonian_block(
